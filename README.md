@@ -91,15 +91,15 @@ NODE_ENV=development
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=465
 SMTP_SECURE=true
-SMTP_USER=md.nayem@shafacode.com
+SMTP_USER=demomail.com
 SMTP_PASSWORD=your-app-specific-password
-EMAIL_FROM=md.nayem@shafacode.com
+EMAIL_FROM=demomail@gmail.com
 EMAIL_FROM_NAME=Courier Delivery Service
 
-# SMS (SMS.net.bd)
-SMS_API_KEY=your-sms-api-key-here
-SMS_API_URL=https://api.sms.net.bd/sendsms
-SMS_SENDER_ID=8809601010456
+
+SMS_API_KEY=
+SMS_API_URL=
+SMS_SENDER_ID=
 SMS_CONTENT_ID=
 ```
 
@@ -1553,47 +1553,3 @@ npm run typeorm:revert
 npm run typeorm:migrate
 ```
 
----
-
-## 📞 Support & Contact
-
-For questions or issues:
-
-1. Check existing documentation files
-2. Review Postman collection examples
-3. Check logs for error messages
-4. Verify environment configuration
-
----
-
-## 📝 License
-
-MIT License - Feel free to use this project for learning or commercial purposes.
-
----
-
-## 🎉 Congratulations!
-
-**Day One Implementation Complete!** 
-
-You now have a fully functional courier backend with:
-- ✅ 20 working API endpoints
-- ✅ Complete authentication system
-- ✅ Merchant approval workflow
-- ✅ Dual notification system (Email + SMS)
-- ✅ Admin management panel
-- ✅ Production-ready architecture
-
-**Next Steps**:
-1. Import Postman collection
-2. Configure `.env` with your credentials
-3. Run migrations and seed
-4. Start testing endpoints
-5. Build your frontend!
-
----
-
-**Built with ❤️ using NestJS**
-
-Last Updated: January 2024
-Version: 1.0.0 (Day One Release)
