@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { HubsModule } from './hubs/hubs.module';
 import { RidersModule } from './riders/riders.module';
 import { AuthModule } from './auth/auth.module';
+import { StoresModule } from './stores/stores.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from './auth/auth.module';
     HubsModule,
     RidersModule,
     AuthModule,
+    StoresModule,
   ],
   controllers: [AppController],
   providers: [AppService],

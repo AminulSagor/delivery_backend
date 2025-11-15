@@ -41,7 +41,7 @@ export class MerchantService {
 
     // Create user
     const user = await this.usersService.create({
-      full_name: dto.fullName,
+      full_name: dto.full_name,
       phone: dto.phone,
       email: dto.email || undefined,
       password_hash: passwordHash,
@@ -54,8 +54,8 @@ export class MerchantService {
     merchant.user_id = user.id;
     merchant.thana = dto.thana;
     merchant.district = dto.district;
-    merchant.full_address = dto.fullAddress || null;
-    merchant.secondary_number = dto.secondaryNumber || null;
+    merchant.full_address = dto.full_address || null;
+    merchant.secondary_number = dto.secondary_number || null;
     merchant.status = MerchantStatus.PENDING;
 
     await this.merchantRepository.save(merchant);
