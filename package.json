@@ -22,7 +22,10 @@
     "typeorm:migrate": "npm run build && npm run typeorm migration:run",
     "typeorm:revert": "npm run build && npm run typeorm migration:revert",
     "typeorm:generate": "npm run typeorm migration:generate",
-    "seed": "ts-node -r tsconfig-paths/register src/database/seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register src/database/seed.ts",
+    "import:csv": "npm run build && ts-node -r tsconfig-paths/register src/database/import-csv.ts",
+    "get:merchant-ids": "npm run build && ts-node -r tsconfig-paths/register src/database/get-merchant-ids.ts",
+    "import:coverage": "npm run build && ts-node -r tsconfig-paths/register src/database/import-coverage-areas.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
