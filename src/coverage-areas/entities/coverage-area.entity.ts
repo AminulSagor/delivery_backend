@@ -8,8 +8,8 @@ import {
 
 @Entity('coverage_areas')
 export class CoverageArea {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   division: string | null;

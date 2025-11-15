@@ -7,25 +7,16 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "lint": "eslint \"{src,apps,libs}/**/*.ts\" --fix",
     "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/data-source.ts",
     "typeorm:migrate": "npm run build && npm run typeorm migration:run",
     "typeorm:revert": "npm run build && npm run typeorm migration:revert",
-    "typeorm:generate": "npm run typeorm migration:generate",
-    "seed": "ts-node -r tsconfig-paths/register src/database/seed.ts",
-    "import:csv": "npm run build && ts-node -r tsconfig-paths/register src/database/import-csv.ts",
-    "get:merchant-ids": "npm run build && ts-node -r tsconfig-paths/register src/database/get-merchant-ids.ts",
-    "import:coverage": "npm run build && ts-node -r tsconfig-paths/register src/database/import-coverage-areas.ts"
+    "typeorm:generate": "npm run typeorm migration:generate"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

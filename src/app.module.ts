@@ -11,6 +11,7 @@ import { HubsModule } from './hubs/hubs.module';
 import { RidersModule } from './riders/riders.module';
 import { AuthModule } from './auth/auth.module';
 import { StoresModule } from './stores/stores.module';
+import { CoverageAreasModule } from './coverage-areas/coverage-areas.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StoresModule } from './stores/stores.module';
     RidersModule,
     AuthModule,
     StoresModule,
+    CoverageAreasModule,
   ],
   controllers: [AppController],
   providers: [AppService],
