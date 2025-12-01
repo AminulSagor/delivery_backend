@@ -18,6 +18,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toMerchantListItem, toMerchantDetail } from '../common/interfaces/responses.interface';
 
 @Controller('merchants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,24 +44,41 @@ export class MerchantController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return await this.merchantService.findAll({
+    const result = await this.merchantService.findAll({
       status,
       district,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+    return {
+      merchants: result.data.map(toMerchantListItem),
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      },
+      message: 'Merchants retrieved successfully',
+    };
   }
 
   @Roles(UserRole.ADMIN)
   @Get(':id')
   async findOne(@Param('id') id: string) {
-    return await this.merchantService.findOne(id);
+    const merchant = await this.merchantService.findOne(id);
+    return {
+      merchant: toMerchantDetail(merchant),
+      message: 'Merchant retrieved successfully',
+    };
   }
 
   @Roles(UserRole.ADMIN, UserRole.MERCHANT)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateDto: UpdateMerchantDto) {
-    return await this.merchantService.update(id, updateDto);
+    const merchant = await this.merchantService.update(id, updateDto);
+    return {
+      id: merchant.id,
+      message: 'Merchant updated successfully',
+    };
   }
 
   @Roles(UserRole.ADMIN)
@@ -69,6 +87,11 @@ export class MerchantController {
     @Param('id') id: string,
     @CurrentUser() user: any,
   ) {
-    return await this.merchantService.approveMerchant(id, user.userId);
+    const merchant = await this.merchantService.approveMerchant(id, user.userId);
+    return {
+      id: merchant.id,
+      status: merchant.status,
+      message: 'Merchant approved successfully',
+    };
   }
 }

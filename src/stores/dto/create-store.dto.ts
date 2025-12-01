@@ -1,8 +1,9 @@
 import {
   IsString,
-  IsNotEmpty,
   IsEmail,
   IsOptional,
+  IsInt,
+  IsNotEmpty,
   IsBoolean,
   Matches,
   MinLength,
@@ -19,6 +20,20 @@ export class CreateStoreDto {
   @IsString()
   @IsNotEmpty()
   business_address: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  district: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  thana: string;
+
+  @IsString()
+  @IsOptional()
+  area?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -39,4 +54,16 @@ export class CreateStoreDto {
   @IsBoolean()
   @IsOptional()
   is_default?: boolean;
+
+  @IsInt()
+  @IsNotEmpty()
+  carrybee_city_id: number;
+
+  @IsInt()
+  @IsNotEmpty()
+  carrybee_zone_id: number;
+
+  @IsInt()
+  @IsNotEmpty()
+  carrybee_area_id: number;
 }

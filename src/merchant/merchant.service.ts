@@ -90,27 +90,37 @@ export class MerchantService {
     merchant.approved_by = adminId;
 
     // Activate user account
-    await this.usersService.create({
-      ...merchant.user,
-      is_active: true,
+    await this.usersService.update(merchant.user_id, { is_active: true });
+
+    // Save merchant changes
+    await this.merchantRepository.save(merchant);
+
+    // Reload merchant with updated user
+    const updatedMerchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+      relations: ['user'],
     });
 
-    await this.merchantRepository.save(merchant);
+    if (!updatedMerchant) {
+      throw new NotFoundException(`Merchant with ID ${merchantId} not found after update`);
+    }
 
     console.log(
       `[MERCHANT APPROVAL] Merchant ${merchant.user.full_name} approved by admin ${adminId}`,
     );
 
-    // Send approval notifications (stubs)
-    if (merchant.user.email) {
-      await this.emailService.sendMerchantApprovalEmail(merchant);
+    // Send approval notifications
+    if (updatedMerchant.user.email) {
+      const emailResult = await this.emailService.sendMerchantApprovalEmail(updatedMerchant);
+      console.log(`[EMAIL] ${emailResult.message}`);
     }
 
-    if (merchant.user.phone) {
-      await this.smsService.sendMerchantApprovalSms(merchant);
+    if (updatedMerchant.user.phone) {
+      const smsResult = await this.smsService.sendMerchantApprovalSms(updatedMerchant);
+      console.log(`[SMS] ${smsResult.message}`);
     }
 
-    return merchant;
+    return updatedMerchant;
   }
 
   async findAll(filters?: {

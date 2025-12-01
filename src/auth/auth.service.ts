@@ -6,8 +6,11 @@ import { SignOptions } from 'jsonwebtoken';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
+import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { Rider } from '../riders/entities/rider.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { MerchantStatus } from '../common/enums/merchant-status.enum';
+import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
 
@@ -17,6 +20,10 @@ export class AuthService {
     private usersService: UsersService,
     @InjectRepository(Merchant)
     private merchantRepository: Repository<Merchant>,
+    @InjectRepository(HubManager)
+    private hubManagerRepository: Repository<HubManager>,
+    @InjectRepository(Rider)
+    private riderRepository: Repository<Rider>,
   ) {}
 
   async login(loginDto: AuthLoginDto): Promise<{
@@ -59,7 +66,7 @@ export class AuthService {
     }
 
     // Generate tokens
-    const accessToken = this.generateAccessToken(user);
+    const accessToken = await this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
     // Store refresh token
@@ -94,7 +101,7 @@ export class AuthService {
       }
 
       // Generate new tokens
-      const newAccessToken = this.generateAccessToken(user);
+      const newAccessToken = await this.generateAccessToken(user);
       const newRefreshToken = this.generateRefreshToken(user);
 
       // Update stored refresh token
@@ -127,14 +134,41 @@ export class AuthService {
     }
   }
 
-  private generateAccessToken(user: User): string {
-    const payload = {
+  private async generateAccessToken(user: User): Promise<string> {
+    // Fetch additional context based on role
+    let merchantId: string | null = null;
+    let hubId: string | null = null;
+    let riderId: string | null = null;
+
+    if (user.role === UserRole.MERCHANT) {
+      const merchant = await this.merchantRepository.findOne({
+        where: { user_id: user.id },
+      });
+      merchantId = merchant?.id || null;
+    } else if (user.role === UserRole.HUB_MANAGER) {
+      const hubManager = await this.hubManagerRepository.findOne({
+        where: { user_id: user.id },
+      });
+      hubId = hubManager?.hub_id || null;
+    } else if (user.role === UserRole.RIDER) {
+      const rider = await this.riderRepository.findOne({
+        where: { user_id: user.id },
+      });
+      hubId = rider?.hub_id || null;
+      riderId = rider?.id || null;
+    }
+
+    const payload: JwtPayload = {
       userId: user.id,
       phone: user.phone,
       role: user.role,
+      merchantId,
+      hubId,
+      riderId,
     };
+
     const options: SignOptions = {
-      expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as any,
+      expiresIn: '60d', // Set to 60 days for development and testing
     };
     return jwt.sign(payload, process.env.JWT_SECRET || 'secret', options);
   }

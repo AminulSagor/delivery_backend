@@ -11,6 +11,8 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Hub } from './hub.entity';
 
+import { Exclude } from 'class-transformer';
+
 @Entity('hub_managers')
 export class HubManager {
   @PrimaryGeneratedColumn('uuid')

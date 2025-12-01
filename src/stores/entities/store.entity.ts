@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Merchant } from '../../merchant/entities/merchant.entity';
+import { Hub } from '../../hubs/entities/hub.entity';
 
 @Entity('stores')
 export class Store {
@@ -36,8 +37,44 @@ export class Store {
   @Column({ type: 'varchar', length: 255, nullable: true })
   facebook_page: string | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  hub_id: string | null;
+
+  @ManyToOne(() => Hub, { nullable: true })
+  @JoinColumn({ name: 'hub_id' })
+  hub: Hub | null;
+
   @Column({ type: 'boolean', default: false })
   is_default: boolean;
+
+  // ===== LOCATION FIELDS =====
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  district: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  thana: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  area: string | null;
+
+  // ===== CARRYBEE INTEGRATION =====
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  carrybee_store_id: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  carrybee_city_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  carrybee_zone_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  carrybee_area_id: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  is_carrybee_synced: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  carrybee_synced_at: Date | null;
 
   @CreateDateColumn()
   created_at: Date;

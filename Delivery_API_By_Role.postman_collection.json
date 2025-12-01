@@ -1,0 +1,362 @@
+{
+  "info": {
+    "_postman_id": "delivery-backend-api-v3",
+    "name": "Delivery Backend API - By Role",
+    "description": "Complete API collection organized by user role.\n\nUPDATED (Dec 1, 2025 - v2):\n- OTP verification flow for delivery status\n- Delivery Outcomes: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED\n- Rescheduled Deliveries: DELIVERY_RESCHEDULED (separate endpoint)\n- Return Parcel Tracking: Creates RTN-xxx parcel with original_parcel_id link\n- Hub Manager actions: Mark Return to Merchant, Prepare for Redelivery\n- Added: GET /pickup-requests/rider/my-pickups (legacy)\n- Added: GET /riders/parcels/my-deliveries (legacy)\n- Added: POST /delivery-verifications/:id/request-otp",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "{{accessToken}}", "type": "string"}]
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:3000"},
+    {"key": "accessToken", "value": ""},
+    {"key": "refreshToken", "value": ""},
+    {"key": "merchantId", "value": ""},
+    {"key": "hubId", "value": ""},
+    {"key": "riderId", "value": ""},
+    {"key": "storeId", "value": ""},
+    {"key": "parcelId", "value": ""},
+    {"key": "returnParcelId", "value": ""},
+    {"key": "pickupRequestId", "value": ""},
+    {"key": "coverageAreaId", "value": ""},
+    {"key": "pricingId", "value": ""},
+    {"key": "verificationId", "value": ""},
+    {"key": "providerId", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "00. Public APIs",
+      "description": "No authentication required",
+      "item": [
+        {
+          "name": "Authentication",
+          "item": [
+            {"name": "Login", "request": {"auth": {"type": "noauth"}, "method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"identifier\": \"admin@courier.com\",\n  \"password\": \"admin123\"\n}"}, "url": {"raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200||pm.response.code===201){var d=pm.response.json();if(d.data){pm.collectionVariables.set('accessToken',d.data.accessToken);pm.collectionVariables.set('refreshToken',d.data.refreshToken);}}"], "type": "text/javascript"}}]},
+            {"name": "Refresh Token", "request": {"auth": {"type": "noauth"}, "method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"}, "url": {"raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"]}}},
+            {"name": "Logout", "request": {"auth": {"type": "noauth"}, "method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"}, "url": {"raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"]}}}
+          ]
+        },
+        {
+          "name": "Merchant Signup",
+          "item": [
+            {"name": "Merchant Signup", "request": {"auth": {"type": "noauth"}, "method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"full_name\": \"ABC Electronics Store\",\n  \"phone\": \"+8801711222333\",\n  \"thana\": \"Gulshan\",\n  \"district\": \"Dhaka\",\n  \"full_address\": \"House 15, Road 5, Gulshan-2, Dhaka\",\n  \"email\": \"abc@electronics.com\",\n  \"secondary_number\": \"+8801811222333\",\n  \"password\": \"Merchant123!\"\n}"}, "url": {"raw": "{{baseUrl}}/merchants/signup", "host": ["{{baseUrl}}"], "path": ["merchants", "signup"]}}}
+          ]
+        },
+        {
+          "name": "Coverage Areas",
+          "item": [
+            {"name": "Search Coverage Area", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/search?division=Dhaka&city=Dhaka&zone=Gulshan&area=Gulshan%201", "host": ["{{baseUrl}}"], "path": ["coverage", "search"], "query": [{"key": "division", "value": "Dhaka"}, {"key": "city", "value": "Dhaka"}, {"key": "zone", "value": "Gulshan"}, {"key": "area", "value": "Gulshan 1"}]}}},
+            {"name": "Get Divisions", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/divisions", "host": ["{{baseUrl}}"], "path": ["coverage", "divisions"]}}},
+            {"name": "Get Cities By Division", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/divisions/:division/cities", "host": ["{{baseUrl}}"], "path": ["coverage", "divisions", ":division", "cities"], "variable": [{"key": "division", "value": "Dhaka"}]}}},
+            {"name": "Get Zones By City", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/cities/:cityId/zones", "host": ["{{baseUrl}}"], "path": ["coverage", "cities", ":cityId", "zones"], "variable": [{"key": "cityId", "value": "14"}]}}},
+            {"name": "Get Areas By Zone", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/zones/:zoneId/areas", "host": ["{{baseUrl}}"], "path": ["coverage", "zones", ":zoneId", "areas"], "variable": [{"key": "zoneId", "value": "467"}]}}},
+            {"name": "Get Coverage Area By ID", "request": {"auth": {"type": "noauth"}, "method": "GET", "url": {"raw": "{{baseUrl}}/coverage/:id", "host": ["{{baseUrl}}"], "path": ["coverage", ":id"], "variable": [{"key": "id", "value": "{{coverageAreaId}}"}]}}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01. ADMIN APIs",
+      "description": "Requires ADMIN role",
+      "item": [
+        {
+          "name": "Email Testing",
+          "item": [
+            {"name": "Verify Email Connection", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/admin/email/verify", "host": ["{{baseUrl}}"], "path": ["admin", "email", "verify"]}}},
+            {"name": "Send Test Email", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"test@example.com\"\n}"}, "url": {"raw": "{{baseUrl}}/admin/email/test", "host": ["{{baseUrl}}"], "path": ["admin", "email", "test"]}}}
+          ]
+        },
+        {
+          "name": "SMS Testing",
+          "item": [
+            {"name": "Check SMS Balance", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/admin/sms/balance", "host": ["{{baseUrl}}"], "path": ["admin", "sms", "balance"]}}},
+            {"name": "Send Test SMS", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"phone\": \"01712345678\"\n}"}, "url": {"raw": "{{baseUrl}}/admin/sms/test", "host": ["{{baseUrl}}"], "path": ["admin", "sms", "test"]}}},
+            {"name": "Get SMS Report", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"requestId\": 123456\n}"}, "url": {"raw": "{{baseUrl}}/admin/sms/report", "host": ["{{baseUrl}}"], "path": ["admin", "sms", "report"]}}}
+          ]
+        },
+        {
+          "name": "User Management",
+          "item": [
+            {"name": "Create Admin", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"fullName\": \"New Admin User\",\n  \"phone\": \"01700000001\",\n  \"email\": \"newadmin@courier.com\",\n  \"password\": \"Admin123!\"\n}"}, "url": {"raw": "{{baseUrl}}/admin", "host": ["{{baseUrl}}"], "path": ["admin"]}}},
+            {"name": "Get All Users", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/admin", "host": ["{{baseUrl}}"], "path": ["admin"]}}},
+            {"name": "Get User By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/admin/:id", "host": ["{{baseUrl}}"], "path": ["admin", ":id"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}},
+            {"name": "Update User", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"fullName\": \"Updated Name\",\n  \"phone\": \"01788888888\",\n  \"email\": \"updated@courier.com\"\n}"}, "url": {"raw": "{{baseUrl}}/admin/:id", "host": ["{{baseUrl}}"], "path": ["admin", ":id"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}},
+            {"name": "Delete User", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/admin/:id", "host": ["{{baseUrl}}"], "path": ["admin", ":id"], "variable": [{"key": "id", "value": "user-uuid"}]}}},
+            {"name": "Deactivate User", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/admin/:id/deactivate", "host": ["{{baseUrl}}"], "path": ["admin", ":id", "deactivate"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}},
+            {"name": "Activate User", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/admin/:id/activate", "host": ["{{baseUrl}}"], "path": ["admin", ":id", "activate"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Merchant Management",
+          "item": [
+            {"name": "Get All Merchants", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/merchants?status=PENDING&district=Dhaka&page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["merchants"], "query": [{"key": "status", "value": "PENDING"}, {"key": "district", "value": "Dhaka"}, {"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}}},
+            {"name": "Get Merchant By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/merchants/:id", "host": ["{{baseUrl}}"], "path": ["merchants", ":id"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}},
+            {"name": "Update Merchant", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"fullAddress\": \"Updated Address, Gulshan-2, Dhaka\",\n  \"secondaryNumber\": \"+8801811222333\",\n  \"thana\": \"Gulshan\",\n  \"district\": \"Dhaka\"\n}"}, "url": {"raw": "{{baseUrl}}/merchants/:id", "host": ["{{baseUrl}}"], "path": ["merchants", ":id"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}},
+            {"name": "Approve Merchant", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/merchants/:id/approve", "host": ["{{baseUrl}}"], "path": ["merchants", ":id", "approve"], "variable": [{"key": "id", "value": "{{merchantId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Hub Management",
+          "item": [
+            {"name": "Create Hub", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"hub_code\": \"DHK-GULSHAN-01\",\n  \"branch_name\": \"Gulshan Branch\",\n  \"area\": \"Gulshan\",\n  \"address\": \"House 10, Road 103, Gulshan-2, Dhaka\",\n  \"manager_name\": \"John Doe\",\n  \"manager_phone\": \"01712345678\",\n  \"manager_email\": \"manager@hub.com\",\n  \"manager_password\": \"Manager123!\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs", "host": ["{{baseUrl}}"], "path": ["hubs"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===201){var d=pm.response.json();if(d.id)pm.collectionVariables.set('hubId',d.id);}"], "type": "text/javascript"}}]},
+            {"name": "Get All Hubs", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs", "host": ["{{baseUrl}}"], "path": ["hubs"]}}},
+            {"name": "Get Hub By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/:id", "host": ["{{baseUrl}}"], "path": ["hubs", ":id"], "variable": [{"key": "id", "value": "{{hubId}}"}]}}},
+            {"name": "Update Hub", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"branch_name\": \"Updated Branch Name\",\n  \"area\": \"Banani\",\n  \"address\": \"New Address\",\n  \"manager_name\": \"Jane Doe\",\n  \"manager_phone\": \"01799999999\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs/:id", "host": ["{{baseUrl}}"], "path": ["hubs", ":id"], "variable": [{"key": "id", "value": "{{hubId}}"}]}}},
+            {"name": "Delete Hub", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/hubs/:id", "host": ["{{baseUrl}}"], "path": ["hubs", ":id"], "variable": [{"key": "id", "value": "{{hubId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Rider Management",
+          "item": [
+            {"name": "Create Rider (Admin)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"full_name\": \"Rider Name\",\n  \"phone\": \"01712345679\",\n  \"email\": \"rider@example.com\",\n  \"password\": \"Rider123!\",\n  \"guardian_mobile_no\": \"01799999999\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890124\",\n  \"present_address\": \"House 1, Road 1, Dhaka\",\n  \"permanent_address\": \"Village, District\",\n  \"fixed_salary\": 15000,\n  \"commission_percentage\": 5,\n  \"nid_front_photo\": \"https://example.com/nid_front.jpg\",\n  \"nid_back_photo\": \"https://example.com/nid_back.jpg\",\n  \"parent_nid_front_photo\": \"https://example.com/parent_nid_front.jpg\",\n  \"parent_nid_back_photo\": \"https://example.com/parent_nid_back.jpg\",\n  \"hub_id\": \"{{hubId}}\"\n}"}, "url": {"raw": "{{baseUrl}}/riders/admin/create", "host": ["{{baseUrl}}"], "path": ["riders", "admin", "create"]}}},
+            {"name": "Get All Riders", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders?hubId={{hubId}}&isActive=true&page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["riders"], "query": [{"key": "hubId", "value": "{{hubId}}"}, {"key": "isActive", "value": "true"}, {"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}}},
+            {"name": "Get Rider By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/:id", "host": ["{{baseUrl}}"], "path": ["riders", ":id"], "variable": [{"key": "id", "value": "{{riderId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Store Management",
+          "item": [
+            {"name": "Get All Stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/stores/admin/all", "host": ["{{baseUrl}}"], "path": ["stores", "admin", "all"]}}},
+            {"name": "Assign Hub to Store", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/stores/admin/:storeId/assign-hub/:hubId", "host": ["{{baseUrl}}"], "path": ["stores", "admin", ":storeId", "assign-hub", ":hubId"], "variable": [{"key": "storeId", "value": "{{storeId}}"}, {"key": "hubId", "value": "{{hubId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Pricing Configuration",
+          "item": [
+            {"name": "Create Pricing", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"zone\": \"INSIDE_DHAKA\",\n  \"delivery_charge\": 60,\n  \"weight_charge_per_kg\": 10,\n  \"cod_percentage\": 1.0,\n  \"discount_percentage\": 0\n}"}, "url": {"raw": "{{baseUrl}}/pricing", "host": ["{{baseUrl}}"], "path": ["pricing"]}}},
+            {"name": "Get All Pricing", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pricing", "host": ["{{baseUrl}}"], "path": ["pricing"]}}},
+            {"name": "Get Pricing By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pricing/:id", "host": ["{{baseUrl}}"], "path": ["pricing", ":id"], "variable": [{"key": "id", "value": "{{pricingId}}"}]}}},
+            {"name": "Update Pricing", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"delivery_charge\": 70,\n  \"weight_charge_per_kg\": 15\n}"}, "url": {"raw": "{{baseUrl}}/pricing/:id", "host": ["{{baseUrl}}"], "path": ["pricing", ":id"], "variable": [{"key": "id", "value": "{{pricingId}}"}]}}},
+            {"name": "Delete Pricing", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/pricing/:id", "host": ["{{baseUrl}}"], "path": ["pricing", ":id"], "variable": [{"key": "id", "value": "{{pricingId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Third Party Providers",
+          "item": [
+            {"name": "Get All Providers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/third-party-providers", "host": ["{{baseUrl}}"], "path": ["third-party-providers"]}}},
+            {"name": "Get Active Providers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/third-party-providers/active", "host": ["{{baseUrl}}"], "path": ["third-party-providers", "active"]}}}
+          ]
+        },
+        {
+          "name": "Carrybee Locations (Admin)",
+          "item": [
+            {"name": "Sync Locations", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/carrybee-locations/sync", "host": ["{{baseUrl}}"], "path": ["carrybee-locations", "sync"]}}}
+          ]
+        },
+        {
+          "name": "Carrybee API",
+          "item": [
+            {"name": "Get Cities", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/cities", "host": ["{{baseUrl}}"], "path": ["carrybee", "cities"]}}},
+            {"name": "Get Zones By City", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/cities/:cityId/zones", "host": ["{{baseUrl}}"], "path": ["carrybee", "cities", ":cityId", "zones"], "variable": [{"key": "cityId", "value": "14"}]}}},
+            {"name": "Get Areas By Zone", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/cities/:cityId/zones/:zoneId/areas", "host": ["{{baseUrl}}"], "path": ["carrybee", "cities", ":cityId", "zones", ":zoneId", "areas"], "variable": [{"key": "cityId", "value": "14"}, {"key": "zoneId", "value": "467"}]}}},
+            {"name": "Area Suggestion", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/area-suggestion?search=Gulshan", "host": ["{{baseUrl}}"], "path": ["carrybee", "area-suggestion"], "query": [{"key": "search", "value": "Gulshan"}]}}},
+            {"name": "Get Carrybee Stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/stores", "host": ["{{baseUrl}}"], "path": ["carrybee", "stores"]}}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05. WEBHOOKS (External)",
+      "description": "External webhook endpoints",
+      "item": [
+        {"name": "Carrybee Webhook", "request": {"auth": {"type": "noauth"}, "method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "x-carrybee-webhook-signature", "value": "signature"}], "body": {"mode": "raw", "raw": "{\n  \"consignment_id\": \"CB123456\",\n  \"status\": \"DELIVERED\",\n  \"delivery_date\": \"2025-11-29\"\n}"}, "url": {"raw": "{{baseUrl}}/webhooks/carrybee", "host": ["{{baseUrl}}"], "path": ["webhooks", "carrybee"]}}}
+      ]
+    },
+    {
+      "name": "02. HUB_MANAGER APIs",
+      "description": "Requires HUB_MANAGER role",
+      "item": [
+        {
+          "name": "Hub Info",
+          "item": [
+            {"name": "Get My Hub", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/my-hub", "host": ["{{baseUrl}}"], "path": ["hubs", "my-hub"]}}},
+            {"name": "Get Hubs List (for transfer)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/list", "host": ["{{baseUrl}}"], "path": ["hubs", "list"]}}}
+          ]
+        },
+        {
+          "name": "Parcel Operations",
+          "item": [
+            {"name": "Get Hub Parcels", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels?page=1&limit=20&status=IN_HUB&sortBy=created_at&order=DESC", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "status", "value": "IN_HUB", "description": "PENDING|PICKED_UP|IN_HUB|ASSIGNED_TO_RIDER|ASSIGNED_TO_THIRD_PARTY|OUT_FOR_DELIVERY|OUT_FOR_PICKUP|IN_TRANSIT|DELIVERED|PARTIAL_DELIVERY|EXCHANGE|FAILED_DELIVERY|RETURNED_TO_HUB|CANCELLED|RETURNED|PAID_RETURN|RETURN_TO_MERCHANT|DELIVERY_RESCHEDULED"}, {"key": "sortBy", "value": "created_at"}, {"key": "order", "value": "DESC", "description": "ASC or DESC"}]}}},
+            {"name": "📊 Get Delivery Outcomes (Returns/Exchanges)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/delivery-outcomes?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "delivery-outcomes"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10", "description": "1-100 per page"}, {"key": "status", "value": "RETURNED", "description": "PARTIAL_DELIVERY|EXCHANGE|PAID_RETURN|RETURNED", "disabled": true}, {"key": "zone", "value": "Mirpur", "description": "Filter by zone/area name", "disabled": true}, {"key": "merchantId", "value": "", "description": "Filter by merchant UUID", "disabled": true}]}}, "description": "Parcels needing return processing. Use 'Mark Return to Merchant' action."},
+            {"name": "📅 Get Rescheduled Deliveries", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/rescheduled?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "rescheduled"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}}, "description": "Parcels with DELIVERY_RESCHEDULED status. Use 'Prepare for Redelivery' action."},
+            {"name": "🔄 Mark Return to Merchant (Creates RTN Parcel)", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"notes\": \"Returned due to customer refusal\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/return-to-merchant", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "return-to-merchant"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}, "description": "Creates NEW return parcel (RTN-xxx) linked to original. Original → RETURN_TO_MERCHANT, New RTN parcel → IN_HUB (assign to rider). Response includes both parcel IDs.", "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.data&&d.data.return_parcel)pm.collectionVariables.set('returnParcelId',d.data.return_parcel.id);}"], "type": "text/javascript"}}]},
+            {"name": "🔄 Prepare for Redelivery", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/prepare-redelivery", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "prepare-redelivery"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}, "description": "For: DELIVERY_RESCHEDULED → IN_HUB (ready for rider assignment)"},
+            {"name": "Get Parcels For Receipt", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/received?page=1&limit=20&status=PICKED_UP&sortBy=created_at&order=DESC", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "received"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "status", "value": "PICKED_UP", "description": "PENDING|PICKED_UP"}, {"key": "sortBy", "value": "created_at"}, {"key": "order", "value": "DESC"}]}}},
+            {"name": "Mark Parcel Received", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/receive", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "receive"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Get Parcels For Assignment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/for-assignment?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "for-assignment"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}}},
+            {"name": "Assign Parcel To Rider", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"rider_id\": \"{{riderId}}\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/assign-rider", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "assign-rider"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Assign Return Parcel To Rider", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"rider_id\": \"{{riderId}}\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/assign-rider", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "assign-rider"], "variable": [{"key": "id", "value": "{{returnParcelId}}"}]}}, "description": "Assign RTN parcel (from Mark Return to Merchant) to rider for delivery back to merchant"},
+            {"name": "Transfer Parcel To Hub", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"destination_hub_id\": \"destination-hub-uuid\",\n  \"transfer_notes\": \"Transferring to destination hub\"\n}"}, "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/transfer", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "transfer"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Get Incoming Parcels (IN_TRANSIT)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/incoming?page=1&limit=20&sortBy=created_at&order=DESC", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "incoming"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "sortBy", "value": "created_at"}, {"key": "order", "value": "DESC"}]}}},
+            {"name": "Accept Incoming Parcel", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/hubs/parcels/:id/accept", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", ":id", "accept"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Get Outgoing Parcels", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/hubs/parcels/outgoing?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["hubs", "parcels", "outgoing"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}}}
+          ]
+        },
+        {
+          "name": "Rider Management",
+          "item": [
+            {"name": "Create Rider", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"full_name\": \"John Rider\",\n  \"phone\": \"01712345670\",\n  \"email\": \"rider@example.com\",\n  \"password\": \"Rider123!\",\n  \"guardian_mobile_no\": \"01799999999\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890123\",\n  \"license_no\": \"DL-12345\",\n  \"present_address\": \"House 1, Road 1, Dhaka\",\n  \"permanent_address\": \"Village, District\",\n  \"fixed_salary\": 15000,\n  \"commission_percentage\": 5,\n  \"nid_front_photo\": \"https://example.com/nid_front.jpg\",\n  \"nid_back_photo\": \"https://example.com/nid_back.jpg\",\n  \"license_front_photo\": \"https://example.com/license_front.jpg\",\n  \"license_back_photo\": \"https://example.com/license_back.jpg\",\n  \"parent_nid_front_photo\": \"https://example.com/parent_nid_front.jpg\",\n  \"parent_nid_back_photo\": \"https://example.com/parent_nid_back.jpg\"\n}"}, "url": {"raw": "{{baseUrl}}/riders", "host": ["{{baseUrl}}"], "path": ["riders"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===201){var d=pm.response.json();if(d.data&&d.data.id)pm.collectionVariables.set('riderId',d.data.id);}"], "type": "text/javascript"}}]},
+            {"name": "Get Riders", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders?isActive=true&page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["riders"], "query": [{"key": "isActive", "value": "true"}, {"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}}},
+            {"name": "Get Rider By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/:id", "host": ["{{baseUrl}}"], "path": ["riders", ":id"], "variable": [{"key": "id", "value": "{{riderId}}"}]}}},
+            {"name": "Update Rider", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"full_name\": \"Updated Rider Name\",\n  \"fixed_salary\": 18000,\n  \"commission_percentage\": 7\n}"}, "url": {"raw": "{{baseUrl}}/riders/:id", "host": ["{{baseUrl}}"], "path": ["riders", ":id"], "variable": [{"key": "id", "value": "{{riderId}}"}]}}},
+            {"name": "Deactivate Rider", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/riders/:id/deactivate", "host": ["{{baseUrl}}"], "path": ["riders", ":id", "deactivate"], "variable": [{"key": "id", "value": "{{riderId}}"}]}}},
+            {"name": "Activate Rider", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/riders/:id/activate", "host": ["{{baseUrl}}"], "path": ["riders", ":id", "activate"], "variable": [{"key": "id", "value": "{{riderId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Pickup Requests",
+          "item": [
+            {"name": "Get Hub Pickup Requests", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pickup-requests/hub/my-requests?page=1&limit=20&status=PENDING", "host": ["{{baseUrl}}"], "path": ["pickup-requests", "hub", "my-requests"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "status", "value": "PENDING"}]}}},
+            {"name": "Get Pickups For Assignment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pickup-requests/hub/for-assignment?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["pickup-requests", "hub", "for-assignment"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}}},
+            {"name": "Assign Pickup To Rider", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"rider_id\": \"{{riderId}}\"\n}"}, "url": {"raw": "{{baseUrl}}/pickup-requests/:id/assign-rider", "host": ["{{baseUrl}}"], "path": ["pickup-requests", ":id", "assign-rider"], "variable": [{"key": "id", "value": "{{pickupRequestId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Carrybee (Third Party)",
+          "item": [
+            {"name": "Get Parcels For Carrybee", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee/parcels/for-assignment", "host": ["{{baseUrl}}"], "path": ["carrybee", "parcels", "for-assignment"]}}},
+            {"name": "Assign Parcel To Carrybee", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"provider_id\": \"{{providerId}}\",\n  \"notes\": \"Handle with care\"\n}"}, "url": {"raw": "{{baseUrl}}/carrybee/parcels/:parcelId/assign", "host": ["{{baseUrl}}"], "path": ["carrybee", "parcels", ":parcelId", "assign"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Stores",
+          "item": [
+            {"name": "Get My Assigned Stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/stores/hub-manager/my-stores", "host": ["{{baseUrl}}"], "path": ["stores", "hub-manager", "my-stores"]}}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. RIDER APIs",
+      "description": "Requires RIDER role. Organized into 3 sections: Pickups, Deliveries, Returns - each with pending/completed tabs",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {"name": "Get Dashboard", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/dashboard", "host": ["{{baseUrl}}"], "path": ["riders", "dashboard"]}}}
+          ]
+        },
+        {
+          "name": "📦 Pickups (Pending / Completed)",
+          "description": "Pending: Assigned pickups to collect from merchant. Completed: Parcels already picked up.",
+          "item": [
+            {"name": "Get Pickups - PENDING", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/pickups?tab=pending", "host": ["{{baseUrl}}"], "path": ["riders", "pickups"], "query": [{"key": "tab", "value": "pending"}]}}},
+            {"name": "Get Pickups - COMPLETED", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/pickups?tab=completed", "host": ["{{baseUrl}}"], "path": ["riders", "pickups"], "query": [{"key": "tab", "value": "completed"}]}}},
+            {"name": "Complete Pickup", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/pickup-requests/:id/rider/complete", "host": ["{{baseUrl}}"], "path": ["pickup-requests", ":id", "rider", "complete"], "variable": [{"key": "id", "value": "{{pickupRequestId}}"}]}}},
+            {"name": "Get My Pickups (Legacy)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pickup-requests/rider/my-pickups?status=CONFIRMED&filter=pending", "host": ["{{baseUrl}}"], "path": ["pickup-requests", "rider", "my-pickups"], "query": [{"key": "status", "value": "CONFIRMED", "description": "PENDING|CONFIRMED|PICKED_UP"}, {"key": "filter", "value": "pending", "description": "pending|completed"}]}}, "description": "Alternative endpoint for rider pickups"}
+          ]
+        },
+        {
+          "name": "🚚 Deliveries (Pending / Completed)",
+          "description": "Pending: OUT_FOR_DELIVERY. Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED",
+          "item": [
+            {"name": "Get Deliveries - PENDING", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/deliveries?tab=pending", "host": ["{{baseUrl}}"], "path": ["riders", "deliveries"], "query": [{"key": "tab", "value": "pending"}]}}},
+            {"name": "Get Deliveries - COMPLETED", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/deliveries?tab=completed", "host": ["{{baseUrl}}"], "path": ["riders", "deliveries"], "query": [{"key": "tab", "value": "completed"}]}}},
+            {"name": "Accept Parcel (Pickup from Hub)", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/riders/parcels/:id/accept", "host": ["{{baseUrl}}"], "path": ["riders", "parcels", ":id", "accept"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Get Delivery Info (COD Amount)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/parcels/:id/delivery-info", "host": ["{{baseUrl}}"], "path": ["riders", "parcels", ":id", "delivery-info"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Get My Deliveries (Legacy)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/parcels/my-deliveries?status=OUT_FOR_DELIVERY&filter=pending", "host": ["{{baseUrl}}"], "path": ["riders", "parcels", "my-deliveries"], "query": [{"key": "status", "value": "OUT_FOR_DELIVERY", "description": "Parcel status filter"}, {"key": "filter", "value": "pending", "description": "pending|completed"}]}}, "description": "Legacy endpoint - use /riders/deliveries instead"}
+          ]
+        },
+        {
+          "name": "🔄 Returns (Pending / Completed)",
+          "description": "Pending: RETURNED, PAID_RETURN (after OTP verification, need to return to hub). Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT. Use delivery verification flow first to mark as RETURNED/PAID_RETURN.",
+          "item": [
+            {"name": "Get Returns - PENDING", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/returns?tab=pending", "host": ["{{baseUrl}}"], "path": ["riders", "returns"], "query": [{"key": "tab", "value": "pending"}]}}},
+            {"name": "Get Returns - COMPLETED", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/riders/returns?tab=completed", "host": ["{{baseUrl}}"], "path": ["riders", "returns"], "query": [{"key": "tab", "value": "completed"}]}}},
+            {"name": "Return Parcel To Hub", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"return_reason\": \"Returning after customer refusal\"\n}"}, "url": {"raw": "{{baseUrl}}/riders/parcels/:id/return", "host": ["{{baseUrl}}"], "path": ["riders", "parcels", ":id", "return"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Delivery Status Update (OTP Verification Flow)",
+          "description": "Rider selects status → enters collected amount → provides reason if required → OTP sent to Merchant (or Customer for paid parcels) → verify OTP → status updated. Statuses: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED",
+          "item": [
+            {"name": "Step 1: Initiate - DELIVERED (COD amount matches)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 1500\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - DELIVERED (Already Paid - OTP to Customer)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 0\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - DELIVERED (amount differs, with reason)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 1200,\n  \"reason\": \"Customer negotiated discount due to late delivery\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - PARTIAL_DELIVERY", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"PARTIAL_DELIVERY\",\n  \"collected_amount\": 800,\n  \"reason\": \"Customer accepted only some items\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - EXCHANGE", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"EXCHANGE\",\n  \"collected_amount\": 0,\n  \"reason\": \"Customer exchanged product for another item\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - DELIVERY_RESCHEDULED (reason required)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERY_RESCHEDULED\",\n  \"collected_amount\": 0,\n  \"reason\": \"Customer requested delivery on a different day\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - PAID_RETURN (reason required)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"PAID_RETURN\",\n  \"collected_amount\": 100,\n  \"reason\": \"Customer refused but paid return fee\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 1: Initiate - RETURNED (reason required)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"selected_status\": \"RETURNED\",\n  \"collected_amount\": 0,\n  \"reason\": \"Customer refused delivery - product damaged\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/parcels/:parcelId/initiate", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", "parcels", ":parcelId", "initiate"], "variable": [{"key": "parcelId", "value": "{{parcelId}}"}]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===200){var d=pm.response.json();if(d.verification_id)pm.collectionVariables.set('verificationId',d.verification_id);}"], "type": "text/javascript"}}]},
+            {"name": "Step 2: Request OTP (if separate step needed)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"difference_reason\": \"Customer negotiated price\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/:id/request-otp", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", ":id", "request-otp"], "variable": [{"key": "id", "value": "{{verificationId}}"}]}}, "description": "Optional: Use if OTP not auto-sent on initiate"},
+            {"name": "Step 3: Verify OTP (from Merchant/Customer)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"otp_code\": \"1234\"\n}"}, "url": {"raw": "{{baseUrl}}/delivery-verifications/:id/verify-otp", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", ":id", "verify-otp"], "variable": [{"key": "id", "value": "{{verificationId}}"}]}}},
+            {"name": "Resend OTP", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/delivery-verifications/:id/resend-otp", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", ":id", "resend-otp"], "variable": [{"key": "id", "value": "{{verificationId}}"}]}}},
+            {"name": "Get Verification Status", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/delivery-verifications/:id", "host": ["{{baseUrl}}"], "path": ["delivery-verifications", ":id"], "variable": [{"key": "id", "value": "{{verificationId}}"}]}}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04. MERCHANT APIs",
+      "description": "Requires MERCHANT role",
+      "item": [
+        {
+          "name": "Store Management",
+          "item": [
+            {"name": "Create Store", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"business_name\": \"My Electronics Store\",\n  \"business_address\": \"House 15, Road 5, Gulshan-2, Dhaka\",\n  \"district\": \"Dhaka\",\n  \"thana\": \"Gulshan\",\n  \"area\": \"Gulshan 2\",\n  \"phone_number\": \"01712345678\",\n  \"email\": \"store@example.com\",\n  \"facebook_page\": \"https://facebook.com/mystore\",\n  \"is_default\": true,\n  \"carrybee_city_id\": 14,\n  \"carrybee_zone_id\": 467,\n  \"carrybee_area_id\": 12121\n}"}, "url": {"raw": "{{baseUrl}}/stores", "host": ["{{baseUrl}}"], "path": ["stores"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===201){var d=pm.response.json();if(d.store_id)pm.collectionVariables.set('storeId',d.store_id);}"], "type": "text/javascript"}}]},
+            {"name": "Get My Stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/stores", "host": ["{{baseUrl}}"], "path": ["stores"]}}},
+            {"name": "Get Default Store", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/stores/default", "host": ["{{baseUrl}}"], "path": ["stores", "default"]}}},
+            {"name": "Get Store By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/stores/:id", "host": ["{{baseUrl}}"], "path": ["stores", ":id"], "variable": [{"key": "id", "value": "{{storeId}}"}]}}},
+            {"name": "Update Store", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"business_name\": \"Updated Store Name\",\n  \"business_address\": \"New Address\",\n  \"phone_number\": \"01799999999\"\n}"}, "url": {"raw": "{{baseUrl}}/stores/:id", "host": ["{{baseUrl}}"], "path": ["stores", ":id"], "variable": [{"key": "id", "value": "{{storeId}}"}]}}},
+            {"name": "Set Store As Default", "request": {"method": "PATCH", "url": {"raw": "{{baseUrl}}/stores/:id/set-default", "host": ["{{baseUrl}}"], "path": ["stores", ":id", "set-default"], "variable": [{"key": "id", "value": "{{storeId}}"}]}}},
+            {"name": "Delete Store", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/stores/:id", "host": ["{{baseUrl}}"], "path": ["stores", ":id"], "variable": [{"key": "id", "value": "{{storeId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Parcel Management",
+          "item": [
+            {"name": "Calculate Pricing", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"delivery_coverage_area_id\": \"{{coverageAreaId}}\"\n}"}, "url": {"raw": "{{baseUrl}}/parcels/calculate-pricing", "host": ["{{baseUrl}}"], "path": ["parcels", "calculate-pricing"]}}},
+            {"name": "Create Parcel", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"delivery_coverage_area_id\": \"{{coverageAreaId}}\",\n  \"customer_name\": \"John Customer\",\n  \"customer_phone\": \"01812345678\",\n  \"delivery_address\": \"House 20, Road 5, Dhanmondi, Dhaka\",\n  \"pickup_address\": \"House 15, Road 5, Gulshan-2, Dhaka\",\n  \"product_description\": \"Electronics Item\",\n  \"product_price\": 1500,\n  \"product_weight\": 1.5,\n  \"parcel_type\": 1,\n  \"delivery_type\": 1,\n  \"is_cod\": true,\n  \"cod_amount\": 1500,\n  \"special_instructions\": \"Handle with care\",\n  \"merchant_order_id\": \"ORD-001\"\n}"}, "url": {"raw": "{{baseUrl}}/parcels", "host": ["{{baseUrl}}"], "path": ["parcels"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===201){var d=pm.response.json();if(d.id)pm.collectionVariables.set('parcelId',d.id);}"], "type": "text/javascript"}}]},
+            {"name": "Get My Parcels", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/parcels?page=1&limit=20&status=PENDING&storeId={{storeId}}", "host": ["{{baseUrl}}"], "path": ["parcels"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "status", "value": "PENDING"}, {"key": "storeId", "value": "{{storeId}}"}]}}},
+            {"name": "Get Parcel By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/parcels/:id", "host": ["{{baseUrl}}"], "path": ["parcels", ":id"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Update Parcel", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"customer_name\": \"Updated Customer Name\",\n  \"delivery_address\": \"Updated Address\",\n  \"special_instructions\": \"Updated instructions\"\n}"}, "url": {"raw": "{{baseUrl}}/parcels/:id", "host": ["{{baseUrl}}"], "path": ["parcels", ":id"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}},
+            {"name": "Delete Parcel", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/parcels/:id", "host": ["{{baseUrl}}"], "path": ["parcels", ":id"], "variable": [{"key": "id", "value": "{{parcelId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Pickup Requests",
+          "item": [
+            {"name": "Create Pickup Request", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"estimated_parcels\": 5,\n  \"comment\": \"Please pickup in the morning\"\n}"}, "url": {"raw": "{{baseUrl}}/pickup-requests", "host": ["{{baseUrl}}"], "path": ["pickup-requests"]}}, "event": [{"listen": "test", "script": {"exec": ["if(pm.response.code===201){var d=pm.response.json();if(d.id)pm.collectionVariables.set('pickupRequestId',d.id);}"], "type": "text/javascript"}}]},
+            {"name": "Get My Pickup Requests", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pickup-requests?page=1&limit=20&status=PENDING", "host": ["{{baseUrl}}"], "path": ["pickup-requests"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}, {"key": "status", "value": "PENDING"}]}}},
+            {"name": "Get Pickup Request By ID", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pickup-requests/:id", "host": ["{{baseUrl}}"], "path": ["pickup-requests", ":id"], "variable": [{"key": "id", "value": "{{pickupRequestId}}"}]}}},
+            {"name": "Update Pickup Request", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"estimated_parcels\": 10,\n  \"comment\": \"Updated comment\"\n}"}, "url": {"raw": "{{baseUrl}}/pickup-requests/:id", "host": ["{{baseUrl}}"], "path": ["pickup-requests", ":id"], "variable": [{"key": "id", "value": "{{pickupRequestId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Customer Management",
+          "item": [
+            {"name": "Check Customer By Phone", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"phone_number\": \"01812345678\"\n}"}, "url": {"raw": "{{baseUrl}}/customers/check", "host": ["{{baseUrl}}"], "path": ["customers", "check"]}}},
+            {"name": "Create Customer", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"customer_name\": \"John Customer\",\n  \"phone_number\": \"01812345678\",\n  \"secondary_number\": \"01912345678\",\n  \"delivery_address\": \"House 20, Road 5, Dhanmondi, Dhaka\"\n}"}, "url": {"raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"]}}},
+            {"name": "Get All Customers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"]}}},
+            {"name": "Get Customer By Phone", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/customers/:phone", "host": ["{{baseUrl}}"], "path": ["customers", ":phone"], "variable": [{"key": "phone", "value": "01812345678"}]}}},
+            {"name": "Update Customer", "request": {"method": "PATCH", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"customer_name\": \"Updated Name\",\n  \"delivery_address\": \"Updated Address\"\n}"}, "url": {"raw": "{{baseUrl}}/customers/:phone", "host": ["{{baseUrl}}"], "path": ["customers", ":phone"], "variable": [{"key": "phone", "value": "01812345678"}]}}},
+            {"name": "Delete Customer", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/customers/:phone", "host": ["{{baseUrl}}"], "path": ["customers", ":phone"], "variable": [{"key": "phone", "value": "01812345678"}]}}}
+          ]
+        },
+        {
+          "name": "Carrybee Locations",
+          "item": [
+            {"name": "Get Cities", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee-locations/cities", "host": ["{{baseUrl}}"], "path": ["carrybee-locations", "cities"]}}},
+            {"name": "Get Zones By City", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee-locations/cities/:cityId/zones", "host": ["{{baseUrl}}"], "path": ["carrybee-locations", "cities", ":cityId", "zones"], "variable": [{"key": "cityId", "value": "14"}]}}},
+            {"name": "Get Areas By Zone", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee-locations/zones/:zoneId/areas", "host": ["{{baseUrl}}"], "path": ["carrybee-locations", "zones", ":zoneId", "areas"], "variable": [{"key": "zoneId", "value": "467"}]}}},
+            {"name": "Search Locations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/carrybee-locations/search?q=Gulshan", "host": ["{{baseUrl}}"], "path": ["carrybee-locations", "search"], "query": [{"key": "q", "value": "Gulshan"}]}}}
+          ]
+        },
+        {
+          "name": "Carrybee Store Sync",
+          "item": [
+            {"name": "Sync Store To Carrybee", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"carrybee_city_id\": 14,\n  \"carrybee_zone_id\": 467,\n  \"carrybee_area_id\": 12121\n}"}, "url": {"raw": "{{baseUrl}}/carrybee/stores/:storeId/sync", "host": ["{{baseUrl}}"], "path": ["carrybee", "stores", ":storeId", "sync"], "variable": [{"key": "storeId", "value": "{{storeId}}"}]}}}
+          ]
+        },
+        {
+          "name": "Pricing",
+          "item": [
+            {"name": "Get Store Pricing", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/pricing/store/:storeId", "host": ["{{baseUrl}}"], "path": ["pricing", "store", ":storeId"], "variable": [{"key": "storeId", "value": "{{storeId}}"}]}}}
+          ]
+        }
+      ]
+    }
+  ]
+}

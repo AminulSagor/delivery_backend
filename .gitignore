@@ -38,11 +38,11 @@ lerna-debug.log*
 node_modules
 # dotenv environment variable files
 .env
-.env.example
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+# Note: .env.example is NOT ignored - it's a template for others
 
 # temp directory
 .temp

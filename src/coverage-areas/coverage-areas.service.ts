@@ -21,10 +21,10 @@ export class CoverageAreasService {
       });
     }
 
-    // Filter by district
-    if (searchDto.district) {
-      query.andWhere('LOWER(coverage.district) LIKE LOWER(:district)', {
-        district: `%${searchDto.district}%`,
+    // Filter by city
+    if (searchDto.city) {
+      query.andWhere('LOWER(coverage.city) LIKE LOWER(:city)', {
+        city: `%${searchDto.city}%`,
       });
     }
 
@@ -53,6 +53,72 @@ export class CoverageAreasService {
     console.log(
       `[COVERAGE SEARCH] Found ${results.length} areas matching criteria`,
     );
+
+    return results;
+  }
+
+  /**
+   * Get coverage area by ID and return with Carrybee IDs
+   */
+  async findById(id: string): Promise<CoverageArea | null> {
+    return this.coverageAreaRepository.findOne({ where: { id } });
+  }
+
+  /**
+   * Get all divisions
+   */
+  async getDivisions(): Promise<string[]> {
+    const results = await this.coverageAreaRepository
+      .createQueryBuilder('coverage')
+      .select('DISTINCT coverage.division', 'division')
+      .orderBy('coverage.division', 'ASC')
+      .getRawMany();
+
+    return results.map((r) => r.division);
+  }
+
+  /**
+   * Get cities by division
+   */
+  async getCitiesByDivision(division: string): Promise<Array<{ city: string; city_id: number }>> {
+    const results = await this.coverageAreaRepository
+      .createQueryBuilder('coverage')
+      .select('DISTINCT coverage.city', 'city')
+      .addSelect('coverage.city_id', 'city_id')
+      .where('coverage.division = :division', { division })
+      .orderBy('coverage.city', 'ASC')
+      .getRawMany();
+
+    return results;
+  }
+
+  /**
+   * Get zones by city
+   */
+  async getZonesByCity(cityId: number): Promise<Array<{ zone: string; zone_id: number }>> {
+    const results = await this.coverageAreaRepository
+      .createQueryBuilder('coverage')
+      .select('DISTINCT coverage.zone', 'zone')
+      .addSelect('coverage.zone_id', 'zone_id')
+      .where('coverage.city_id = :cityId', { cityId })
+      .orderBy('coverage.zone', 'ASC')
+      .getRawMany();
+
+    return results;
+  }
+
+  /**
+   * Get areas by zone
+   */
+  async getAreasByZone(zoneId: number): Promise<Array<{ area: string; area_id: number; id: string }>> {
+    const results = await this.coverageAreaRepository
+      .createQueryBuilder('coverage')
+      .select('coverage.area', 'area')
+      .addSelect('coverage.area_id', 'area_id')
+      .addSelect('coverage.id', 'id')
+      .where('coverage.zone_id = :zoneId', { zoneId })
+      .orderBy('coverage.area', 'ASC')
+      .getRawMany();
 
     return results;
   }

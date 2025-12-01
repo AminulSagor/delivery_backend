@@ -1,0 +1,5 @@
+export enum PricingZone {
+  INSIDE_DHAKA = 'INSIDE_DHAKA',
+  OUTSIDE_DHAKA = 'OUTSIDE_DHAKA',
+  SUB_DHAKA = 'SUB_DHAKA',
+}

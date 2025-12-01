@@ -8,7 +8,7 @@ export class SearchCoverageAreaDto {
 
   @IsOptional()
   @IsString()
-  district?: string;
+  city?: string;
 
   @IsOptional()
   @IsString()

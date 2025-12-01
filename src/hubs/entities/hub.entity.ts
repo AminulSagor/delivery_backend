@@ -9,6 +9,7 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('hubs')
@@ -29,9 +30,11 @@ export class Hub {
   @Column({ type: 'text' })
   address: string;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 255 })
   manager_name: string;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 50 })
   manager_phone: string;
 
@@ -41,6 +44,7 @@ export class Hub {
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'manager_user_id' })
   manager_user: User;
+
 
   @CreateDateColumn()
   created_at: Date;

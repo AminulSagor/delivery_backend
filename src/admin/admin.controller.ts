@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { Public } from '../common/decorators/public.decorator';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -22,6 +23,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  @Public() // ⚠️ WARNING: Public admin creation - remove in production
   @Post()
   async create(@Body() createAdminDto: CreateAdminDto) {
     const admin = await this.adminService.create(createAdminDto);
