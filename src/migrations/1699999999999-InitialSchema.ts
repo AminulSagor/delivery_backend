@@ -4,6 +4,9 @@ export class InitialSchema1699999999999 implements MigrationInterface {
   name = 'InitialSchema1699999999999';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Enable UUID extension (required for uuid_generate_v4)
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+
     // Create users table
     await queryRunner.query(`
       CREATE TYPE "user_role_enum" AS ENUM('ADMIN', 'HUB_MANAGER', 'RIDER', 'MERCHANT')
