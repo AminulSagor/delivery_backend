@@ -35,12 +35,14 @@ lerna-debug.log*
 !.vscode/launch.json
 !.vscode/extensions.json
 
+node_modules
 # dotenv environment variable files
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+# Note: .env.example is NOT ignored - it's a template for others
 
 # temp directory
 .temp
@@ -54,3 +56,26 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# CSV import data (keep examples, ignore actual data)
+/data/*.csv
+!/data/*.example.csv
+
+# Large data files (generated/exported)
+carrybee-locations.csv
+carrybee-locations.json
+carrybee-locations.html
+carrybee-locations.md
+finalcsv-area.csv
+newman_report.json
+
+# Development notes (not needed in repo)
+CARRYBEE_*.md
+COVERAGE_AREA_*.md
+EXPORT_*.md
+POSTMAN_*.md
+CORRECT_BODIES_FROM_DTOS.md
+HUB_CREATE_BODY.md
+ISSUE_FIXED.md
+README_POSTMAN.md
+GENERATE_FINAL.py
