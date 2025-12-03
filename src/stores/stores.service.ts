@@ -13,7 +13,7 @@ import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
-import { CarrybeeLocationsService } from '../carrybee-locations/carrybee-locations.service';
+import { CoverageAreasService } from '../coverage-areas/coverage-areas.service';
 
 @Injectable()
 export class StoresService {
@@ -29,7 +29,7 @@ export class StoresService {
     @InjectRepository(HubManager)
     private hubManagerRepository: Repository<HubManager>,
     private carrybeeApiService: CarrybeeApiService,
-    private carrybeeLocationsService: CarrybeeLocationsService,
+    private coverageAreasService: CoverageAreasService,
   ) {}
 
   async create(userId: string, dto: CreateStoreDto): Promise<Store> {
@@ -65,8 +65,8 @@ export class StoresService {
     store.carrybee_zone_id = dto.carrybee_zone_id;
     store.carrybee_area_id = dto.carrybee_area_id;
 
-    // Validate Carrybee location IDs
-    const isValidLocation = await this.carrybeeLocationsService.validateLocationIds(
+    // Validate location IDs against coverage_areas table
+    const isValidLocation = await this.coverageAreasService.validateLocationIds(
       dto.carrybee_city_id,
       dto.carrybee_zone_id,
       dto.carrybee_area_id,
@@ -74,7 +74,7 @@ export class StoresService {
 
     if (!isValidLocation) {
       throw new BadRequestException(
-        'Invalid Carrybee location IDs. Please select valid city, zone, and area.',
+        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
       );
     }
 

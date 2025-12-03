@@ -122,4 +122,23 @@ export class CoverageAreasService {
 
     return results;
   }
+
+  /**
+   * Validate location IDs exist in coverage_areas table
+   */
+  async validateLocationIds(
+    cityId: number,
+    zoneId: number,
+    areaId: number,
+  ): Promise<boolean> {
+    const area = await this.coverageAreaRepository.findOne({
+      where: {
+        city_id: cityId,
+        zone_id: zoneId,
+        area_id: areaId,
+      },
+    });
+
+    return !!area;
+  }
 }
