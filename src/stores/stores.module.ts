@@ -7,13 +7,13 @@ import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { CarrybeeModule } from '../carrybee/carrybee.module';
-import { CarrybeeLocationsModule } from '../carrybee-locations/carrybee-locations.module';
+import { CoverageAreasModule } from '../coverage-areas/coverage-areas.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Store, Merchant, Hub, HubManager]),
     CarrybeeModule,
-    CarrybeeLocationsModule,
+    CoverageAreasModule,
   ],
   providers: [StoresService],
   controllers: [StoresController],
