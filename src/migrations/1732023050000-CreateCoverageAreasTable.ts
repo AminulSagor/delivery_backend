@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner, Table } from 'typeorm';
 
-export class CreateCoverageAreasTable1763193000000
+export class CreateCoverageAreasTable1732023050000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {

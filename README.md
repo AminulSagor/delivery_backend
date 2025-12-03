@@ -45,7 +45,23 @@ This is a complete **courier/logistics backend** built with **NestJS + TypeScrip
 - Zoho Mail account (for email notifications)
 - SMS.net.bd account (for SMS notifications)
 
-### Installation
+### 🐳 Docker Quick Start (Recommended)
+
+```bash
+# Clone and start with Docker
+git clone <your-repo-url>
+cd delivery_backend
+cp .env.example .env
+docker-compose up -d --build
+
+# API available at http://localhost:3000
+```
+
+See [DOCKER.md](./DOCKER.md) for detailed Docker usage.
+
+---
+
+### Installation (Manual)
 
 ```powershell
 # 1. Clone and navigate

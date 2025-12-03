@@ -30,13 +30,13 @@ export class ChangeCoverageAreaIdToUuid1763210100000
     await queryRunner.query(
       `CREATE TABLE "coverage_areas" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
-        "division" character varying(100),
-        "district" character varying(100),
-        "zone" character varying(100),
+        "division" character varying(100) NOT NULL,
+        "city" character varying(100) NOT NULL,
+        "city_id" integer NOT NULL,
+        "zone" character varying(100) NOT NULL,
+        "zone_id" integer NOT NULL,
         "area" character varying(255) NOT NULL,
-        "coverage" character varying(50),
-        "delivery_type" character varying(100),
-        "pickup" character varying(50),
+        "area_id" integer NOT NULL,
         "inside_dhaka_flag" boolean NOT NULL DEFAULT false,
         "created_at" TIMESTAMP NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
@@ -46,8 +46,8 @@ export class ChangeCoverageAreaIdToUuid1763210100000
 
     // Step 4: Restore data (with new UUID IDs)
     await queryRunner.query(
-      `INSERT INTO "coverage_areas" (division, district, zone, area, coverage, delivery_type, pickup, inside_dhaka_flag, created_at, updated_at)
-       SELECT division, district, zone, area, coverage, delivery_type, pickup, inside_dhaka_flag, created_at, updated_at
+      `INSERT INTO "coverage_areas" (division, city, city_id, zone, zone_id, area, area_id, inside_dhaka_flag, created_at, updated_at)
+       SELECT division, city, city_id, zone, zone_id, area, area_id, inside_dhaka_flag, created_at, updated_at
        FROM "coverage_areas_backup"`,
     );
 
