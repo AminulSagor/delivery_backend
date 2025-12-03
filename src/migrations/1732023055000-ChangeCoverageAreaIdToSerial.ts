@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class CreateParcelsTable1763203301515 implements MigrationInterface {
-    name = 'CreateParcelsTable1763203301515'
+export class ChangeCoverageAreaIdToSerial1732023055000 implements MigrationInterface {
+    name = 'ChangeCoverageAreaIdToSerial1732023055000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "coverage_areas" DROP CONSTRAINT "PK_0176a96d781b8cfa1723b2929f1"`);

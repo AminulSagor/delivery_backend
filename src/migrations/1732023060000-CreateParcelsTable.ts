@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddParcelsTable1763203370782 implements MigrationInterface {
-    name = 'AddParcelsTable1763203370782'
+export class CreateParcelsTable1732023060000 implements MigrationInterface {
+    name = 'CreateParcelsTable1732023060000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE TYPE "public"."parcels_status_enum" AS ENUM('PENDING', 'PICKED_UP', 'IN_HUB', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'RETURNED')`);
