@@ -27,6 +27,7 @@ import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class ParcelsService {
@@ -45,6 +46,8 @@ export class ParcelsService {
     private riderRepository: Repository<Rider>,
     @InjectRepository(Hub)
     private hubRepository: Repository<Hub>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
     private pricingService: PricingService,
     private customerService: CustomerService,
     private pickupRequestsService: PickupRequestsService,
@@ -105,6 +108,10 @@ export class ParcelsService {
   async create(createParcelDto: CreateParcelDto, userId: string, merchantId?: string): Promise<Parcel> {
     try {
       if (!userId) throw new ForbiddenException('User ID (userId) is required');
+      
+      // Validate user exists
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) throw new NotFoundException('User not found. Please login again.');
       
       // If merchantId not provided (backward compatibility), fetch it
       if (!merchantId) {
