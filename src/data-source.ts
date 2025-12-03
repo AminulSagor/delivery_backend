@@ -8,7 +8,8 @@ dotenv.config();
 const isTs = __filename.endsWith('.ts');
 
 // Check if DATABASE_URL is set (Railway/Production)
-const databaseUrl = process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL;
+const databaseUrl =
+  process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL;
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -40,13 +41,27 @@ const developmentConfig: DataSourceOptions = {
   ...baseConfig,
   host: process.env.PGHOST || process.env.PG_HOST || 'localhost',
   port: parseInt(process.env.PGPORT || process.env.PG_PORT || '5432', 10),
-  username: process.env.PGUSER || process.env.POSTGRES_USER || process.env.PG_USER || 'postgres',
-  password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD || process.env.PG_PASSWORD || 'password',
-  database: process.env.PGDATABASE || process.env.POSTGRES_DB || process.env.PG_DB || 'courier_db',
+  username:
+    process.env.PGUSER ||
+    process.env.POSTGRES_USER ||
+    process.env.PG_USER ||
+    'postgres',
+  password:
+    process.env.PGPASSWORD ||
+    process.env.POSTGRES_PASSWORD ||
+    process.env.PG_PASSWORD ||
+    'password',
+  database:
+    process.env.PGDATABASE ||
+    process.env.POSTGRES_DB ||
+    process.env.PG_DB ||
+    'courier_db',
 };
 
 // Select config based on environment
-export const dataSourceOptions: DataSourceOptions = databaseUrl ? productionConfig : developmentConfig;
+export const dataSourceOptions: DataSourceOptions = databaseUrl
+  ? productionConfig
+  : developmentConfig;
 
 const dataSource = new DataSource(dataSourceOptions);
 
