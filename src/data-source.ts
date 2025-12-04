@@ -23,7 +23,7 @@ const baseConfig = {
     ? [path.join(__dirname, 'migrations/*.ts')]
     : ['dist/migrations/*.js'],
   synchronize: false,
-  logging: process.env.NODE_ENV === 'development',
+  logging: false, // Disable TypeORM query logging to reduce log spam
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
@@ -66,19 +66,9 @@ const developmentConfig: DataSourceOptions = {
 // Select config based on environment
 export const dataSourceOptions: DataSourceOptions = isRailway ? productionConfig : developmentConfig;
 
-// Log which config is being used (helpful for debugging)
-console.log(`[DATABASE] Using ${isRailway ? 'Railway/Production' : 'Local/Development'} config`);
-console.log(`[DATABASE] DATABASE_URL env: ${databaseUrl ? 'SET' : 'NOT SET'}`);
-if (databaseUrl) {
-  // Extract host from URL for logging (hide password)
-  const match = databaseUrl.match(/@([^:]+):(\d+)\//);
-  if (match) {
-    console.log(`[DATABASE] Connecting to: ${match[1]}:${match[2]}`);
-  }
-} else if (isRailway) {
-  console.log(`[DATABASE] Host: ${process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN}`);
-} else {
-  console.log(`[DATABASE] Host: ${process.env.PG_HOST || 'localhost'}`);
+// Single log line for startup (reduce log spam)
+if (process.env.NODE_ENV !== 'production') {
+  console.log(`[DATABASE] ${isRailway ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
 }
 
 const dataSource = new DataSource(dataSourceOptions);
