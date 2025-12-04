@@ -7,8 +7,9 @@ dotenv.config();
 // Detect if running via ts-node (development) or compiled js (production)
 const isTs = __filename.endsWith('.ts');
 
-// Check if running on Railway (has RAILWAY_PRIVATE_DOMAIN or DATABASE_URL)
-const isRailway = !!(process.env.RAILWAY_PRIVATE_DOMAIN || process.env.DATABASE_URL);
+// Check if DATABASE_URL is available (Railway provides this when you link a database)
+const databaseUrl = process.env.DATABASE_URL;
+const isProduction = !!databaseUrl;
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -23,14 +24,10 @@ const baseConfig = {
   logging: process.env.NODE_ENV === 'development',
 };
 
-// Railway/Production config: Use individual PG* variables that Railway provides
+// Railway/Production config: Use DATABASE_URL connection string
 const productionConfig: DataSourceOptions = {
   ...baseConfig,
-  host: process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN,
-  port: parseInt(process.env.PGPORT || '5432', 10),
-  username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
-  password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
-  database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
+  url: databaseUrl,
   ssl: { rejectUnauthorized: false },
   extra: {
     max: 10,
@@ -50,11 +47,17 @@ const developmentConfig: DataSourceOptions = {
 };
 
 // Select config based on environment
-export const dataSourceOptions: DataSourceOptions = isRailway ? productionConfig : developmentConfig;
+export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
 
 // Log which config is being used (helpful for debugging)
-console.log(`[DATABASE] Using ${isRailway ? 'Railway/Production' : 'Local/Development'} config`);
-console.log(`[DATABASE] Host: ${isRailway ? (process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN) : (process.env.PG_HOST || 'localhost')}`);
+console.log(`[DATABASE] Using ${isProduction ? 'Railway/Production' : 'Local/Development'} config`);
+if (isProduction && databaseUrl) {
+  // Log host from URL without exposing password
+  const urlMatch = databaseUrl.match(/@([^:\/]+)/);
+  console.log(`[DATABASE] Host: ${urlMatch ? urlMatch[1] : 'from DATABASE_URL'}`);
+} else {
+  console.log(`[DATABASE] Host: ${process.env.PG_HOST || 'localhost'}`);
+}
 
 const dataSource = new DataSource(dataSourceOptions);
 
