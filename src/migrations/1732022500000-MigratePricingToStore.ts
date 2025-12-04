@@ -15,19 +15,21 @@ export class MigratePricingToStore1732022500000 implements MigrationInterface {
     // Step 2: Migrate existing data
     // For each merchant's pricing, assign it to their default store
     // If no default store exists, assign to first store
+    // Note: At this migration point, the column is still named 'exchange_parcel' (not 'is_default')
+    // Use exchange_parcel = true as the "default" store indicator
     await queryRunner.query(`
       UPDATE pricing_configurations pc
       SET store_id = (
         SELECT s.id 
         FROM stores s
         WHERE s.merchant_id = pc.merchant_id
-        AND s.is_default = true
+        AND s.exchange_parcel = true
         LIMIT 1
       )
       WHERE EXISTS (
         SELECT 1 FROM stores s 
         WHERE s.merchant_id = pc.merchant_id 
-        AND s.is_default = true
+        AND s.exchange_parcel = true
       );
     `);
 

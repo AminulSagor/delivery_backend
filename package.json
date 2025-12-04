@@ -25,7 +25,13 @@
     "export:locations": "ts-node -r tsconfig-paths/register scripts/export-carrybee-locations.ts",
     "import:coverage": "ts-node -r tsconfig-paths/register scripts/import-coverage-areas.ts",
     "migrate:coverage": "ts-node -r tsconfig-paths/register scripts/migrate-and-import-coverage.ts",
-    "railway:deploy": "npm run build && npm run typeorm:migrate:prod && npm run start:prod"
+    "railway:deploy": "npm run build && npm run typeorm:migrate:prod && npm run start:prod",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f api",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up",
+    "docker:dev:build": "docker-compose -f docker-compose.dev.yml up --build"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

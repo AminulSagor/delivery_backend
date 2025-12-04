@@ -6,19 +6,19 @@ export class UpdatePricingConfiguration1763210000000
   name = 'UpdatePricingConfiguration1763210000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add discount_percentage column (optional)
+    // Add discount_percentage column if not exists
     await queryRunner.query(
-      `ALTER TABLE "pricing_configurations" ADD "discount_percentage" numeric(5,2)`,
+      `ALTER TABLE "pricing_configurations" ADD COLUMN IF NOT EXISTS "discount_percentage" numeric(5,2)`,
     );
 
-    // Drop free_weight_limit column
+    // Drop free_weight_limit column if exists
     await queryRunner.query(
-      `ALTER TABLE "pricing_configurations" DROP COLUMN "free_weight_limit"`,
+      `ALTER TABLE "pricing_configurations" DROP COLUMN IF EXISTS "free_weight_limit"`,
     );
 
-    // Drop is_active column
+    // Drop is_active column if exists
     await queryRunner.query(
-      `ALTER TABLE "pricing_configurations" DROP COLUMN "is_active"`,
+      `ALTER TABLE "pricing_configurations" DROP COLUMN IF EXISTS "is_active"`,
     );
   }
 
