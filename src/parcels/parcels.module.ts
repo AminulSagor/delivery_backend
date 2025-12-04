@@ -14,7 +14,14 @@ import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Parcel, CoverageArea, Store, Merchant, Rider, Hub]),
+    TypeOrmModule.forFeature([
+      Parcel,
+      CoverageArea,
+      Store,
+      Merchant,
+      Rider,
+      Hub,
+    ]),
     PricingModule,
     CustomerModule,
     PickupRequestsModule,

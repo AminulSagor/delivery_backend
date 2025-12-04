@@ -30,10 +30,49 @@ import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
+import { v4 as uuidv4 } from 'uuid'; // npm install uuid
+import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
+
+// --- EXPORTED TYPES (Required for Controller) ---
+export interface ParcelCreationResult {
+  success: boolean;
+  tracking?: string;
+  error?: string;
+}
+
+export interface SuggestionResult {
+  original_row: BulkOrderItemDto;
+  status: 'SUCCESS' | 'FAILED' | 'RESOLVED';
+  error?: string;
+
+  // Suggestion fields
+  suggested_area_id?: string;
+  suggested_city?: string;
+  suggested_zone?: string;
+  total_charge?: number;
+  delivery_charge?: number;
+  cod_charge?: number;
+}
+
+interface AddressComponents {
+  division: string;
+  city: string;
+  zone: string;
+  area: string;
+}
+
+type CoverageAreaWithNorms = CoverageArea & {
+  _zone_norm: string;
+  _city_norm: string;
+  _area_norm: string;
+};
 
 @Injectable()
 export class ParcelsService {
   private readonly logger = new Logger(ParcelsService.name);
+
+  private coverageCache: CoverageAreaWithNorms[] | null = null;
+  private coverageByCityNorm: Map<string, CoverageAreaWithNorms[]> = new Map();
 
   constructor(
     @InjectRepository(Parcel)
@@ -75,6 +114,318 @@ export class ParcelsService {
         : PricingZone.SUB_DHAKA;
     }
     return PricingZone.OUTSIDE_DHAKA;
+  }
+
+  private parseRawNumeric(raw: string | undefined): number {
+    const val = raw ? parseFloat(raw) : NaN;
+    if (isNaN(val) || val < 0) {
+      // Throwing an error here is essential for failing the suggestion/creation step
+      throw new BadRequestException(`Invalid numeric value: ${raw}`);
+    }
+    return val;
+  }
+
+  // --- TEXT NORMALIZATION HELPERS ---
+
+  private normalizeText(input?: string | null): string {
+    if (!input) return '';
+    return input
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ') // keep letters & digits (Bangla + English)
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Tokenize address.
+   * - keeps numbers (10, 14, 32 etc.)
+   * - drops tiny noise words like rd, h, r, no, etc.
+   */
+  private tokenizeAddress(input?: string | null): string[] {
+    const norm = this.normalizeText(input);
+    if (!norm) return [];
+    return norm
+      .split(' ')
+      .filter((t) => t.length >= 3 || /^\d+$/.test(t))
+      .filter(
+        (t) => !['road', 'rd', 'house', 'flat', 'h', 'r', 'no'].includes(t),
+      );
+  }
+
+  // --- SIMILARITY HELPERS ---
+
+  private levenshtein(a: string, b: string): number {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+
+    const prev = new Array(b.length + 1).fill(0).map((_, i) => i);
+    const cur = new Array(b.length + 1).fill(0);
+
+    for (let i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(
+          prev[j] + 1, // delete
+          cur[j - 1] + 1, // insert
+          prev[j - 1] + cost, // substitute
+        );
+      }
+      for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+    }
+    return prev[b.length];
+  }
+
+  private similarity(a: string, b: string): number {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+    const dist = this.levenshtein(a, b);
+    return 1 - dist / Math.max(a.length, b.length);
+  }
+
+  private jaccard(a: string[], b: string[]): number {
+    if (!a.length || !b.length) return 0;
+    const sa = new Set(a);
+    const sb = new Set(b);
+    let inter = 0;
+    for (const t of sa) if (sb.has(t)) inter++;
+    const union = sa.size + sb.size - inter;
+    return union === 0 ? 0 : inter / union;
+  }
+
+  private scoreCoverageForAddress(
+    addressTokens: string[],
+    area: CoverageAreaWithNorms,
+  ): number {
+    const areaTokens = this.tokenizeAddress(area.area);
+    const zoneTokens = this.tokenizeAddress(area.zone);
+    const cityTokens = this.tokenizeAddress(area.city);
+
+    return (
+      3 * this.jaccard(addressTokens, areaTokens) +
+      2 * this.jaccard(addressTokens, zoneTokens) +
+      1 * this.jaccard(addressTokens, cityTokens)
+    );
+  }
+
+  private findBestCoverageAreaFromAddress(
+    rawAddress: string,
+    coverageAreas: CoverageAreaWithNorms[],
+  ): CoverageArea | null {
+    const addrNorm = this.normalizeText(rawAddress);
+    const addrNormWS = ` ${addrNorm} `;
+    const addrTokens = this.tokenizeAddress(rawAddress);
+
+    // --------------------------------
+    // Build city map once from passed areas
+    // --------------------------------
+    const cityMap = new Map<string, CoverageAreaWithNorms[]>();
+    for (const c of coverageAreas) {
+      const cn = c._city_norm;
+      if (!cn) continue;
+      const list = cityMap.get(cn) || [];
+      list.push(c);
+      cityMap.set(cn, list);
+    }
+    const cityKeys = Array.from(cityMap.keys());
+
+    // --------------------------------
+    // 1. Split into comma parts and normalize
+    // --------------------------------
+    const partsRaw = rawAddress
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const partsNorm = partsRaw.map((p) => this.normalizeText(p));
+
+    // --------------------------------
+    // 2. CITY DETECTION (right to left)
+    //    Typically last part is division/city ("Dhaka", "Sylhet", "Narayanganj")
+    // --------------------------------
+    let cityIndex: number | null = null;
+    let candidateCities: string[] = [];
+
+    for (let i = partsNorm.length - 1; i >= 0; i--) {
+      const segment = partsNorm[i];
+      if (!segment) continue;
+
+      let bestCityKey = '';
+      let bestSim = 0;
+
+      for (const cityKey of cityKeys) {
+        if (!cityKey) continue;
+        const sim = this.similarity(segment, cityKey);
+        if (sim > bestSim) {
+          bestSim = sim;
+          bestCityKey = cityKey;
+        }
+      }
+
+      // strict for city
+      if (bestSim >= 0.8) {
+        candidateCities = [bestCityKey];
+        cityIndex = i;
+        break;
+      }
+    }
+
+    // fallback: old full-address gating if no city found from parts
+    if (candidateCities.length === 0) {
+      const matchedCityKeys = cityKeys.filter(
+        (k) => k && addrNormWS.includes(` ${k} `),
+      );
+      if (matchedCityKeys.length > 0) {
+        candidateCities = matchedCityKeys;
+      }
+    }
+
+    let candidates: CoverageAreaWithNorms[] = coverageAreas;
+    if (candidateCities.length > 0) {
+      candidates = candidateCities.flatMap((key) => cityMap.get(key) || []);
+    }
+
+    // --------------------------------
+    // 3. ZONE / AREA DETECTION from parts (right to left)
+    //    This fixes:
+    //    - Bashundhora R/A -> Bashundhara R/A
+    //    - Mirpur 10 vs Mirpur 1
+    //    - Deep Jungle Area, Unknown -> no match
+    // --------------------------------
+    let bestZoneCandidate: CoverageAreaWithNorms | null = null;
+    let bestZoneSim = 0;
+
+    for (let i = partsNorm.length - 1; i >= 0; i--) {
+      if (cityIndex !== null && i === cityIndex) continue; // skip the city segment
+
+      const segment = partsNorm[i];
+      if (!segment || segment.length < 3) continue;
+
+      for (const c of candidates) {
+        const zoneNorm = c._zone_norm || '';
+        const areaNorm = c._area_norm || '';
+
+        const simZone = zoneNorm ? this.similarity(segment, zoneNorm) : 0;
+        const simArea = areaNorm ? this.similarity(segment, areaNorm) : 0;
+        const sim = Math.max(simZone, simArea);
+
+        if (sim > bestZoneSim) {
+          bestZoneSim = sim;
+          bestZoneCandidate = c;
+        }
+      }
+
+      // If this part clearly matches a zone/area (e.g. "bashundhora r a", "mirpur 10")
+      if (bestZoneSim >= 0.8 && bestZoneCandidate) {
+        return bestZoneCandidate;
+      }
+    }
+
+    const zoneBackup =
+      bestZoneCandidate && bestZoneSim >= 0.7 ? bestZoneCandidate : null;
+
+    // --------------------------------
+    // 4. OLD LOGIC: exact zone phrase, keyword+number, Jaccard
+    // --------------------------------
+
+    // 4.1 Exact zone phrase: "gulshan 1", "banani"
+    const zonesSeen = new Map<string, CoverageAreaWithNorms>();
+    for (const c of candidates) {
+      if (!c._zone_norm) continue;
+      if (!zonesSeen.has(c._zone_norm)) zonesSeen.set(c._zone_norm, c);
+    }
+
+    const exactZoneNorms: string[] = [];
+    for (const [zn] of zonesSeen.entries()) {
+      if (!zn) continue;
+      if (addrNormWS.includes(` ${zn} `)) {
+        exactZoneNorms.push(zn);
+      }
+    }
+
+    if (exactZoneNorms.length > 0) {
+      const exactCandidates = candidates.filter((c) =>
+        exactZoneNorms.includes(c._zone_norm || ''),
+      );
+      const insideDhaka = exactCandidates.filter(
+        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
+      );
+      const picked = insideDhaka[0] || exactCandidates[0];
+      return picked;
+    }
+
+    // 4.2 keyword+number: "sector 14", "mirpur 10", "gulshan 1"
+    const patternRegex = /([a-zA-Zঅ-হ]+)\s*(\d+)/g;
+    const keywordNumPairs: { word: string; num: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = patternRegex.exec(addrNorm)) !== null) {
+      keywordNumPairs.push({ word: m[1], num: m[2] });
+    }
+
+    // 4.2.a exact "word num" phrase inside zone
+    const strongMatches: CoverageAreaWithNorms[] = [];
+    for (const { word, num } of keywordNumPairs) {
+      const phrase = `${word} ${num}`;
+      const phraseWS = ` ${phrase} `;
+      for (const c of candidates) {
+        const zn = c._zone_norm || '';
+        if (!zn) continue;
+        if (` ${zn} `.includes(phraseWS)) {
+          strongMatches.push(c);
+        }
+      }
+    }
+
+    if (strongMatches.length > 0) {
+      const insideDhaka = strongMatches.filter(
+        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
+      );
+      return insideDhaka[0] || strongMatches[0];
+    }
+
+    // 4.2.b fuzzy keyword+number: "golshan 1" -> "gulshan 1"
+    const fuzzyMatches: { area: CoverageAreaWithNorms; score: number }[] = [];
+    for (const { word, num } of keywordNumPairs) {
+      for (const c of candidates) {
+        const zn = c._zone_norm || '';
+        if (!zn) continue;
+        // require same number inside zone
+        if (!` ${zn} `.includes(` ${num} `)) continue;
+
+        const mainZoneText = this.normalizeText(
+          (zn || '').replace(/\d+/g, '').trim(),
+        );
+        const mainWords = mainZoneText.split(' ').filter(Boolean);
+        const mainKeyword = mainWords[0] || mainZoneText;
+
+        const sim = this.similarity(word, mainKeyword);
+        if (sim >= 0.7) {
+          fuzzyMatches.push({ area: c, score: sim });
+        }
+      }
+    }
+
+    if (fuzzyMatches.length > 0) {
+      fuzzyMatches.sort((a, b) => b.score - a.score);
+      return fuzzyMatches[0].area;
+    }
+
+    // 4.3 Jaccard fallback
+    let best: CoverageAreaWithNorms | null = null;
+    let bestScore = 0;
+
+    for (const c of candidates) {
+      const score = this.scoreCoverageForAddress(addrTokens, c);
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+
+    if (best) return best;
+
+    // last fallback: any zone candidate from parts
+    return zoneBackup;
   }
 
   private async calculateCharges(
@@ -1841,6 +2192,189 @@ export class ParcelsService {
         created_at: parcel.created_at,
         updated_at: parcel.updated_at,
       },
+    };
+  }
+
+  async getBulkSuggestions(
+    items: BulkOrderItemDto[],
+    merchantId: string,
+  ): Promise<SuggestionResult[]> {
+    const results: SuggestionResult[] = [];
+
+    // Load & normalize coverage areas ONCE for the whole batch
+    const rawAreas = await this.coverageAreaRepository.find();
+    const coverageAreas: CoverageAreaWithNorms[] = rawAreas.map((c) => ({
+      ...c,
+      _zone_norm: this.normalizeText(c.zone),
+      _city_norm: this.normalizeText(c.city),
+      _area_norm: this.normalizeText(c.area),
+    }));
+
+    for (const item of items) {
+      let result: SuggestionResult = {
+        original_row: item,
+        status: 'FAILED',
+      };
+
+      try {
+        // 1. Basic validation
+        if (
+          !item.customer_phone ||
+          !item.customer_name ||
+          !item.pickup_address ||
+          !item.delivery_address
+        ) {
+          throw new Error(
+            'Missing mandatory fields (phone, name, pickup address, delivery address).',
+          );
+        }
+
+        // 2. Heuristic: choose best coverage area
+        const coverageArea = this.findBestCoverageAreaFromAddress(
+          item.delivery_address,
+          coverageAreas,
+        );
+
+        if (!coverageArea) {
+          throw new NotFoundException(
+            'No suitable coverage area found from customer address.',
+          );
+        }
+
+        // set suggestions immediately (even if numeric fails later)
+        result.suggested_area_id = coverageArea.id;
+        result.suggested_city = coverageArea.city;
+        result.suggested_zone = coverageArea.zone;
+
+        // 3. Numeric parsing (non-fatal for suggestions)
+        let numericError: string | null = null;
+        let isCod = false;
+        let weight = 0;
+        let price = 0;
+        let codAmount = 0;
+
+        try {
+          isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
+          weight = this.parseRawNumeric(item.product_weight_raw);
+          price = this.parseRawNumeric(item.product_price_raw);
+          codAmount = isCod ? price : 0;
+        } catch (e: any) {
+          numericError = e?.message || 'Invalid numeric value';
+          // keep zeros so we can still return address suggestion
+          weight = 0;
+          price = 0;
+          codAmount = 0;
+        }
+
+        // 4. Charge calculation only if numerics are valid
+        if (!numericError) {
+          const charges = await this.calculateCharges(
+            merchantId,
+            coverageArea.id,
+            weight,
+            isCod,
+            codAmount,
+          );
+
+          result.total_charge = charges.total_charge;
+          result.delivery_charge = charges.delivery_charge;
+          result.cod_charge = charges.cod_charge;
+          result.status = 'SUCCESS';
+        } else {
+          result.status = 'FAILED'; // or 'RESOLVED' if you want a separate state
+          result.error = `Numeric error: ${numericError}`;
+        }
+      } catch (error: any) {
+        if (!result.error) {
+          result.error = `Processing Error: ${error.message || 'Unknown error'}`;
+        }
+        result.status = result.status || 'FAILED';
+      }
+
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  /**
+   * Creates parcels from user-confirmed data (called by /bulk-create).
+   */
+  async bulkCreateConfirmedBatch(
+    items: BulkOrderItemDto[],
+    merchantId: string,
+  ): Promise<{
+    summary: { total: number; success: number; failed: number };
+    results: ParcelCreationResult[];
+  }> {
+    const creationResults: ParcelCreationResult[] = [];
+    let successCount = 0;
+    const totalRows = items.length;
+
+    for (const item of items) {
+      try {
+        // 1. Final Validation & Mapping
+        if (!item.delivery_coverage_area_id) {
+          throw new Error('Missing confirmed delivery_coverage_area_id.');
+        }
+
+        const isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
+        const weight = this.parseRawNumeric(item.product_weight_raw);
+        const price = this.parseRawNumeric(item.product_price_raw);
+        const codAmount = isCod ? price : 0;
+
+        // 2. Map to CreateParcelDto
+        const createDto: CreateParcelDto = {
+          // Required fields
+          delivery_coverage_area_id: item.delivery_coverage_area_id,
+          customer_name: item.customer_name,
+          customer_phone: item.customer_phone,
+          delivery_address: item.delivery_address,
+          pickup_address: item.pickup_address,
+
+          // Numerics
+          product_weight: weight,
+          product_price: price,
+          is_cod: isCod,
+          cod_amount: codAmount,
+
+          // Optional fields (Mapping null/empty string to undefined)
+          store_id: item.store_id ?? undefined,
+          merchant_order_id: item.merchant_order_id ?? undefined,
+          product_description: item.product_description || undefined,
+          parcel_type: item.parcel_type_raw
+            ? parseInt(item.parcel_type_raw, 10)
+            : undefined,
+          delivery_type: item.delivery_type_raw
+            ? parseInt(item.delivery_type_raw, 10)
+            : undefined,
+          special_instructions: item.special_instructions ?? undefined,
+        } as CreateParcelDto;
+
+        // 3. Create the parcel using the existing core logic
+        const newParcel = await this.create(createDto, merchantId, merchantId);
+        successCount++;
+
+        creationResults.push({
+          success: true,
+          tracking: newParcel.tracking_number,
+        });
+      } catch (error) {
+        // Failsafe: Catch any validation or DB errors during final creation
+        creationResults.push({
+          success: false,
+          error: `Creation failed: ${error.message}`,
+        });
+      }
+    }
+
+    return {
+      summary: {
+        total: totalRows,
+        success: successCount,
+        failed: totalRows - successCount,
+      },
+      results: creationResults,
     };
   }
 }
