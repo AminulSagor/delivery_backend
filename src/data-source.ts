@@ -7,8 +7,11 @@ dotenv.config();
 // Detect if running via ts-node (development) or compiled js (production)
 const isTs = __filename.endsWith('.ts');
 
-// Check if running on Railway (has RAILWAY_PRIVATE_DOMAIN or DATABASE_URL)
-const isRailway = !!(process.env.RAILWAY_PRIVATE_DOMAIN || process.env.DATABASE_URL);
+// Check for DATABASE_URL first (Railway provides this)
+const databaseUrl = process.env.DATABASE_URL;
+
+// Check if running on Railway
+const isRailway = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -23,21 +26,32 @@ const baseConfig = {
   logging: process.env.NODE_ENV === 'development',
 };
 
-// Railway/Production config: Use individual PG* variables that Railway provides
-const productionConfig: DataSourceOptions = {
-  ...baseConfig,
-  host: process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN,
-  port: parseInt(process.env.PGPORT || '5432', 10),
-  username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
-  password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
-  database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
-  ssl: { rejectUnauthorized: false },
-  extra: {
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  },
-};
+// Railway/Production config: Use DATABASE_URL directly if available
+const productionConfig: DataSourceOptions = databaseUrl
+  ? {
+      ...baseConfig,
+      url: databaseUrl,
+      ssl: { rejectUnauthorized: false },
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      },
+    }
+  : {
+      ...baseConfig,
+      host: process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN,
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
+      password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
+      database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
+      ssl: { rejectUnauthorized: false },
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      },
+    };
 
 // Local development config: Use individual connection parameters
 const developmentConfig: DataSourceOptions = {
@@ -54,7 +68,18 @@ export const dataSourceOptions: DataSourceOptions = isRailway ? productionConfig
 
 // Log which config is being used (helpful for debugging)
 console.log(`[DATABASE] Using ${isRailway ? 'Railway/Production' : 'Local/Development'} config`);
-console.log(`[DATABASE] Host: ${isRailway ? (process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN) : (process.env.PG_HOST || 'localhost')}`);
+console.log(`[DATABASE] DATABASE_URL env: ${databaseUrl ? 'SET' : 'NOT SET'}`);
+if (databaseUrl) {
+  // Extract host from URL for logging (hide password)
+  const match = databaseUrl.match(/@([^:]+):(\d+)\//);
+  if (match) {
+    console.log(`[DATABASE] Connecting to: ${match[1]}:${match[2]}`);
+  }
+} else if (isRailway) {
+  console.log(`[DATABASE] Host: ${process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN}`);
+} else {
+  console.log(`[DATABASE] Host: ${process.env.PG_HOST || 'localhost'}`);
+}
 
 const dataSource = new DataSource(dataSourceOptions);
 
