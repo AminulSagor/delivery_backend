@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, FindOptionsWhere, In } from 'typeorm';
-import { PaginatedResponse, PaginationMeta } from '../common/dto/pagination.dto';
+import {
+  PaginatedResponse,
+  PaginationMeta,
+} from '../common/dto/pagination.dto';
 import { Parcel, ParcelStatus, PaymentStatus } from './entities/parcel.entity';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
@@ -27,11 +30,50 @@ import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
+import { v4 as uuidv4 } from 'uuid'; // npm install uuid
+import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
+
+// --- EXPORTED TYPES (Required for Controller) ---
+export interface ParcelCreationResult {
+  success: boolean;
+  tracking?: string;
+  error?: string;
+}
+
+export interface SuggestionResult {
+  original_row: BulkOrderItemDto;
+  status: 'SUCCESS' | 'FAILED' | 'RESOLVED';
+  error?: string;
+
+  // Suggestion fields
+  suggested_area_id?: string;
+  suggested_city?: string;
+  suggested_zone?: string;
+  total_charge?: number;
+  delivery_charge?: number;
+  cod_charge?: number;
+}
+
+interface AddressComponents {
+  division: string;
+  city: string;
+  zone: string;
+  area: string;
+}
+
+type CoverageAreaWithNorms = CoverageArea & {
+  _zone_norm: string;
+  _city_norm: string;
+  _area_norm: string;
+};
 import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class ParcelsService {
   private readonly logger = new Logger(ParcelsService.name);
+
+  private coverageCache: CoverageAreaWithNorms[] | null = null;
+  private coverageByCityNorm: Map<string, CoverageAreaWithNorms[]> = new Map();
 
   constructor(
     @InjectRepository(Parcel)
@@ -70,9 +112,323 @@ export class ParcelsService {
   private determinePricingZone(coverageArea: CoverageArea | null): PricingZone {
     if (!coverageArea) return PricingZone.OUTSIDE_DHAKA;
     if (coverageArea.division === 'Dhaka') {
-      return coverageArea.inside_dhaka_flag ? PricingZone.INSIDE_DHAKA : PricingZone.SUB_DHAKA;
+      return coverageArea.inside_dhaka_flag
+        ? PricingZone.INSIDE_DHAKA
+        : PricingZone.SUB_DHAKA;
     }
     return PricingZone.OUTSIDE_DHAKA;
+  }
+
+  private parseRawNumeric(raw: string | undefined): number {
+    const val = raw ? parseFloat(raw) : NaN;
+    if (isNaN(val) || val < 0) {
+      // Throwing an error here is essential for failing the suggestion/creation step
+      throw new BadRequestException(`Invalid numeric value: ${raw}`);
+    }
+    return val;
+  }
+
+  // --- TEXT NORMALIZATION HELPERS ---
+
+  private normalizeText(input?: string | null): string {
+    if (!input) return '';
+    return input
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ') // keep letters & digits (Bangla + English)
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Tokenize address.
+   * - keeps numbers (10, 14, 32 etc.)
+   * - drops tiny noise words like rd, h, r, no, etc.
+   */
+  private tokenizeAddress(input?: string | null): string[] {
+    const norm = this.normalizeText(input);
+    if (!norm) return [];
+    return norm
+      .split(' ')
+      .filter((t) => t.length >= 3 || /^\d+$/.test(t))
+      .filter(
+        (t) => !['road', 'rd', 'house', 'flat', 'h', 'r', 'no'].includes(t),
+      );
+  }
+
+  // --- SIMILARITY HELPERS ---
+
+  private levenshtein(a: string, b: string): number {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+
+    const prev = new Array(b.length + 1).fill(0).map((_, i) => i);
+    const cur = new Array(b.length + 1).fill(0);
+
+    for (let i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(
+          prev[j] + 1, // delete
+          cur[j - 1] + 1, // insert
+          prev[j - 1] + cost, // substitute
+        );
+      }
+      for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+    }
+    return prev[b.length];
+  }
+
+  private similarity(a: string, b: string): number {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+    const dist = this.levenshtein(a, b);
+    return 1 - dist / Math.max(a.length, b.length);
+  }
+
+  private jaccard(a: string[], b: string[]): number {
+    if (!a.length || !b.length) return 0;
+    const sa = new Set(a);
+    const sb = new Set(b);
+    let inter = 0;
+    for (const t of sa) if (sb.has(t)) inter++;
+    const union = sa.size + sb.size - inter;
+    return union === 0 ? 0 : inter / union;
+  }
+
+  private scoreCoverageForAddress(
+    addressTokens: string[],
+    area: CoverageAreaWithNorms,
+  ): number {
+    const areaTokens = this.tokenizeAddress(area.area);
+    const zoneTokens = this.tokenizeAddress(area.zone);
+    const cityTokens = this.tokenizeAddress(area.city);
+
+    return (
+      3 * this.jaccard(addressTokens, areaTokens) +
+      2 * this.jaccard(addressTokens, zoneTokens) +
+      1 * this.jaccard(addressTokens, cityTokens)
+    );
+  }
+
+  private findBestCoverageAreaFromAddress(
+    rawAddress: string,
+    coverageAreas: CoverageAreaWithNorms[],
+  ): CoverageArea | null {
+    const addrNorm = this.normalizeText(rawAddress);
+    const addrNormWS = ` ${addrNorm} `;
+    const addrTokens = this.tokenizeAddress(rawAddress);
+
+    // --------------------------------
+    // Build city map once from passed areas
+    // --------------------------------
+    const cityMap = new Map<string, CoverageAreaWithNorms[]>();
+    for (const c of coverageAreas) {
+      const cn = c._city_norm;
+      if (!cn) continue;
+      const list = cityMap.get(cn) || [];
+      list.push(c);
+      cityMap.set(cn, list);
+    }
+    const cityKeys = Array.from(cityMap.keys());
+
+    // --------------------------------
+    // 1. Split into comma parts and normalize
+    // --------------------------------
+    const partsRaw = rawAddress
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const partsNorm = partsRaw.map((p) => this.normalizeText(p));
+
+    // --------------------------------
+    // 2. CITY DETECTION (right to left)
+    //    Typically last part is division/city ("Dhaka", "Sylhet", "Narayanganj")
+    // --------------------------------
+    let cityIndex: number | null = null;
+    let candidateCities: string[] = [];
+
+    for (let i = partsNorm.length - 1; i >= 0; i--) {
+      const segment = partsNorm[i];
+      if (!segment) continue;
+
+      let bestCityKey = '';
+      let bestSim = 0;
+
+      for (const cityKey of cityKeys) {
+        if (!cityKey) continue;
+        const sim = this.similarity(segment, cityKey);
+        if (sim > bestSim) {
+          bestSim = sim;
+          bestCityKey = cityKey;
+        }
+      }
+
+      // strict for city
+      if (bestSim >= 0.8) {
+        candidateCities = [bestCityKey];
+        cityIndex = i;
+        break;
+      }
+    }
+
+    // fallback: old full-address gating if no city found from parts
+    if (candidateCities.length === 0) {
+      const matchedCityKeys = cityKeys.filter(
+        (k) => k && addrNormWS.includes(` ${k} `),
+      );
+      if (matchedCityKeys.length > 0) {
+        candidateCities = matchedCityKeys;
+      }
+    }
+
+    let candidates: CoverageAreaWithNorms[] = coverageAreas;
+    if (candidateCities.length > 0) {
+      candidates = candidateCities.flatMap((key) => cityMap.get(key) || []);
+    }
+
+    // --------------------------------
+    // 3. ZONE / AREA DETECTION from parts (right to left)
+    //    This fixes:
+    //    - Bashundhora R/A -> Bashundhara R/A
+    //    - Mirpur 10 vs Mirpur 1
+    //    - Deep Jungle Area, Unknown -> no match
+    // --------------------------------
+    let bestZoneCandidate: CoverageAreaWithNorms | null = null;
+    let bestZoneSim = 0;
+
+    for (let i = partsNorm.length - 1; i >= 0; i--) {
+      if (cityIndex !== null && i === cityIndex) continue; // skip the city segment
+
+      const segment = partsNorm[i];
+      if (!segment || segment.length < 3) continue;
+
+      for (const c of candidates) {
+        const zoneNorm = c._zone_norm || '';
+        const areaNorm = c._area_norm || '';
+
+        const simZone = zoneNorm ? this.similarity(segment, zoneNorm) : 0;
+        const simArea = areaNorm ? this.similarity(segment, areaNorm) : 0;
+        const sim = Math.max(simZone, simArea);
+
+        if (sim > bestZoneSim) {
+          bestZoneSim = sim;
+          bestZoneCandidate = c;
+        }
+      }
+
+      // If this part clearly matches a zone/area (e.g. "bashundhora r a", "mirpur 10")
+      if (bestZoneSim >= 0.8 && bestZoneCandidate) {
+        return bestZoneCandidate;
+      }
+    }
+
+    const zoneBackup =
+      bestZoneCandidate && bestZoneSim >= 0.7 ? bestZoneCandidate : null;
+
+    // --------------------------------
+    // 4. OLD LOGIC: exact zone phrase, keyword+number, Jaccard
+    // --------------------------------
+
+    // 4.1 Exact zone phrase: "gulshan 1", "banani"
+    const zonesSeen = new Map<string, CoverageAreaWithNorms>();
+    for (const c of candidates) {
+      if (!c._zone_norm) continue;
+      if (!zonesSeen.has(c._zone_norm)) zonesSeen.set(c._zone_norm, c);
+    }
+
+    const exactZoneNorms: string[] = [];
+    for (const [zn] of zonesSeen.entries()) {
+      if (!zn) continue;
+      if (addrNormWS.includes(` ${zn} `)) {
+        exactZoneNorms.push(zn);
+      }
+    }
+
+    if (exactZoneNorms.length > 0) {
+      const exactCandidates = candidates.filter((c) =>
+        exactZoneNorms.includes(c._zone_norm || ''),
+      );
+      const insideDhaka = exactCandidates.filter(
+        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
+      );
+      const picked = insideDhaka[0] || exactCandidates[0];
+      return picked;
+    }
+
+    // 4.2 keyword+number: "sector 14", "mirpur 10", "gulshan 1"
+    const patternRegex = /([a-zA-Zঅ-হ]+)\s*(\d+)/g;
+    const keywordNumPairs: { word: string; num: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = patternRegex.exec(addrNorm)) !== null) {
+      keywordNumPairs.push({ word: m[1], num: m[2] });
+    }
+
+    // 4.2.a exact "word num" phrase inside zone
+    const strongMatches: CoverageAreaWithNorms[] = [];
+    for (const { word, num } of keywordNumPairs) {
+      const phrase = `${word} ${num}`;
+      const phraseWS = ` ${phrase} `;
+      for (const c of candidates) {
+        const zn = c._zone_norm || '';
+        if (!zn) continue;
+        if (` ${zn} `.includes(phraseWS)) {
+          strongMatches.push(c);
+        }
+      }
+    }
+
+    if (strongMatches.length > 0) {
+      const insideDhaka = strongMatches.filter(
+        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
+      );
+      return insideDhaka[0] || strongMatches[0];
+    }
+
+    // 4.2.b fuzzy keyword+number: "golshan 1" -> "gulshan 1"
+    const fuzzyMatches: { area: CoverageAreaWithNorms; score: number }[] = [];
+    for (const { word, num } of keywordNumPairs) {
+      for (const c of candidates) {
+        const zn = c._zone_norm || '';
+        if (!zn) continue;
+        // require same number inside zone
+        if (!` ${zn} `.includes(` ${num} `)) continue;
+
+        const mainZoneText = this.normalizeText(
+          (zn || '').replace(/\d+/g, '').trim(),
+        );
+        const mainWords = mainZoneText.split(' ').filter(Boolean);
+        const mainKeyword = mainWords[0] || mainZoneText;
+
+        const sim = this.similarity(word, mainKeyword);
+        if (sim >= 0.7) {
+          fuzzyMatches.push({ area: c, score: sim });
+        }
+      }
+    }
+
+    if (fuzzyMatches.length > 0) {
+      fuzzyMatches.sort((a, b) => b.score - a.score);
+      return fuzzyMatches[0].area;
+    }
+
+    // 4.3 Jaccard fallback
+    let best: CoverageAreaWithNorms | null = null;
+    let bestScore = 0;
+
+    for (const c of candidates) {
+      const score = this.scoreCoverageForAddress(addrTokens, c);
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+
+    if (best) return best;
+
+    // last fallback: any zone candidate from parts
+    return zoneBackup;
   }
 
   private async calculateCharges(
@@ -81,15 +437,30 @@ export class ParcelsService {
     weight: number = 0,
     isCod: boolean,
     codAmount: number,
-  ): Promise<{ delivery_charge: number; weight_charge: number; cod_charge: number; total_charge: number }> {
+  ): Promise<{
+    delivery_charge: number;
+    weight_charge: number;
+    cod_charge: number;
+    total_charge: number;
+  }> {
     let deliveryArea: CoverageArea | null = null;
     if (deliveryCoverageAreaId) {
-      deliveryArea = await this.coverageAreaRepository.findOne({ where: { id: deliveryCoverageAreaId } });
-      if (!deliveryArea) throw new NotFoundException(`Delivery coverage area with ID ${deliveryCoverageAreaId} not found`);
+      deliveryArea = await this.coverageAreaRepository.findOne({
+        where: { id: deliveryCoverageAreaId },
+      });
+      if (!deliveryArea)
+        throw new NotFoundException(
+          `Delivery coverage area with ID ${deliveryCoverageAreaId} not found`,
+        );
     }
     const pricingZone = this.determinePricingZone(deliveryArea);
-    const pricingConfig = await this.pricingService.getActivePricing(merchantId, pricingZone);
-    let baseDeliveryCharge = 60, weightChargePerKg = 10, codPercentage = 1.0;
+    const pricingConfig = await this.pricingService.getActivePricing(
+      merchantId,
+      pricingZone,
+    );
+    let baseDeliveryCharge = 60,
+      weightChargePerKg = 10,
+      codPercentage = 1.0;
     if (pricingConfig) {
       baseDeliveryCharge = Number(pricingConfig.delivery_charge);
       weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
@@ -102,12 +473,22 @@ export class ParcelsService {
     const codCharge = isCod ? Math.round(codAmount * (codPercentage / 100)) : 0;
     const deliveryCharge = baseDeliveryCharge + weightCharge;
     const totalCharge = deliveryCharge + codCharge;
-    return { delivery_charge: deliveryCharge, weight_charge: weightCharge, cod_charge: codCharge, total_charge: totalCharge };
+    return {
+      delivery_charge: deliveryCharge,
+      weight_charge: weightCharge,
+      cod_charge: codCharge,
+      total_charge: totalCharge,
+    };
   }
 
-  async create(createParcelDto: CreateParcelDto, userId: string, merchantId?: string): Promise<Parcel> {
+  async create(
+    createParcelDto: CreateParcelDto,
+    userId: string,
+    merchantId?: string,
+  ): Promise<Parcel> {
     try {
       if (!userId) throw new ForbiddenException('User ID (userId) is required');
+
       
       // Validate user exists
       const user = await this.userRepository.findOne({ where: { id: userId } });
@@ -115,73 +496,136 @@ export class ParcelsService {
       
       // If merchantId not provided (backward compatibility), fetch it
       if (!merchantId) {
-        const merchant = await this.merchantRepository.findOne({ where: { user_id: userId } });
-        if (!merchant) throw new NotFoundException('Merchant profile not found for this user. Please contact support.');
+        const merchant = await this.merchantRepository.findOne({
+          where: { user_id: userId },
+        });
+        if (!merchant)
+          throw new NotFoundException(
+            'Merchant profile not found for this user. Please contact support.',
+          );
         merchantId = merchant.id;
       }
-      
+
       // Validate store and get pickup request
       let store: Store | null = null;
       let pickupRequest: any = null;
       if (createParcelDto.store_id) {
-        store = await this.storeRepository.findOne({ where: { id: createParcelDto.store_id, merchant_id: merchantId } });
-        if (!store) throw new NotFoundException('Store not found or does not belong to this merchant. Please check the store ID.');
-        
+        store = await this.storeRepository.findOne({
+          where: { id: createParcelDto.store_id, merchant_id: merchantId },
+        });
+        if (!store)
+          throw new NotFoundException(
+            'Store not found or does not belong to this merchant. Please check the store ID.',
+          );
+
         // Phase 2: Auto-link to pickup request
         try {
-          pickupRequest = await this.pickupRequestsService.findOrCreateActiveForStore(merchantId, createParcelDto.store_id);
+          pickupRequest =
+            await this.pickupRequestsService.findOrCreateActiveForStore(
+              merchantId,
+              createParcelDto.store_id,
+            );
         } catch (error) {
-          this.logger.warn(`[PICKUP REQUEST] Could not create/find pickup request: ${error.message}`);
+          this.logger.warn(
+            `[PICKUP REQUEST] Could not create/find pickup request: ${error.message}`,
+          );
           // Continue without pickup request if it fails
         }
       }
-      
-      const deliveryArea = createParcelDto.delivery_coverage_area_id ? await this.coverageAreaRepository.findOne({ where: { id: createParcelDto.delivery_coverage_area_id } }) : null;
-      if (createParcelDto.delivery_coverage_area_id && !deliveryArea) throw new NotFoundException(`Delivery coverage area not found. Please select a valid delivery area.`);
-      if (createParcelDto.is_cod && (!createParcelDto.cod_amount || createParcelDto.cod_amount <= 0)) throw new BadRequestException('COD amount must be greater than 0 when COD is enabled.');
-      if (createParcelDto.product_weight && createParcelDto.product_weight < 0) throw new BadRequestException('Product weight cannot be negative.');
+
+      const deliveryArea = createParcelDto.delivery_coverage_area_id
+        ? await this.coverageAreaRepository.findOne({
+            where: { id: createParcelDto.delivery_coverage_area_id },
+          })
+        : null;
+      if (createParcelDto.delivery_coverage_area_id && !deliveryArea)
+        throw new NotFoundException(
+          `Delivery coverage area not found. Please select a valid delivery area.`,
+        );
+      if (
+        createParcelDto.is_cod &&
+        (!createParcelDto.cod_amount || createParcelDto.cod_amount <= 0)
+      )
+        throw new BadRequestException(
+          'COD amount must be greater than 0 when COD is enabled.',
+        );
+      if (createParcelDto.product_weight && createParcelDto.product_weight < 0)
+        throw new BadRequestException('Product weight cannot be negative.');
       const phoneRegex = /^01[0-9]{9}$/;
-      if (!phoneRegex.test(createParcelDto.customer_phone)) throw new BadRequestException('Invalid customer phone number. Must be in format: 01XXXXXXXXX');
+      if (!phoneRegex.test(createParcelDto.customer_phone))
+        throw new BadRequestException(
+          'Invalid customer phone number. Must be in format: 01XXXXXXXXX',
+        );
       let customer, isNewCustomer;
       try {
-        const result = await this.customerService.findOrCreateFromParcelPayload({ customer_name: createParcelDto.customer_name, customer_phone: createParcelDto.customer_phone, delivery_address: createParcelDto.delivery_address });
+        const result = await this.customerService.findOrCreateFromParcelPayload(
+          {
+            customer_name: createParcelDto.customer_name,
+            customer_phone: createParcelDto.customer_phone,
+            delivery_address: createParcelDto.delivery_address,
+          },
+        );
         customer = result.customer;
         isNewCustomer = result.isNew;
       } catch (error) {
         this.logger.error(`[CUSTOMER ERROR] ${error.message}`, error.stack);
-        throw new BadRequestException('Failed to process customer information. Please check the customer details.');
+        throw new BadRequestException(
+          'Failed to process customer information. Please check the customer details.',
+        );
       }
       let charges;
       try {
-        charges = await this.calculateCharges(merchantId, createParcelDto.delivery_coverage_area_id || null, createParcelDto.product_weight || 0, createParcelDto.is_cod || false, createParcelDto.cod_amount || 0);
+        charges = await this.calculateCharges(
+          merchantId,
+          createParcelDto.delivery_coverage_area_id || null,
+          createParcelDto.product_weight || 0,
+          createParcelDto.is_cod || false,
+          createParcelDto.cod_amount || 0,
+        );
       } catch (error) {
         this.logger.error(`[PRICING ERROR] ${error.message}`, error.stack);
-        throw new BadRequestException('Failed to calculate pricing. Please try again or contact support.');
+        throw new BadRequestException(
+          'Failed to calculate pricing. Please try again or contact support.',
+        );
       }
       let trackingNumber;
       try {
         trackingNumber = await this.generateTrackingNumber();
       } catch (error) {
-        this.logger.error(`[TRACKING NUMBER ERROR] ${error.message}`, error.stack);
-        throw new InternalServerErrorException('Failed to generate tracking number. Please try again.');
+        this.logger.error(
+          `[TRACKING NUMBER ERROR] ${error.message}`,
+          error.stack,
+        );
+        throw new InternalServerErrorException(
+          'Failed to generate tracking number. Please try again.',
+        );
       }
       // Auto-populate Carrybee IDs from coverage area
-      const recipient_carrybee_city_id = deliveryArea?.city_id || createParcelDto.recipient_carrybee_city_id || null;
-      const recipient_carrybee_zone_id = deliveryArea?.zone_id || createParcelDto.recipient_carrybee_zone_id || null;
-      const recipient_carrybee_area_id = deliveryArea?.area_id || createParcelDto.recipient_carrybee_area_id || null;
+      const recipient_carrybee_city_id =
+        deliveryArea?.city_id ||
+        createParcelDto.recipient_carrybee_city_id ||
+        null;
+      const recipient_carrybee_zone_id =
+        deliveryArea?.zone_id ||
+        createParcelDto.recipient_carrybee_zone_id ||
+        null;
+      const recipient_carrybee_area_id =
+        deliveryArea?.area_id ||
+        createParcelDto.recipient_carrybee_area_id ||
+        null;
 
-      const parcel = this.parcelRepository.create({ 
-        ...createParcelDto, 
-        merchant_id: userId, 
-        customer_id: customer.id, 
-        tracking_number: trackingNumber, 
+      const parcel = this.parcelRepository.create({
+        ...createParcelDto,
+        merchant_id: merchantId,
+        customer_id: customer.id,
+        tracking_number: trackingNumber,
         pickup_request_id: pickupRequest?.id || null, // Phase 2: Link to pickup request
-        status: ParcelStatus.PENDING, 
-        payment_status: PaymentStatus.UNPAID, 
+        status: ParcelStatus.PENDING,
+        payment_status: PaymentStatus.UNPAID,
         delivery_type: createParcelDto.delivery_type || DeliveryType.NORMAL, // Default to Normal (1)
-        delivery_charge: charges.delivery_charge, 
-        weight_charge: charges.weight_charge, 
-        cod_charge: charges.cod_charge, 
+        delivery_charge: charges.delivery_charge,
+        weight_charge: charges.weight_charge,
+        cod_charge: charges.cod_charge,
         total_charge: charges.total_charge,
         // Auto-populate Carrybee IDs from coverage area
         recipient_carrybee_city_id,
@@ -191,27 +635,49 @@ export class ParcelsService {
       let savedParcel;
       try {
         savedParcel = await this.parcelRepository.save(parcel);
-        
+
         // Phase 2: Update pickup request actual parcels count
         if (pickupRequest) {
           try {
-            await this.pickupRequestsService.updateActualParcelsCount(pickupRequest.id);
+            await this.pickupRequestsService.updateActualParcelsCount(
+              pickupRequest.id,
+            );
           } catch (error) {
-            this.logger.warn(`[PICKUP REQUEST] Could not update parcel count: ${error.message}`);
+            this.logger.warn(
+              `[PICKUP REQUEST] Could not update parcel count: ${error.message}`,
+            );
           }
         }
       } catch (error) {
         this.logger.error(`[PARCEL SAVE ERROR] ${error.message}`, error.stack);
-        if (error.code === '23505') throw new BadRequestException('Duplicate tracking number detected. Please try again.');
-        else if (error.code === '23503') throw new BadRequestException('Invalid reference data. Please check store ID and delivery area.');
-        throw new InternalServerErrorException('Failed to create parcel. Please try again or contact support.');
+        if (error.code === '23505')
+          throw new BadRequestException(
+            'Duplicate tracking number detected. Please try again.',
+          );
+        else if (error.code === '23503')
+          throw new BadRequestException(
+            'Invalid reference data. Please check store ID and delivery area.',
+          );
+        throw new InternalServerErrorException(
+          'Failed to create parcel. Please try again or contact support.',
+        );
       }
-      this.logger.log(`[PARCEL CREATED] Tracking: ${trackingNumber}, Merchant: ${merchantId}, Charge: ${charges.total_charge} BDT`);
+      this.logger.log(
+        `[PARCEL CREATED] Tracking: ${trackingNumber}, Merchant: ${merchantId}, Charge: ${charges.total_charge} BDT`,
+      );
       return savedParcel;
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException || error instanceof InternalServerErrorException) throw error;
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException ||
+        error instanceof InternalServerErrorException
+      )
+        throw error;
       this.logger.error(`[PARCEL CREATE ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('An unexpected error occurred while creating the parcel. Please try again.');
+      throw new InternalServerErrorException(
+        'An unexpected error occurred while creating the parcel. Please try again.',
+      );
     }
   }
 
@@ -226,13 +692,13 @@ export class ParcelsService {
   ): Promise<PaginatedResponse<Parcel>> {
     try {
       if (!userId) throw new ForbiddenException('User ID (userId) is required');
-      
+
       const where: FindOptionsWhere<Parcel> = { merchant_id: userId };
-      
+
       if (status) {
         where.status = status;
       }
-      
+
       if (storeId) {
         where.store_id = storeId;
       }
@@ -256,70 +722,163 @@ export class ParcelsService {
         hasPrev: page > 1,
       };
 
-      this.logger.log(`Retrieved ${items.length} parcels for merchant ${userId}`);
+      this.logger.log(
+        `Retrieved ${items.length} parcels for merchant ${userId}`,
+      );
 
       return { items, pagination };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
       this.logger.error(`[FIND PARCELS ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve parcels. Please try again.');
+      throw new InternalServerErrorException(
+        'Failed to retrieve parcels. Please try again.',
+      );
     }
   }
 
-  async findOne(id: string, userId: string | null, isAdmin: boolean = false): Promise<Parcel> {
+  async findOne(
+    id: string,
+    userId: string | null,
+    isAdmin: boolean = false,
+  ): Promise<Parcel> {
     try {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(id)) throw new BadRequestException('Invalid parcel ID format');
-      const parcel = await this.parcelRepository.findOne({ where: { id }, relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'] });
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id))
+        throw new BadRequestException('Invalid parcel ID format');
+      const parcel = await this.parcelRepository.findOne({
+        where: { id },
+        relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
+      });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
-      if (!isAdmin && userId && parcel.merchant_id !== userId) throw new ForbiddenException('You do not have permission to view this parcel');
+      if (!isAdmin && userId && parcel.merchant_id !== userId)
+        throw new ForbiddenException(
+          'You do not have permission to view this parcel',
+        );
       return parcel;
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException) throw error;
-      this.logger.error(`[FIND ONE PARCEL ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve parcel details. Please try again.');
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      this.logger.error(
+        `[FIND ONE PARCEL ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve parcel details. Please try again.',
+      );
     }
   }
 
-  async calculatePricing(userId: string, calculateDto: CalculatePricingDto, merchantId?: string): Promise<{ zone: string; delivery_charge: number; weight_charge_per_kg: number; cod_percentage: number; discount_percentage: number | null; start_date: Date | null; end_date: Date | null }> {
+  async calculatePricing(
+    userId: string,
+    calculateDto: CalculatePricingDto,
+    merchantId?: string,
+  ): Promise<{
+    zone: string;
+    delivery_charge: number;
+    weight_charge_per_kg: number;
+    cod_percentage: number;
+    discount_percentage: number | null;
+    start_date: Date | null;
+    end_date: Date | null;
+  }> {
     try {
       if (!userId) throw new ForbiddenException('User ID (userId) is required');
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(calculateDto.store_id)) throw new BadRequestException('Invalid store ID format');
-      if (!uuidRegex.test(calculateDto.delivery_coverage_area_id)) throw new BadRequestException('Invalid delivery coverage area ID format');
-      
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(calculateDto.store_id))
+        throw new BadRequestException('Invalid store ID format');
+      if (!uuidRegex.test(calculateDto.delivery_coverage_area_id))
+        throw new BadRequestException(
+          'Invalid delivery coverage area ID format',
+        );
+
       // If merchantId not provided (backward compatibility), fetch it
       if (!merchantId) {
-        const merchant = await this.merchantRepository.findOne({ where: { user_id: userId } });
-        if (!merchant) throw new NotFoundException('Merchant profile not found for this user. Please contact support.');
+        const merchant = await this.merchantRepository.findOne({
+          where: { user_id: userId },
+        });
+        if (!merchant)
+          throw new NotFoundException(
+            'Merchant profile not found for this user. Please contact support.',
+          );
         merchantId = merchant.id;
       }
-      
+
       // Validate store belongs to merchant
-      const store = await this.storeRepository.findOne({ where: { id: calculateDto.store_id, merchant_id: merchantId } });
-      if (!store) throw new NotFoundException('Store not found or does not belong to this merchant.');
-      
-      const deliveryArea = await this.coverageAreaRepository.findOne({ where: { id: calculateDto.delivery_coverage_area_id } });
-      if (!deliveryArea) throw new NotFoundException(`Delivery coverage area not found. Please select a valid delivery area.`);
+      const store = await this.storeRepository.findOne({
+        where: { id: calculateDto.store_id, merchant_id: merchantId },
+      });
+      if (!store)
+        throw new NotFoundException(
+          'Store not found or does not belong to this merchant.',
+        );
+
+      const deliveryArea = await this.coverageAreaRepository.findOne({
+        where: { id: calculateDto.delivery_coverage_area_id },
+      });
+      if (!deliveryArea)
+        throw new NotFoundException(
+          `Delivery coverage area not found. Please select a valid delivery area.`,
+        );
       const pricingZone = this.determinePricingZone(deliveryArea);
-      const pricingConfig = await this.pricingService.getActivePricing(calculateDto.store_id, pricingZone);
-      let baseDeliveryCharge = 60, weightChargePerKg = 10, codPercentage = 1.0, discountPercentage: number | null = null, startDate: Date | null = null, endDate: Date | null = null;
+      const pricingConfig = await this.pricingService.getActivePricing(
+        calculateDto.store_id,
+        pricingZone,
+      );
+      let baseDeliveryCharge = 60,
+        weightChargePerKg = 10,
+        codPercentage = 1.0,
+        discountPercentage: number | null = null,
+        startDate: Date | null = null,
+        endDate: Date | null = null;
       if (pricingConfig) {
         baseDeliveryCharge = Number(pricingConfig.delivery_charge);
         weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
         codPercentage = Number(pricingConfig.cod_percentage);
-        discountPercentage = pricingConfig.discount_percentage ? Number(pricingConfig.discount_percentage) : null;
+        discountPercentage = pricingConfig.discount_percentage
+          ? Number(pricingConfig.discount_percentage)
+          : null;
         startDate = pricingConfig.start_date;
         endDate = pricingConfig.end_date;
       } else {
-        if (pricingZone === PricingZone.OUTSIDE_DHAKA) { baseDeliveryCharge = 120; weightChargePerKg = 25; codPercentage = 2.5; }
-        else if (pricingZone === PricingZone.SUB_DHAKA) { baseDeliveryCharge = 80; weightChargePerKg = 20; codPercentage = 2.0; }
+        if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
+          baseDeliveryCharge = 120;
+          weightChargePerKg = 25;
+          codPercentage = 2.5;
+        } else if (pricingZone === PricingZone.SUB_DHAKA) {
+          baseDeliveryCharge = 80;
+          weightChargePerKg = 20;
+          codPercentage = 2.0;
+        }
       }
-      return { zone: pricingZone, delivery_charge: baseDeliveryCharge, weight_charge_per_kg: weightChargePerKg, cod_percentage: codPercentage, discount_percentage: discountPercentage, start_date: startDate, end_date: endDate };
+      return {
+        zone: pricingZone,
+        delivery_charge: baseDeliveryCharge,
+        weight_charge_per_kg: weightChargePerKg,
+        cod_percentage: codPercentage,
+        discount_percentage: discountPercentage,
+        start_date: startDate,
+        end_date: endDate,
+      };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException) throw error;
-      this.logger.error(`[CALCULATE PRICING ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to calculate pricing. Please try again.');
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      this.logger.error(
+        `[CALCULATE PRICING ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to calculate pricing. Please try again.',
+      );
     }
   }
 
@@ -333,11 +892,11 @@ export class ParcelsService {
   ): Promise<PaginatedResponse<Parcel>> {
     try {
       const where: FindOptionsWhere<Parcel> = {};
-      
+
       if (status) {
         where.status = status;
       }
-      
+
       if (merchantId) {
         where.merchant_id = merchantId;
       }
@@ -365,8 +924,13 @@ export class ParcelsService {
 
       return { items, pagination };
     } catch (error) {
-      this.logger.error(`[FIND ALL PARCELS ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve parcels. Please try again.');
+      this.logger.error(
+        `[FIND ALL PARCELS ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve parcels. Please try again.',
+      );
     }
   }
 
@@ -389,7 +953,7 @@ export class ParcelsService {
         select: ['id'],
       });
 
-      const storeIds = stores.map(store => store.id);
+      const storeIds = stores.map((store) => store.id);
 
       if (storeIds.length === 0) {
         // No stores assigned to this hub
@@ -439,7 +1003,7 @@ export class ParcelsService {
       };
 
       // Return minimal data for hub managers
-      const items = parcels.map(parcel => ({
+      const items = parcels.map((parcel) => ({
         id: parcel.id,
         tracking_number: parcel.tracking_number,
         merchant_order_id: parcel.merchant_order_id,
@@ -463,8 +1027,13 @@ export class ParcelsService {
 
       return { items, pagination };
     } catch (error) {
-      this.logger.error(`[FIND PARCELS FOR HUB ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve parcels for hub. Please try again.');
+      this.logger.error(
+        `[FIND PARCELS FOR HUB ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve parcels for hub. Please try again.',
+      );
     }
   }
 
@@ -488,100 +1057,209 @@ export class ParcelsService {
       }
 
       // Only allow marking as received if status is PENDING or PICKED_UP
-      if (parcel.status !== ParcelStatus.PENDING && parcel.status !== ParcelStatus.PICKED_UP) {
-        throw new BadRequestException(`Cannot mark parcel as received. Current status: ${parcel.status}`);
+      if (
+        parcel.status !== ParcelStatus.PENDING &&
+        parcel.status !== ParcelStatus.PICKED_UP
+      ) {
+        throw new BadRequestException(
+          `Cannot mark parcel as received. Current status: ${parcel.status}`,
+        );
       }
 
       parcel.status = ParcelStatus.IN_HUB;
       parcel.current_hub_id = hubId;
-      
+
       // Set origin hub if not already set (first time receiving)
       if (!parcel.origin_hub_id) {
         parcel.origin_hub_id = hubId;
       }
-      
+
       await this.parcelRepository.save(parcel);
 
-      this.logger.log(`[PARCEL RECEIVED] Parcel ${parcel.tracking_number} marked as received by hub ${hubId}`);
+      this.logger.log(
+        `[PARCEL RECEIVED] Parcel ${parcel.tracking_number} marked as received by hub ${hubId}`,
+      );
 
       return parcel;
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(`[MARK PARCEL RECEIVED ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to mark parcel as received');
+      this.logger.error(
+        `[MARK PARCEL RECEIVED ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to mark parcel as received',
+      );
     }
   }
 
-  async update(id: string, updateParcelDto: UpdateParcelDto, userId: string, isAdmin: boolean = false): Promise<Parcel> {
+  async update(
+    id: string,
+    updateParcelDto: UpdateParcelDto,
+    userId: string,
+    isAdmin: boolean = false,
+  ): Promise<Parcel> {
     try {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(id)) throw new BadRequestException('Invalid parcel ID format');
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id))
+        throw new BadRequestException('Invalid parcel ID format');
       const parcel = await this.parcelRepository.findOne({ where: { id } });
-      if (!parcel) throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId) throw new ForbiddenException('You do not have permission to update this parcel');
+      if (!parcel)
+        throw new NotFoundException(`Parcel with ID ${id} not found`);
+      if (!isAdmin && parcel.merchant_id !== userId)
+        throw new ForbiddenException(
+          'You do not have permission to update this parcel',
+        );
       if (updateParcelDto.customer_phone) {
         const phoneRegex = /^01[0-9]{9}$/;
-        if (!phoneRegex.test(updateParcelDto.customer_phone)) throw new BadRequestException('Invalid customer phone number. Must be in format: 01XXXXXXXXX');
+        if (!phoneRegex.test(updateParcelDto.customer_phone))
+          throw new BadRequestException(
+            'Invalid customer phone number. Must be in format: 01XXXXXXXXX',
+          );
       }
-      if (updateParcelDto.is_cod !== undefined && updateParcelDto.is_cod && (!updateParcelDto.cod_amount || updateParcelDto.cod_amount <= 0)) throw new BadRequestException('COD amount must be greater than 0 when COD is enabled.');
-      if (updateParcelDto.product_weight !== undefined && updateParcelDto.product_weight < 0) throw new BadRequestException('Product weight cannot be negative.');
+      if (
+        updateParcelDto.is_cod !== undefined &&
+        updateParcelDto.is_cod &&
+        (!updateParcelDto.cod_amount || updateParcelDto.cod_amount <= 0)
+      )
+        throw new BadRequestException(
+          'COD amount must be greater than 0 when COD is enabled.',
+        );
+      if (
+        updateParcelDto.product_weight !== undefined &&
+        updateParcelDto.product_weight < 0
+      )
+        throw new BadRequestException('Product weight cannot be negative.');
       if (updateParcelDto.store_id) {
-        const merchant = await this.merchantRepository.findOne({ where: { user_id: userId } });
-        if (!merchant) throw new NotFoundException('Merchant profile not found for this user.');
-        const store = await this.storeRepository.findOne({ where: { id: updateParcelDto.store_id, merchant_id: merchant.id } });
-        if (!store) throw new NotFoundException('Store not found or does not belong to this merchant.');
+        const merchant = await this.merchantRepository.findOne({
+          where: { user_id: userId },
+        });
+        if (!merchant)
+          throw new NotFoundException(
+            'Merchant profile not found for this user.',
+          );
+        const store = await this.storeRepository.findOne({
+          where: { id: updateParcelDto.store_id, merchant_id: merchant.id },
+        });
+        if (!store)
+          throw new NotFoundException(
+            'Store not found or does not belong to this merchant.',
+          );
       }
       if (updateParcelDto.delivery_coverage_area_id) {
-        const deliveryArea = await this.coverageAreaRepository.findOne({ where: { id: updateParcelDto.delivery_coverage_area_id } });
-        if (!deliveryArea) throw new NotFoundException('Delivery coverage area not found. Please select a valid delivery area.');
+        const deliveryArea = await this.coverageAreaRepository.findOne({
+          where: { id: updateParcelDto.delivery_coverage_area_id },
+        });
+        if (!deliveryArea)
+          throw new NotFoundException(
+            'Delivery coverage area not found. Please select a valid delivery area.',
+          );
       }
       Object.assign(parcel, updateParcelDto);
       let updatedParcel;
       try {
         updatedParcel = await this.parcelRepository.save(parcel);
       } catch (error) {
-        this.logger.error(`[PARCEL UPDATE ERROR] ${error.message}`, error.stack);
-        if (error.code === '23503') throw new BadRequestException('Invalid reference data. Please check store ID and delivery area.');
-        throw new InternalServerErrorException('Failed to update parcel. Please try again or contact support.');
+        this.logger.error(
+          `[PARCEL UPDATE ERROR] ${error.message}`,
+          error.stack,
+        );
+        if (error.code === '23503')
+          throw new BadRequestException(
+            'Invalid reference data. Please check store ID and delivery area.',
+          );
+        throw new InternalServerErrorException(
+          'Failed to update parcel. Please try again or contact support.',
+        );
       }
       this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${userId}`);
       return updatedParcel;
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException || error instanceof InternalServerErrorException) throw error;
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException ||
+        error instanceof InternalServerErrorException
+      )
+        throw error;
       this.logger.error(`[UPDATE PARCEL ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('An unexpected error occurred while updating the parcel. Please try again.');
+      throw new InternalServerErrorException(
+        'An unexpected error occurred while updating the parcel. Please try again.',
+      );
     }
   }
 
-  async remove(id: string, userId: string, isAdmin: boolean = false): Promise<{ message: string }> {
+  async remove(
+    id: string,
+    userId: string,
+    isAdmin: boolean = false,
+  ): Promise<{ message: string }> {
     try {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(id)) throw new BadRequestException('Invalid parcel ID format');
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id))
+        throw new BadRequestException('Invalid parcel ID format');
       const parcel = await this.parcelRepository.findOne({ where: { id } });
-      if (!parcel) throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId) throw new ForbiddenException('You do not have permission to delete this parcel');
-      if (parcel.status === ParcelStatus.DELIVERED || parcel.status === ParcelStatus.IN_TRANSIT) throw new BadRequestException(`Cannot delete parcel with status: ${parcel.status}. Please contact support.`);
+      if (!parcel)
+        throw new NotFoundException(`Parcel with ID ${id} not found`);
+      if (!isAdmin && parcel.merchant_id !== userId)
+        throw new ForbiddenException(
+          'You do not have permission to delete this parcel',
+        );
+      if (
+        parcel.status === ParcelStatus.DELIVERED ||
+        parcel.status === ParcelStatus.IN_TRANSIT
+      )
+        throw new BadRequestException(
+          `Cannot delete parcel with status: ${parcel.status}. Please contact support.`,
+        );
       try {
         await this.parcelRepository.remove(parcel);
       } catch (error) {
-        this.logger.error(`[PARCEL DELETE ERROR] ${error.message}`, error.stack);
-        throw new InternalServerErrorException('Failed to delete parcel. Please try again or contact support.');
+        this.logger.error(
+          `[PARCEL DELETE ERROR] ${error.message}`,
+          error.stack,
+        );
+        throw new InternalServerErrorException(
+          'Failed to delete parcel. Please try again or contact support.',
+        );
       }
-      this.logger.log(`[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${userId}`);
-      return { message: `Parcel ${parcel.tracking_number} has been successfully deleted` };
+      this.logger.log(
+        `[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${userId}`,
+      );
+      return {
+        message: `Parcel ${parcel.tracking_number} has been successfully deleted`,
+      };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException || error instanceof InternalServerErrorException) throw error;
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException ||
+        error instanceof InternalServerErrorException
+      )
+        throw error;
       this.logger.error(`[DELETE PARCEL ERROR] ${error.message}`, error.stack);
-      throw new InternalServerErrorException('An unexpected error occurred while deleting the parcel. Please try again.');
+      throw new InternalServerErrorException(
+        'An unexpected error occurred while deleting the parcel. Please try again.',
+      );
     }
   }
 
   /**
    * Get parcels ready for rider assignment (status: IN_HUB)
    */
-  async getParcelsForAssignment(hubId: string, page: number = 1, limit: number = 20) {
+  async getParcelsForAssignment(
+    hubId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
     const skip = (page - 1) * limit;
 
     // Get parcels that are IN_HUB status and not assigned to any rider
@@ -594,7 +1272,9 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.pickupRequest', 'pickupRequest')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
       .andWhere('parcel.assigned_rider_id IS NULL')
-      .andWhere('(pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)', { hubId })
+      .andWhere('(pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)', {
+        hubId,
+      })
       .orderBy('parcel.created_at', 'DESC')
       .skip(skip)
       .take(limit);
@@ -607,7 +1287,11 @@ export class ParcelsService {
   /**
    * Assign parcel to rider (Hub Manager only)
    */
-  async assignToRider(parcelId: string, assignDto: AssignParcelToRiderDto, hubId: string) {
+  async assignToRider(
+    parcelId: string,
+    assignDto: AssignParcelToRiderDto,
+    hubId: string,
+  ) {
     // Find parcel with pickup request to verify hub
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
@@ -625,7 +1309,9 @@ export class ParcelsService {
 
     // Verify parcel status is IN_HUB
     if (parcel.status !== ParcelStatus.IN_HUB) {
-      throw new BadRequestException(`Parcel must be in IN_HUB status. Current status: ${parcel.status}`);
+      throw new BadRequestException(
+        `Parcel must be in IN_HUB status. Current status: ${parcel.status}`,
+      );
     }
 
     // Verify parcel is not already assigned
@@ -660,23 +1346,29 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[PARCEL ASSIGNED] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`);
+    this.logger.log(
+      `[PARCEL ASSIGNED] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`,
+    );
 
     return parcel;
   }
 
   /**
    * Get rider's assigned parcels (for rider app)
-   * 
+   *
    * Rider App Sections:
    * - DELIVERY: pending (ASSIGNED_TO_RIDER, OUT_FOR_DELIVERY), completed (DELIVERED)
    * - RETURN: pending (FAILED_DELIVERY), completed (RETURNED_TO_HUB)
-   * 
+   *
    * @param riderId - Rider ID
    * @param status - Specific parcel status filter (overrides filter)
    * @param filter - Section filter: delivery_pending, delivery_completed, return_pending, return_completed, all
    */
-  async getRiderParcels(riderId: string, status?: ParcelStatus, filter?: string) {
+  async getRiderParcels(
+    riderId: string,
+    status?: ParcelStatus,
+    filter?: string,
+  ) {
     const where: any = { assigned_rider_id: riderId };
 
     // If specific status is provided, use it (takes priority)
@@ -768,10 +1460,7 @@ export class ParcelsService {
 
     if (tab === 'pending') {
       // Parcels marked as return via OTP verification, not yet returned to hub
-      where.status = In([
-        ParcelStatus.RETURNED,
-        ParcelStatus.PAID_RETURN,
-      ]);
+      where.status = In([ParcelStatus.RETURNED, ParcelStatus.PAID_RETURN]);
     } else {
       // Parcels returned to hub or merchant
       where.status = In([
@@ -800,7 +1489,9 @@ export class ParcelsService {
     }
 
     if (parcel.status !== ParcelStatus.ASSIGNED_TO_RIDER) {
-      throw new BadRequestException(`Cannot accept parcel with status: ${parcel.status}`);
+      throw new BadRequestException(
+        `Cannot accept parcel with status: ${parcel.status}`,
+      );
     }
 
     if (parcel.rider_accepted_at) {
@@ -813,7 +1504,9 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[PARCEL ACCEPTED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`);
+    this.logger.log(
+      `[PARCEL ACCEPTED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`,
+    );
 
     return parcel;
   }
@@ -832,7 +1525,9 @@ export class ParcelsService {
     }
 
     if (parcel.status !== ParcelStatus.OUT_FOR_DELIVERY) {
-      throw new BadRequestException(`Parcel is not out for delivery. Current status: ${parcel.status}`);
+      throw new BadRequestException(
+        `Parcel is not out for delivery. Current status: ${parcel.status}`,
+      );
     }
 
     return parcel;
@@ -841,7 +1536,12 @@ export class ParcelsService {
   /**
    * Rider delivers parcel (DEPRECATED - use delivery-verifications flow)
    */
-  async riderDeliverParcel(parcelId: string, riderId: string, deliveryProof?: string, signature?: string) {
+  async riderDeliverParcel(
+    parcelId: string,
+    riderId: string,
+    deliveryProof?: string,
+    signature?: string,
+  ) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
     });
@@ -851,7 +1551,9 @@ export class ParcelsService {
     }
 
     if (parcel.status !== ParcelStatus.OUT_FOR_DELIVERY) {
-      throw new BadRequestException(`Cannot deliver parcel with status: ${parcel.status}`);
+      throw new BadRequestException(
+        `Cannot deliver parcel with status: ${parcel.status}`,
+      );
     }
 
     parcel.status = ParcelStatus.DELIVERED;
@@ -860,7 +1562,9 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[PARCEL DELIVERED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`);
+    this.logger.log(
+      `[PARCEL DELIVERED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`,
+    );
 
     return parcel;
   }
@@ -868,7 +1572,12 @@ export class ParcelsService {
   /**
    * Rider marks delivery as failed
    */
-  async riderFailedDelivery(parcelId: string, riderId: string, reason: string, rescheduleDate?: Date) {
+  async riderFailedDelivery(
+    parcelId: string,
+    riderId: string,
+    reason: string,
+    rescheduleDate?: Date,
+  ) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
     });
@@ -878,7 +1587,9 @@ export class ParcelsService {
     }
 
     if (parcel.status !== ParcelStatus.OUT_FOR_DELIVERY) {
-      throw new BadRequestException(`Cannot mark failed for parcel with status: ${parcel.status}`);
+      throw new BadRequestException(
+        `Cannot mark failed for parcel with status: ${parcel.status}`,
+      );
     }
 
     parcel.status = ParcelStatus.FAILED_DELIVERY;
@@ -886,7 +1597,9 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[DELIVERY FAILED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}, Reason: ${reason}`);
+    this.logger.log(
+      `[DELIVERY FAILED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}, Reason: ${reason}`,
+    );
 
     return parcel;
   }
@@ -895,7 +1608,11 @@ export class ParcelsService {
    * Rider returns parcel to hub
    * Called after OTP verification marks parcel as RETURNED or PAID_RETURN
    */
-  async riderReturnParcel(parcelId: string, riderId: string, returnReason: string) {
+  async riderReturnParcel(
+    parcelId: string,
+    riderId: string,
+    returnReason: string,
+  ) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
       relations: ['assignedRider'],
@@ -906,15 +1623,12 @@ export class ParcelsService {
     }
 
     // Only allow return for OTP-verified return statuses
-    const allowedStatuses = [
-      ParcelStatus.RETURNED,
-      ParcelStatus.PAID_RETURN,
-    ];
+    const allowedStatuses = [ParcelStatus.RETURNED, ParcelStatus.PAID_RETURN];
 
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
         `Cannot return parcel with status: ${parcel.status}. ` +
-        `Use delivery verification to mark as RETURNED or PAID_RETURN first.`
+          `Use delivery verification to mark as RETURNED or PAID_RETURN first.`,
       );
     }
 
@@ -927,7 +1641,9 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[PARCEL RETURNED TO HUB] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`);
+    this.logger.log(
+      `[PARCEL RETURNED TO HUB] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`,
+    );
 
     return parcel;
   }
@@ -937,13 +1653,21 @@ export class ParcelsService {
    */
   async getAllHubs(currentHubId?: string) {
     const hubs = await this.hubRepository.find({
-      select: ['id', 'hub_code', 'branch_name', 'area', 'address', 'manager_name', 'manager_phone'],
+      select: [
+        'id',
+        'hub_code',
+        'branch_name',
+        'area',
+        'address',
+        'manager_name',
+        'manager_phone',
+      ],
       order: { branch_name: 'ASC' },
     });
 
     // Exclude current hub if provided
     if (currentHubId) {
-      return hubs.filter(hub => hub.id !== currentHubId);
+      return hubs.filter((hub) => hub.id !== currentHubId);
     }
 
     return hubs;
@@ -973,10 +1697,7 @@ export class ParcelsService {
     }
 
     // Verify parcel status allows transfer
-    const allowedStatuses = [
-      ParcelStatus.IN_HUB,
-      ParcelStatus.RETURNED_TO_HUB,
-    ];
+    const allowedStatuses = [ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB];
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
         `Cannot transfer parcel with status: ${parcel.status}. Parcel must be IN_HUB or RETURNED_TO_HUB`,
@@ -1060,10 +1781,7 @@ export class ParcelsService {
   /**
    * Accept incoming parcel at destination hub (Hub Manager)
    */
-  async acceptIncomingParcel(
-    parcelId: string,
-    hubId: string,
-  ): Promise<Parcel> {
+  async acceptIncomingParcel(parcelId: string, hubId: string): Promise<Parcel> {
     // Find parcel
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
@@ -1122,7 +1840,9 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('parcel.customer', 'customer')
       .where('parcel.origin_hub_id = :hubId', { hubId })
-      .andWhere('parcel.is_inter_hub_transfer = :isTransfer', { isTransfer: true })
+      .andWhere('parcel.is_inter_hub_transfer = :isTransfer', {
+        isTransfer: true,
+      })
       .orderBy('parcel.transferred_at', 'DESC')
       .skip(skip)
       .take(limit);
@@ -1141,10 +1861,10 @@ export class ParcelsService {
   /**
    * Get delivery outcomes for Hub Manager
    * Shows parcels with: PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED
-   * 
+   *
    * WHY: Hub managers need to track parcels that didn't complete normally
    * - Partial deliveries may need follow-up
-   * - Exchanges need processing  
+   * - Exchanges need processing
    * - Rescheduled deliveries need planning
    * - Returns need to be received back at hub
    */
@@ -1182,7 +1902,9 @@ export class ParcelsService {
     if (status && outcomeStatuses.includes(status)) {
       queryBuilder.andWhere('parcel.status = :status', { status });
     } else {
-      queryBuilder.andWhere('parcel.status IN (:...statuses)', { statuses: outcomeStatuses });
+      queryBuilder.andWhere('parcel.status IN (:...statuses)', {
+        statuses: outcomeStatuses,
+      });
     }
 
     // Filter by zone (using coverage area zone or area field)
@@ -1241,7 +1963,9 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .leftJoinAndSelect('parcel.assignedRider', 'rider')
       .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.status = :status', { status: ParcelStatus.DELIVERY_RESCHEDULED })
+      .andWhere('parcel.status = :status', {
+        status: ParcelStatus.DELIVERY_RESCHEDULED,
+      })
       .orderBy('parcel.updated_at', 'DESC');
 
     const total = await queryBuilder.getCount();
@@ -1259,7 +1983,7 @@ export class ParcelsService {
   /**
    * Hub Manager marks parcel as RETURN_TO_MERCHANT
    * Creates a NEW return parcel to track the return journey back to merchant
-   * 
+   *
    * Used for: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE outcomes
    */
   async markReturnToMerchant(parcelId: string, hubId: string, notes?: string) {
@@ -1294,35 +2018,40 @@ export class ParcelsService {
     await this.parcelRepository.save(originalParcel);
 
     // Create a NEW return parcel to track the return journey
-    const returnTrackingNumber = await this.generateReturnTrackingNumber(originalParcel.tracking_number);
+    const returnTrackingNumber = await this.generateReturnTrackingNumber(
+      originalParcel.tracking_number,
+    );
 
     const returnParcel = this.parcelRepository.create({
       // Tracking
       tracking_number: returnTrackingNumber,
       merchant_order_id: originalParcel.merchant_order_id,
-      
+
       // Link to original
       original_parcel_id: originalParcel.id,
       is_return_parcel: true,
-      
+
       // Merchant info
       merchant_id: originalParcel.merchant_id,
       store_id: originalParcel.store_id,
-      
+
       // For return: pickup from customer address, deliver to merchant/store
       pickup_address: originalParcel.delivery_address,
       delivery_address: originalParcel.pickup_address,
-      
+
       // Customer info (original merchant becomes recipient)
       customer_name: originalParcel.store?.business_name || 'Merchant',
-      customer_phone: originalParcel.store?.phone_number || originalParcel.merchant?.phone || '',
-      
+      customer_phone:
+        originalParcel.store?.phone_number ||
+        originalParcel.merchant?.phone ||
+        '',
+
       // Parcel details
       product_description: `RETURN: ${originalParcel.product_description || 'N/A'}`,
       product_price: originalParcel.product_price,
       product_weight: originalParcel.product_weight,
       parcel_type: originalParcel.parcel_type,
-      
+
       // No COD for returns (merchant handles refund separately)
       is_cod: false,
       cod_amount: 0,
@@ -1330,23 +2059,24 @@ export class ParcelsService {
       weight_charge: 0,
       cod_charge: 0,
       total_charge: 0,
-      
+
       // Status
       status: ParcelStatus.IN_HUB, // Ready to be assigned for return
       payment_status: PaymentStatus.UNPAID,
-      
+
       // Hub
       current_hub_id: hubId,
-      
+
       // Reason
-      return_reason: originalParcel.return_reason || notes || 'Return to merchant',
+      return_reason:
+        originalParcel.return_reason || notes || 'Return to merchant',
     });
 
     await this.parcelRepository.save(returnParcel);
 
     this.logger.log(
       `[RETURN TO MERCHANT] Original: ${originalParcel.tracking_number}, ` +
-      `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`
+        `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`,
     );
 
     return {
@@ -1359,7 +2089,9 @@ export class ParcelsService {
    * Generate tracking number for return parcel
    * Format: RTN-{original_tracking}-{sequence}
    */
-  private async generateReturnTrackingNumber(originalTracking: string): Promise<string> {
+  private async generateReturnTrackingNumber(
+    originalTracking: string,
+  ): Promise<string> {
     // Check if this is already a return (has RTN prefix)
     if (originalTracking.startsWith('RTN-')) {
       // Extract base tracking and increment
@@ -1368,7 +2100,7 @@ export class ParcelsService {
       parts[parts.length - 1] = String(sequence + 1);
       return parts.join('-');
     }
-    
+
     return `RTN-${originalTracking}`;
   }
 
@@ -1400,7 +2132,9 @@ export class ParcelsService {
 
     await this.parcelRepository.save(parcel);
 
-    this.logger.log(`[PREPARE REDELIVERY] Parcel: ${parcel.tracking_number}, Hub: ${hubId}`);
+    this.logger.log(
+      `[PREPARE REDELIVERY] Parcel: ${parcel.tracking_number}, Hub: ${hubId}`,
+    );
 
     return parcel;
   }
@@ -1412,7 +2146,7 @@ export class ParcelsService {
   private calculateAge(date: Date): string {
     const now = new Date();
     const diff = now.getTime() - new Date(date).getTime();
-    
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -1430,7 +2164,7 @@ export class ParcelsService {
    */
   private toDeliveryOutcomeItem(parcel: Parcel) {
     // Build zone string from coverage area
-    const zoneInfo = parcel.delivery_coverage_area 
+    const zoneInfo = parcel.delivery_coverage_area
       ? `${parcel.delivery_coverage_area.area}, ${parcel.delivery_coverage_area.zone}`
       : null;
 
@@ -1441,17 +2175,18 @@ export class ParcelsService {
       is_return_parcel: parcel.is_return_parcel || false,
       status: parcel.status,
       reason: parcel.return_reason || null,
-      
+
       destination: {
         address: parcel.delivery_address,
         zone: zoneInfo,
       },
-      
+
       merchant: {
-        name: parcel.store?.business_name || parcel.merchant?.full_name || 'N/A',
+        name:
+          parcel.store?.business_name || parcel.merchant?.full_name || 'N/A',
         phone: parcel.store?.phone_number || parcel.merchant?.phone || 'N/A',
       },
-      
+
       cod: {
         total_charge: Number(parcel.total_charge) || 0,
         delivery_charge: Number(parcel.delivery_charge) || 0,
@@ -1459,12 +2194,195 @@ export class ParcelsService {
         weight_charge: Number(parcel.weight_charge) || 0,
         cod_amount: Number(parcel.cod_amount) || 0,
       },
-      
+
       age: {
         display: this.calculateAge(parcel.created_at),
         created_at: parcel.created_at,
         updated_at: parcel.updated_at,
       },
+    };
+  }
+
+  async getBulkSuggestions(
+    items: BulkOrderItemDto[],
+    merchantId: string,
+  ): Promise<SuggestionResult[]> {
+    const results: SuggestionResult[] = [];
+
+    // Load & normalize coverage areas ONCE for the whole batch
+    const rawAreas = await this.coverageAreaRepository.find();
+    const coverageAreas: CoverageAreaWithNorms[] = rawAreas.map((c) => ({
+      ...c,
+      _zone_norm: this.normalizeText(c.zone),
+      _city_norm: this.normalizeText(c.city),
+      _area_norm: this.normalizeText(c.area),
+    }));
+
+    for (const item of items) {
+      let result: SuggestionResult = {
+        original_row: item,
+        status: 'FAILED',
+      };
+
+      try {
+        // 1. Basic validation
+        if (
+          !item.customer_phone ||
+          !item.customer_name ||
+          !item.pickup_address ||
+          !item.delivery_address
+        ) {
+          throw new Error(
+            'Missing mandatory fields (phone, name, pickup address, delivery address).',
+          );
+        }
+
+        // 2. Heuristic: choose best coverage area
+        const coverageArea = this.findBestCoverageAreaFromAddress(
+          item.delivery_address,
+          coverageAreas,
+        );
+
+        if (!coverageArea) {
+          throw new NotFoundException(
+            'No suitable coverage area found from customer address.',
+          );
+        }
+
+        // set suggestions immediately (even if numeric fails later)
+        result.suggested_area_id = coverageArea.id;
+        result.suggested_city = coverageArea.city;
+        result.suggested_zone = coverageArea.zone;
+
+        // 3. Numeric parsing (non-fatal for suggestions)
+        let numericError: string | null = null;
+        let isCod = false;
+        let weight = 0;
+        let price = 0;
+        let codAmount = 0;
+
+        try {
+          isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
+          weight = this.parseRawNumeric(item.product_weight_raw);
+          price = this.parseRawNumeric(item.product_price_raw);
+          codAmount = isCod ? price : 0;
+        } catch (e: any) {
+          numericError = e?.message || 'Invalid numeric value';
+          // keep zeros so we can still return address suggestion
+          weight = 0;
+          price = 0;
+          codAmount = 0;
+        }
+
+        // 4. Charge calculation only if numerics are valid
+        if (!numericError) {
+          const charges = await this.calculateCharges(
+            merchantId,
+            coverageArea.id,
+            weight,
+            isCod,
+            codAmount,
+          );
+
+          result.total_charge = charges.total_charge;
+          result.delivery_charge = charges.delivery_charge;
+          result.cod_charge = charges.cod_charge;
+          result.status = 'SUCCESS';
+        } else {
+          result.status = 'FAILED'; // or 'RESOLVED' if you want a separate state
+          result.error = `Numeric error: ${numericError}`;
+        }
+      } catch (error: any) {
+        if (!result.error) {
+          result.error = `Processing Error: ${error.message || 'Unknown error'}`;
+        }
+        result.status = result.status || 'FAILED';
+      }
+
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  /**
+   * Creates parcels from user-confirmed data (called by /bulk-create).
+   */
+  async bulkCreateConfirmedBatch(
+    items: BulkOrderItemDto[],
+    merchantId: string,
+  ): Promise<{
+    summary: { total: number; success: number; failed: number };
+    results: ParcelCreationResult[];
+  }> {
+    const creationResults: ParcelCreationResult[] = [];
+    let successCount = 0;
+    const totalRows = items.length;
+
+    for (const item of items) {
+      try {
+        // 1. Final Validation & Mapping
+        if (!item.delivery_coverage_area_id) {
+          throw new Error('Missing confirmed delivery_coverage_area_id.');
+        }
+
+        const isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
+        const weight = this.parseRawNumeric(item.product_weight_raw);
+        const price = this.parseRawNumeric(item.product_price_raw);
+        const codAmount = isCod ? price : 0;
+
+        // 2. Map to CreateParcelDto
+        const createDto: CreateParcelDto = {
+          // Required fields
+          delivery_coverage_area_id: item.delivery_coverage_area_id,
+          customer_name: item.customer_name,
+          customer_phone: item.customer_phone,
+          delivery_address: item.delivery_address,
+          pickup_address: item.pickup_address,
+
+          // Numerics
+          product_weight: weight,
+          product_price: price,
+          is_cod: isCod,
+          cod_amount: codAmount,
+
+          // Optional fields (Mapping null/empty string to undefined)
+          store_id: item.store_id ?? undefined,
+          merchant_order_id: item.merchant_order_id ?? undefined,
+          product_description: item.product_description || undefined,
+          parcel_type: item.parcel_type_raw
+            ? parseInt(item.parcel_type_raw, 10)
+            : undefined,
+          delivery_type: item.delivery_type_raw
+            ? parseInt(item.delivery_type_raw, 10)
+            : undefined,
+          special_instructions: item.special_instructions ?? undefined,
+        } as CreateParcelDto;
+
+        // 3. Create the parcel using the existing core logic
+        const newParcel = await this.create(createDto, merchantId, merchantId);
+        successCount++;
+
+        creationResults.push({
+          success: true,
+          tracking: newParcel.tracking_number,
+        });
+      } catch (error) {
+        // Failsafe: Catch any validation or DB errors during final creation
+        creationResults.push({
+          success: false,
+          error: `Creation failed: ${error.message}`,
+        });
+      }
+    }
+
+    return {
+      summary: {
+        total: totalRows,
+        success: successCount,
+        failed: totalRows - successCount,
+      },
+      results: creationResults,
     };
   }
 }
