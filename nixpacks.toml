@@ -1,7 +1,0 @@
-[phases.setup]
-nixPkgs = ["nodejs_20"]
-
-[phases.install]
-cmds = ["npm ci"]
-
-# Build happens at start time to avoid dist being overwritten
