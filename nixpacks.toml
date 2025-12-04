@@ -4,7 +4,4 @@ nixPkgs = ["nodejs_20"]
 [phases.install]
 cmds = ["npm ci"]
 
-[phases.build]
-cmds = ["npm run build", "npm prune --omit=dev"]
-
-# Start command is in railway.json
+# Build happens at start time to avoid dist being overwritten

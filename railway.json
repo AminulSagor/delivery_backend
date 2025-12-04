@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm run typeorm:migrate:prod || true; npm run start:prod",
+    "startCommand": "npm run build && npm run typeorm:migrate:prod || true; npm run start:prod",
     "healthcheckPath": "/",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
