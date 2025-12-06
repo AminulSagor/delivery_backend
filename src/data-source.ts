@@ -7,9 +7,11 @@ dotenv.config();
 // Detect if running via ts-node (development) or compiled js (production)
 const isTs = __filename.endsWith('.ts');
 
-// Check if DATABASE_URL is available (Railway provides this when you link a database)
+// Check for DATABASE_URL first (Railway provides this)
 const databaseUrl = process.env.DATABASE_URL;
-const isProduction = !!databaseUrl;
+
+// Check if running on Railway
+const isProduction = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -21,20 +23,35 @@ const baseConfig = {
     ? [path.join(__dirname, 'migrations/*.ts')]
     : ['dist/migrations/*.js'],
   synchronize: false,
-  logging: process.env.NODE_ENV === 'development',
+  logging: false, // Disable TypeORM query logging to reduce log spam
 };
 
-// Railway/Production config: Use DATABASE_URL connection string
-const productionConfig: DataSourceOptions = {
-  ...baseConfig,
-  url: databaseUrl,
-  ssl: { rejectUnauthorized: false },
-  extra: {
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  },
-};
+// Railway/Production config: Use DATABASE_URL directly if available
+const productionConfig: DataSourceOptions = databaseUrl
+  ? {
+      ...baseConfig,
+      url: databaseUrl,
+      ssl: { rejectUnauthorized: false },
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      },
+    }
+  : {
+      ...baseConfig,
+      host: process.env.PGHOST || process.env.RAILWAY_PRIVATE_DOMAIN,
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
+      password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
+      database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
+      ssl: { rejectUnauthorized: false },
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      },
+    };
 
 // Local development config: Use individual connection parameters
 const developmentConfig: DataSourceOptions = {
@@ -49,14 +66,9 @@ const developmentConfig: DataSourceOptions = {
 // Select config based on environment
 export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
 
-// Log which config is being used (helpful for debugging)
-console.log(`[DATABASE] Using ${isProduction ? 'Railway/Production' : 'Local/Development'} config`);
-if (isProduction && databaseUrl) {
-  // Log host from URL without exposing password
-  const urlMatch = databaseUrl.match(/@([^:\/]+)/);
-  console.log(`[DATABASE] Host: ${urlMatch ? urlMatch[1] : 'from DATABASE_URL'}`);
-} else {
-  console.log(`[DATABASE] Host: ${process.env.PG_HOST || 'localhost'}`);
+// Single log line for startup (reduce log spam)
+if (process.env.NODE_ENV !== 'production') {
+  console.log(`[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
 }
 
 const dataSource = new DataSource(dataSourceOptions);

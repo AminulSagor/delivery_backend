@@ -3,19 +3,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files and config
+# Copy package files
 COPY package*.json ./
-COPY tsconfig*.json ./
-COPY nest-cli.json ./
 
-# Install all dependencies (including dev)
+# Install ALL dependencies (including dev for building)
 RUN npm ci
 
 # Copy source code
+COPY tsconfig*.json ./
+COPY nest-cli.json ./
 COPY src ./src
 
 # Build the application
-RUN npm run build && ls -la dist/
+RUN npm run build
 
 # Production stage
 FROM node:20-alpine AS production
@@ -28,15 +28,11 @@ COPY package*.json ./
 # Install only production dependencies
 RUN npm ci --omit=dev
 
-# Copy built application from builder
+# Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-
-# Expose the application port
+# Expose port
 EXPOSE 3000
 
-# Run migrations and start the application
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# Start the application (skip migrations for now to debug)
+CMD ["node", "dist/main"]

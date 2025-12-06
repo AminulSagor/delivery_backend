@@ -12,8 +12,15 @@ import {
   ForbiddenException,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ParcelsService } from './parcels.service';
+import {
+  ParcelCreationResult,
+  ParcelsService,
+  SuggestionResult,
+} from './parcels.service';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { CalculatePricingDto } from './dto/calculate-pricing.dto';
@@ -23,6 +30,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
+import { BulkSuggestDto } from './dto/bulk-suggest.dto';
 
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -41,7 +49,11 @@ export class ParcelsController {
       throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    return this.parcelsService.calculatePricing(userId, calculatePricingDto, merchantId);
+    return this.parcelsService.calculatePricing(
+      userId,
+      calculatePricingDto,
+      merchantId,
+    );
   }
 
   @Post()
@@ -56,7 +68,11 @@ export class ParcelsController {
       throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.create(createParcelDto, userId, merchantId);
+    const parcel = await this.parcelsService.create(
+      createParcelDto,
+      userId,
+      merchantId,
+    );
     return {
       id: parcel.id,
       tracking_number: parcel.tracking_number,
@@ -68,10 +84,7 @@ export class ParcelsController {
   @Get()
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async findAll(
-    @CurrentUser() user: any,
-    @Query() query: ParcelQueryDto,
-  ) {
+  async findAll(@CurrentUser() user: any, @Query() query: ParcelQueryDto) {
     const { status, storeId, merchantId, page, limit, sortBy, order } = query;
     // Merchant view - only their parcels
     if (user.role === UserRole.MERCHANT) {
@@ -166,7 +179,12 @@ export class ParcelsController {
       throw new ForbiddenException('userId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.update(id, updateParcelDto, userId, isAdmin);
+    const parcel = await this.parcelsService.update(
+      id,
+      updateParcelDto,
+      userId,
+      isAdmin,
+    );
     return {
       id: parcel.id,
       tracking_number: parcel.tracking_number,
@@ -190,5 +208,60 @@ export class ParcelsController {
 
     const result = await this.parcelsService.remove(id, userId, isAdmin);
     return result;
+  }
+
+  /**
+   * NEW ENDPOINT: Receives raw/noisy bulk data from frontend for heuristic suggestions.
+   * This API performs address resolution and preliminary pricing calculation.
+   */
+  @Post('bulk-suggest')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT)
+  async bulkSuggest(
+    @Body() bulkSuggestDto: BulkSuggestDto,
+    @CurrentUser('merchantId') merchantId: string,
+  ): Promise<{ message: string; results: SuggestionResult[] }> {
+    if (!merchantId)
+      throw new ForbiddenException('Merchant ID missing in auth token');
+
+    const suggestions = await this.parcelsService.getBulkSuggestions(
+      bulkSuggestDto.items,
+      merchantId,
+    );
+
+    return {
+      message: 'Address and pricing suggestions generated successfully.',
+      results: suggestions,
+    };
+  }
+
+  /**
+   * FINAL ENDPOINT: Receives user-confirmed, validated data (with area ID and calculated charge) for final parcel creation.
+   */
+  @Post('bulk-create')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.MERCHANT)
+  async bulkCreateConfirmedBatch(
+    @Body() bulkConfirmedDto: BulkSuggestDto, // Expects the confirmed batch data
+    @CurrentUser('merchantId') merchantId: string,
+  ): Promise<{
+    message: string;
+    summary: { total: number; success: number; failed: number };
+    results: ParcelCreationResult[];
+  }> {
+    if (!merchantId)
+      throw new ForbiddenException('Merchant ID missing in auth token');
+
+    const confirmationResult =
+      await this.parcelsService.bulkCreateConfirmedBatch(
+        bulkConfirmedDto.items,
+        merchantId,
+      );
+
+    return {
+      message: 'Batch parcels created successfully.',
+      summary: confirmationResult.summary,
+      results: confirmationResult.results,
+    };
   }
 }
