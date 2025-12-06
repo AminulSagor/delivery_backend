@@ -11,7 +11,7 @@ const isTs = __filename.endsWith('.ts');
 const databaseUrl = process.env.DATABASE_URL;
 
 // Check if running on Railway
-const isRailway = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
+const isProduction = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -64,11 +64,11 @@ const developmentConfig: DataSourceOptions = {
 };
 
 // Select config based on environment
-export const dataSourceOptions: DataSourceOptions = isRailway ? productionConfig : developmentConfig;
+export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
 
 // Single log line for startup (reduce log spam)
 if (process.env.NODE_ENV !== 'production') {
-  console.log(`[DATABASE] ${isRailway ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
+  console.log(`[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
 }
 
 const dataSource = new DataSource(dataSourceOptions);
