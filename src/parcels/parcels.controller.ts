@@ -24,6 +24,7 @@ import {
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { CalculatePricingDto } from './dto/calculate-pricing.dto';
+import { CalculateTotalPricingDto } from './dto/calculate-total-pricing.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -52,6 +53,29 @@ export class ParcelsController {
     return this.parcelsService.calculatePricing(
       userId,
       calculatePricingDto,
+      merchantId,
+    );
+  }
+
+  /**
+   * Calculate total delivery cost with full breakdown
+   * Returns: Delivery Fee, COD Fee, Weight Charge, Discount, Total Fee
+   */
+  @Post('calculate-total-pricing')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT)
+  calculateTotalPricing(
+    @Body() calculateTotalPricingDto: CalculateTotalPricingDto,
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
+  ) {
+    if (!merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
+    }
+
+    return this.parcelsService.calculateTotalPricing(
+      userId,
+      calculateTotalPricingDto,
       merchantId,
     );
   }

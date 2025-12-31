@@ -42,10 +42,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
-    // Log error for debugging
-    this.logger.error(
-      `${request.method} ${request.url} - Status: ${status} - Message: ${JSON.stringify(message)}`,
-    );
+    // Skip logging for known development tool endpoints
+    const isDevToolEndpoint = request.url.includes('__server_sent_events__') || 
+                               request.url.includes('__webpack') ||
+                               request.url.includes('sockjs-node');
+    
+    // Log error for debugging (skip dev tool 404s)
+    if (!isDevToolEndpoint || status !== HttpStatus.NOT_FOUND) {
+      this.logger.error(
+        `${request.method} ${request.url} - Status: ${status} - Message: ${JSON.stringify(message)}`,
+      );
+    }
 
     response.status(status).json({
       success: false,

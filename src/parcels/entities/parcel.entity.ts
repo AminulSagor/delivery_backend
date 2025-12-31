@@ -18,6 +18,7 @@ import { Hub } from '../../hubs/entities/hub.entity';
 import { ParcelType } from '../../common/enums/parcel-type.enum';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../../common/enums/delivery-provider.enum';
+import { FinancialStatus } from '../../common/enums/financial-status.enum';
 import { ThirdPartyProvider } from '../../third-party-providers/entities/third-party-provider.entity';
 
 export enum ParcelStatus {
@@ -169,6 +170,45 @@ export class Parcel {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   cod_amount: number;
 
+  // ===== FINANCIAL TRACKING (Enhanced for Invoice System) =====
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  cod_collected_amount: number; // Actual collected (from delivery_verification)
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  return_charge: number; // Calculated return charge
+
+  @Column({ type: 'boolean', default: true })
+  delivery_charge_applicable: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  return_charge_applicable: boolean;
+
+  // Financial Status (separate from parcel status)
+  @Column({
+    type: 'enum',
+    enum: FinancialStatus,
+    default: FinancialStatus.PENDING,
+  })
+  financial_status: FinancialStatus;
+
+  // Invoice Linkage (CRITICAL for preventing double payment)
+  @Column({ type: 'uuid', nullable: true })
+  invoice_id: string | null;
+
+  // Clearance Tracking
+  @Column({ type: 'boolean', default: false })
+  clearance_required: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  clearance_done: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  clearance_invoice_id: string | null;
+
+  // Enhanced Payment Tracking
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  paid_amount: number | null; // Actual amount paid in invoice
+
   // ===== STATUS & TRACKING =====
   @Column({
     type: 'enum',
@@ -183,6 +223,13 @@ export class Parcel {
     default: PaymentStatus.UNPAID,
   })
   payment_status: PaymentStatus;
+
+  // ===== MERCHANT PAYMENT TRACKING =====
+  @Column({ type: 'boolean', default: false })
+  paid_to_merchant: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  paid_to_merchant_at: Date | null;
 
   @Column({ type: 'smallint', default: 1 })
   delivery_type: DeliveryType;

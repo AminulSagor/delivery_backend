@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { CoverageAreasService } from './coverage-areas.service';
 import { SearchCoverageAreaDto } from './dto/search-coverage-area.dto';
+import { SuggestCoverageAreaDto } from './dto/suggest-coverage-area.dto';
 import { Public } from '../common/decorators/public.decorator';
 
 @Controller('coverage')
@@ -11,6 +12,17 @@ export class CoverageAreasController {
   @Get('search')
   search(@Query() searchDto: SearchCoverageAreaDto) {
     return this.coverageAreasService.search(searchDto);
+  }
+
+  /**
+   * Autocomplete/Suggest endpoint - searches across all fields with a single query
+   * Usage: GET /coverage/suggest?q=Gul&limit=20
+   * Returns suggestions matching division, city, zone, or area
+   */
+  @Public()
+  @Get('suggest')
+  suggest(@Query() suggestDto: SuggestCoverageAreaDto) {
+    return this.coverageAreasService.suggest(suggestDto);
   }
 
   @Public()

@@ -11,6 +11,8 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { DeliveryVerification, DeliveryVerificationStatus, OtpRecipientType } from './entities/delivery-verification.entity';
 import { Parcel, ParcelStatus, PaymentStatus, REASON_REQUIRED_STATUSES } from '../parcels/entities/parcel.entity';
+import { ReturnChargeConfiguration, ReturnStatus } from '../pricing/entities/return-charge-configuration.entity';
+import { PricingZone } from '../common/enums/pricing-zone.enum';
 import { SmsService } from '../utils/sms.service';
 
 @Injectable()
@@ -22,6 +24,8 @@ export class DeliveryVerificationsService {
     private readonly deliveryVerificationRepo: Repository<DeliveryVerification>,
     @InjectRepository(Parcel)
     private readonly parcelRepo: Repository<Parcel>,
+    @InjectRepository(ReturnChargeConfiguration)
+    private readonly returnChargeConfigRepo: Repository<ReturnChargeConfiguration>,
     private readonly smsService: SmsService,
   ) {}
 
@@ -111,7 +115,8 @@ export class DeliveryVerificationsService {
     if (otpRecipientType === OtpRecipientType.CUSTOMER) {
       otpPhone = parcel.customer_phone;
     } else {
-      otpPhone = parcel.store?.phone_number || null;
+      // Use merchant owner's phone, not store's phone
+      otpPhone = parcel.store?.merchant?.user?.phone || null;
     }
 
     if (!otpPhone) {
@@ -134,7 +139,7 @@ export class DeliveryVerificationsService {
       requires_otp_verification: true,
       otp_recipient_type: otpRecipientType,
       otp_sent_to_phone: otpPhone,
-      merchant_phone_used: parcel.store?.phone_number || null,
+      merchant_phone_used: parcel.store?.merchant?.user?.phone || null,
       customer_phone_used: parcel.customer_phone || null,
       verification_status: DeliveryVerificationStatus.PENDING,
       delivery_attempted_at: new Date(),
@@ -512,32 +517,92 @@ export class DeliveryVerificationsService {
   }
 
   /**
-   * Complete delivery - Update parcel status to selected status
+   * Complete delivery - Update parcel status and financial fields
    */
   private async completeDelivery(verificationId: string) {
     const verification = await this.deliveryVerificationRepo.findOne({
       where: { id: verificationId },
-      relations: ['parcel'],
+      relations: ['parcel', 'parcel.store', 'parcel.delivery_coverage_area'],
     });
 
     if (!verification) {
       throw new NotFoundException('Verification not found');
     }
 
-    // Update parcel status to the selected status
-    verification.parcel.status = verification.selected_status;
-    verification.parcel.delivered_at = new Date();
+    const parcel = verification.parcel;
+    const selectedStatus = verification.selected_status;
+    const collectedAmount = Number(verification.collected_amount) || 0;
 
-    // Update payment status based on selected status
-    if (verification.selected_status === ParcelStatus.DELIVERED ||
-        verification.selected_status === ParcelStatus.PARTIAL_DELIVERY ||
-        verification.selected_status === ParcelStatus.EXCHANGE) {
-      verification.parcel.payment_status = PaymentStatus.COD_COLLECTED;
-    } else if (verification.selected_status === ParcelStatus.PAID_RETURN) {
-      verification.parcel.payment_status = PaymentStatus.COD_COLLECTED;
+    // Update parcel status
+    parcel.status = selectedStatus;
+    parcel.delivered_at = new Date();
+    
+    // ✅ FLAG: Mark parcel as UNPAID to merchant (will appear in clearance list)
+    parcel.paid_to_merchant = false;
+
+    // ✅ UPDATE FINANCIAL FIELDS based on delivery outcome
+    switch (selectedStatus) {
+      case ParcelStatus.DELIVERED:
+        // Full delivery - COD collected, delivery charge applies, no return charge
+        parcel.cod_collected_amount = collectedAmount;
+        parcel.delivery_charge_applicable = true;
+        parcel.return_charge_applicable = false;
+        parcel.return_charge = 0;
+        parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        break;
+
+      case ParcelStatus.PARTIAL_DELIVERY:
+        // Partial delivery - partial COD, both delivery and return charges apply
+        parcel.cod_collected_amount = collectedAmount;
+        parcel.delivery_charge_applicable = true;
+        parcel.return_charge_applicable = true;
+        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.PARTIAL_DELIVERY);
+        parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        break;
+
+      case ParcelStatus.EXCHANGE:
+        // Exchange - may have partial COD, both charges apply
+        parcel.cod_collected_amount = collectedAmount;
+        parcel.delivery_charge_applicable = true;
+        parcel.return_charge_applicable = true;
+        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.EXCHANGE);
+        parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        break;
+
+      case ParcelStatus.PAID_RETURN:
+        // Paid return - return fee collected, no delivery charge, return charge applies
+        parcel.cod_collected_amount = collectedAmount; // Return fee collected
+        parcel.delivery_charge_applicable = false;
+        parcel.return_charge_applicable = true;
+        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.PAID_RETURN);
+        parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        break;
+
+      case ParcelStatus.RETURNED:
+        // Full return - no COD, no delivery charge, return charge applies
+        parcel.cod_collected_amount = 0;
+        parcel.delivery_charge_applicable = false;
+        parcel.return_charge_applicable = true;
+        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.RETURNED);
+        parcel.payment_status = PaymentStatus.UNPAID; // No payment collected
+        break;
+
+      case ParcelStatus.DELIVERY_RESCHEDULED:
+        // Rescheduled - no financial changes yet
+        parcel.cod_collected_amount = 0;
+        parcel.delivery_charge_applicable = false;
+        parcel.return_charge_applicable = false;
+        parcel.return_charge = 0;
+        parcel.payment_status = PaymentStatus.UNPAID; // Pending delivery
+        break;
+
+      default:
+        // For any other status, just update basic fields
+        parcel.cod_collected_amount = collectedAmount;
+        break;
     }
 
-    await this.parcelRepo.save(verification.parcel);
+    await this.parcelRepo.save(parcel);
 
     // Update verification
     verification.delivery_completed_at = new Date();
@@ -545,9 +610,80 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     this.logger.log(
-      `[DELIVERY COMPLETED] Parcel: ${verification.parcel.tracking_number}, ` +
-      `Status: ${verification.selected_status}, Collected: ${verification.collected_amount}`,
+      `[DELIVERY COMPLETED] Parcel: ${parcel.tracking_number}, ` +
+      `Status: ${selectedStatus}, Collected: ${collectedAmount}, ` +
+      `DeliveryCharge: ${parcel.delivery_charge_applicable}, ` +
+      `ReturnCharge: ${parcel.return_charge_applicable} (${parcel.return_charge})`,
     );
+  }
+
+  /**
+   * Calculate return charge based on store configuration and parcel zone
+   */
+  private async calculateReturnCharge(parcel: Parcel, returnStatus: ReturnStatus): Promise<number> {
+    if (!parcel.store_id) {
+      return 0;
+    }
+
+    // Determine pricing zone based on delivery area
+    const zone = this.determinePricingZone(parcel);
+
+    // Look up return charge configuration for this store, status, and zone
+    const config = await this.returnChargeConfigRepo.findOne({
+      where: {
+        store_id: parcel.store_id,
+        return_status: returnStatus,
+        zone: zone,
+      },
+    });
+
+    if (!config) {
+      // No specific config found, try to find a default or return 0
+      this.logger.warn(
+        `No return charge config found for store ${parcel.store_id}, status ${returnStatus}, zone ${zone}`,
+      );
+      return 0;
+    }
+
+    // Calculate return charge
+    const baseCharge = Number(config.return_delivery_charge) || 0;
+    const weightCharge = (Number(config.return_weight_charge_per_kg) || 0) * (Number(parcel.product_weight) || 0);
+    const codPercentage = Number(config.return_cod_percentage) || 0;
+    const codCharge = (codPercentage / 100) * (Number(parcel.cod_amount) || 0);
+
+    let totalCharge = baseCharge + weightCharge + codCharge;
+
+    // Apply discount if applicable
+    if (config.discount_percentage) {
+      const discount = (Number(config.discount_percentage) / 100) * totalCharge;
+      totalCharge -= discount;
+    }
+
+    return Math.round(totalCharge * 100) / 100; // Round to 2 decimal places
+  }
+
+  /**
+   * Determine pricing zone based on parcel's delivery area
+   */
+  private determinePricingZone(parcel: Parcel): PricingZone {
+    // Check if delivery coverage area has zone info
+    if (parcel.delivery_coverage_area) {
+      const division = parcel.delivery_coverage_area.division?.toLowerCase() || '';
+      const city = parcel.delivery_coverage_area.city?.toLowerCase() || '';
+
+      // Dhaka divisions
+      if (division === 'dhaka' || city === 'dhaka') {
+        // Check if it's sub-dhaka (like Gazipur, Narayanganj, etc.)
+        const subDhakaAreas = ['gazipur', 'narayanganj', 'savar', 'tongi', 'keraniganj'];
+        if (subDhakaAreas.some(area => city.includes(area))) {
+          return PricingZone.SUB_DHAKA;
+        }
+        return PricingZone.INSIDE_DHAKA;
+      }
+    }
+
+    // Default to outside Dhaka
+    return PricingZone.OUTSIDE_DHAKA;
   }
 
   /**
