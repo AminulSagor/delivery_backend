@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CoverageArea } from './entities/coverage-area.entity';
 import { SearchCoverageAreaDto } from './dto/search-coverage-area.dto';
+import { SuggestCoverageAreaDto } from './dto/suggest-coverage-area.dto';
 
 @Injectable()
 export class CoverageAreasService {
@@ -140,5 +141,105 @@ export class CoverageAreasService {
     });
 
     return !!area;
+  }
+
+  /**
+   * Autocomplete/Suggest coverage areas by searching across all fields
+   * Searches in division, city, zone, and area fields
+   */
+  async suggest(suggestDto: SuggestCoverageAreaDto): Promise<{
+    suggestions: Array<{
+      id: string;
+      division: string;
+      city: string;
+      city_id: number;
+      zone: string;
+      zone_id: number;
+      area: string;
+      area_id: number;
+      match_field: string;
+      full_address: string;
+    }>;
+    total: number;
+  }> {
+    const { q, limit = 20 } = suggestDto;
+    const searchTerm = q.toLowerCase().trim();
+
+    const query = this.coverageAreaRepository.createQueryBuilder('coverage');
+
+    // Search across all fields: division, city, zone, area
+    query.where(
+      `(
+        LOWER(coverage.division) LIKE :searchTerm OR
+        LOWER(coverage.city) LIKE :searchTerm OR
+        LOWER(coverage.zone) LIKE :searchTerm OR
+        LOWER(coverage.area) LIKE :searchTerm
+      )`,
+      { searchTerm: `%${searchTerm}%` },
+    );
+
+    // Order by relevance: exact matches first, then partial matches
+    // Prioritize area matches, then zone, then city, then division
+    query.orderBy(
+      `CASE 
+        WHEN LOWER(coverage.area) LIKE :exactStart THEN 1
+        WHEN LOWER(coverage.zone) LIKE :exactStart THEN 2
+        WHEN LOWER(coverage.city) LIKE :exactStart THEN 3
+        WHEN LOWER(coverage.division) LIKE :exactStart THEN 4
+        WHEN LOWER(coverage.area) LIKE :searchTerm THEN 5
+        WHEN LOWER(coverage.zone) LIKE :searchTerm THEN 6
+        WHEN LOWER(coverage.city) LIKE :searchTerm THEN 7
+        ELSE 8
+      END`,
+      'ASC',
+    );
+    query.setParameter('exactStart', `${searchTerm}%`);
+    query.setParameter('searchTerm', `%${searchTerm}%`);
+
+    // Secondary sort by area name
+    query.addOrderBy('coverage.area', 'ASC');
+
+    // Limit results
+    query.limit(limit);
+
+    const results = await query.getMany();
+
+    // Transform results to include match field info
+    const suggestions = results.map((coverage) => {
+      let match_field = 'area';
+      const searchLower = searchTerm.toLowerCase();
+      
+      if (coverage.area.toLowerCase().includes(searchLower)) {
+        match_field = 'area';
+      } else if (coverage.zone.toLowerCase().includes(searchLower)) {
+        match_field = 'zone';
+      } else if (coverage.city.toLowerCase().includes(searchLower)) {
+        match_field = 'city';
+      } else if (coverage.division.toLowerCase().includes(searchLower)) {
+        match_field = 'division';
+      }
+
+      return {
+        id: coverage.id,
+        division: coverage.division,
+        city: coverage.city,
+        city_id: coverage.city_id,
+        zone: coverage.zone,
+        zone_id: coverage.zone_id,
+        area: coverage.area,
+        area_id: coverage.area_id,
+        match_field,
+        full_address: `${coverage.area}, ${coverage.zone}, ${coverage.city}, ${coverage.division}`,
+      };
+    });
+
+    console.log(
+      `[COVERAGE SUGGEST] Found ${suggestions.length} suggestions for query "${q}"`,
+    );
+
+    return {
+      suggestions,
+      total: suggestions.length,
+    };
   }
 }

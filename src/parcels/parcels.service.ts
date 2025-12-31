@@ -24,6 +24,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { PricingZone } from '../common/enums/pricing-zone.enum';
 import { CustomerService } from '../customer/customer.service';
 import { CalculatePricingDto } from './dto/calculate-pricing.dto';
+import { CalculateTotalPricingDto } from './dto/calculate-total-pricing.dto';
 import { PickupRequestsService } from '../pickup-requests/pickup-requests.service';
 import { Rider } from '../riders/entities/rider.entity';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
@@ -882,6 +883,171 @@ export class ParcelsService {
     }
   }
 
+  /**
+   * Calculate total delivery cost with detailed breakdown
+   * Returns: Delivery Fee, COD Fee, Weight Charge, Discount, Total Fee
+   */
+  async calculateTotalPricing(
+    userId: string,
+    calculateDto: CalculateTotalPricingDto,
+    merchantId?: string,
+  ): Promise<{
+    zone: string;
+    delivery_fee: number;
+    cod_fee: number;
+    weight_charge: number;
+    discount: number;
+    total_fee: number;
+    breakdown: {
+      base_delivery_charge: number;
+      weight_charge_per_kg: number;
+      cod_percentage: number;
+      discount_percentage: number | null;
+      weight_kg: number;
+      quantity: number;
+      cod_amount: number;
+    };
+  }> {
+    try {
+      if (!userId) throw new ForbiddenException('User ID (userId) is required');
+      
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(calculateDto.store_id))
+        throw new BadRequestException('Invalid store ID format');
+      if (!uuidRegex.test(calculateDto.delivery_coverage_area_id))
+        throw new BadRequestException(
+          'Invalid delivery coverage area ID format',
+        );
+
+      // Default values
+      const weight = calculateDto.weight ?? 0.5;
+      const quantity = calculateDto.quantity ?? 1;
+      const codAmount = calculateDto.cod_amount ?? 0;
+
+      // If merchantId not provided (backward compatibility), fetch it
+      if (!merchantId) {
+        const merchant = await this.merchantRepository.findOne({
+          where: { user_id: userId },
+        });
+        if (!merchant)
+          throw new NotFoundException(
+            'Merchant profile not found for this user. Please contact support.',
+          );
+        merchantId = merchant.id;
+      }
+
+      // Validate store belongs to merchant
+      const store = await this.storeRepository.findOne({
+        where: { id: calculateDto.store_id, merchant_id: merchantId },
+      });
+      if (!store)
+        throw new NotFoundException(
+          'Store not found or does not belong to this merchant.',
+        );
+
+      const deliveryArea = await this.coverageAreaRepository.findOne({
+        where: { id: calculateDto.delivery_coverage_area_id },
+      });
+      if (!deliveryArea)
+        throw new NotFoundException(
+          `Delivery coverage area not found. Please select a valid delivery area.`,
+        );
+
+      const pricingZone = this.determinePricingZone(deliveryArea);
+      const pricingConfig = await this.pricingService.getActivePricing(
+        calculateDto.store_id,
+        pricingZone,
+      );
+
+      // Default pricing values
+      let baseDeliveryCharge = 60;
+      let weightChargePerKg = 10;
+      let codPercentage = 1.0;
+      let discountPercentage: number | null = null;
+
+      if (pricingConfig) {
+        baseDeliveryCharge = Number(pricingConfig.delivery_charge);
+        weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
+        codPercentage = Number(pricingConfig.cod_percentage);
+        discountPercentage = pricingConfig.discount_percentage
+          ? Number(pricingConfig.discount_percentage)
+          : null;
+      } else {
+        // Fallback pricing based on zone
+        if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
+          baseDeliveryCharge = 120;
+          weightChargePerKg = 25;
+          codPercentage = 2.5;
+        } else if (pricingZone === PricingZone.SUB_DHAKA) {
+          baseDeliveryCharge = 80;
+          weightChargePerKg = 20;
+          codPercentage = 2.0;
+        }
+      }
+
+      // Calculate fees
+      const deliveryFee = baseDeliveryCharge;
+      
+      // COD fee: percentage of COD amount
+      const codFee = codAmount > 0 
+        ? Math.round((codAmount * codPercentage / 100) * 100) / 100 
+        : 0;
+
+      // Weight charge: charge per kg for weight above 0.5kg (first 0.5kg is included in base)
+      const chargeableWeight = Math.max(0, weight - 0.5);
+      const weightCharge = Math.round(chargeableWeight * weightChargePerKg * 100) / 100;
+
+      // Subtotal before discount
+      const subtotal = deliveryFee + codFee + weightCharge;
+
+      // Discount: percentage of subtotal
+      const discount = discountPercentage 
+        ? Math.round((subtotal * discountPercentage / 100) * 100) / 100 
+        : 0;
+
+      // Total fee
+      const totalFee = Math.round((subtotal - discount) * 100) / 100;
+
+      this.logger.log(
+        `[TOTAL PRICING] Zone: ${pricingZone}, Delivery: ৳${deliveryFee}, ` +
+        `COD: ৳${codFee}, Weight: ৳${weightCharge}, Discount: -৳${discount}, Total: ৳${totalFee}`,
+      );
+
+      return {
+        zone: pricingZone,
+        delivery_fee: deliveryFee,
+        cod_fee: codFee,
+        weight_charge: weightCharge,
+        discount: discount,
+        total_fee: totalFee,
+        breakdown: {
+          base_delivery_charge: baseDeliveryCharge,
+          weight_charge_per_kg: weightChargePerKg,
+          cod_percentage: codPercentage,
+          discount_percentage: discountPercentage,
+          weight_kg: weight,
+          quantity: quantity,
+          cod_amount: codAmount,
+        },
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      this.logger.error(
+        `[CALCULATE TOTAL PRICING ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to calculate total pricing. Please try again.',
+      );
+    }
+  }
+
   async findAll(
     page: number = 1,
     limit: number = 20,
@@ -1292,18 +1458,23 @@ export class ParcelsService {
     assignDto: AssignParcelToRiderDto,
     hubId: string,
   ) {
-    // Find parcel with pickup request to verify hub
+    // Find parcel - load all required fields to avoid null constraint issues
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
-      relations: ['merchant', 'customer', 'pickupRequest'],
+      relations: ['merchant', 'customer', 'store'],
     });
 
     if (!parcel) {
       throw new NotFoundException('Parcel not found');
     }
 
-    // Verify parcel is in the hub manager's hub (through pickup request)
-    if (!parcel.pickupRequest || parcel.pickupRequest.hub_id !== hubId) {
+    // Verify parcel has merchant_id (required field)
+    if (!parcel.merchant_id) {
+      throw new BadRequestException('Parcel has invalid merchant data');
+    }
+
+    // Verify parcel is in the hub manager's hub (check current_hub_id)
+    if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
       throw new ForbiddenException('You can only assign parcels from your hub');
     }
 
@@ -1339,18 +1510,28 @@ export class ParcelsService {
       throw new BadRequestException('Rider must belong to your hub');
     }
 
-    // Assign parcel to rider
-    parcel.assigned_rider_id = rider.id;
-    parcel.assigned_at = new Date();
-    parcel.status = ParcelStatus.ASSIGNED_TO_RIDER;
+    // Assign parcel to rider - use update to avoid relation loading issues
+    await this.parcelRepository.update(parcelId, {
+      assigned_rider_id: rider.id,
+      assigned_at: new Date(),
+      status: ParcelStatus.ASSIGNED_TO_RIDER,
+    });
 
-    await this.parcelRepository.save(parcel);
+    // Reload parcel with updated data
+    const updatedParcel = await this.parcelRepository.findOne({
+      where: { id: parcelId },
+      relations: ['merchant', 'customer', 'store'],
+    });
+
+    if (!updatedParcel) {
+      throw new NotFoundException('Parcel not found after update');
+    }
 
     this.logger.log(
-      `[PARCEL ASSIGNED] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`,
+      `[PARCEL ASSIGNED] Parcel: ${updatedParcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`,
     );
 
-    return parcel;
+    return updatedParcel;
   }
 
   /**

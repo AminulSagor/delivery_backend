@@ -358,11 +358,11 @@ export class RidersService {
    * 1. PICKUPS: Parcels assigned to rider, waiting to be picked from hub
    *    - Status: ASSIGNED_TO_RIDER
    * 2. DELIVERIES: Parcels rider has picked up and is delivering to customer
-   *    - Status: OUT_FOR_DELIVERY
+   *    - Pending: OUT_FOR_DELIVERY
+   *    - Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED
    * 3. RETURNS: Parcels that failed delivery and need to be returned to hub
-   *    - Status: FAILED_DELIVERY
-   * 4. COMPLETED: Successfully delivered or returned
-   *    - Status: DELIVERED, RETURNED_TO_HUB
+   *    - Pending: RETURNED, PAID_RETURN
+   *    - Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   async getRiderDashboard(riderId: string) {
     // Verify rider exists
@@ -383,30 +383,51 @@ export class RidersService {
       },
     });
 
-    // ===== DELIVERIES: Parcels rider has and is delivering =====
-    const outForDelivery = await this.parcelRepository.count({
+    // ===== DELIVERIES: Pending (OUT_FOR_DELIVERY) + Completed (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, RESCHEDULED) =====
+    const pendingDeliveries = await this.parcelRepository.count({
       where: { 
         assigned_rider_id: riderId,
         status: ParcelStatus.OUT_FOR_DELIVERY,
       },
     });
 
-    // ===== RETURNS: Parcels that failed, need to return to hub =====
-    const failedDelivery = await this.parcelRepository.count({
-      where: { 
-        assigned_rider_id: riderId,
-        status: ParcelStatus.RETURNED,
-      },
+    const completedDeliveries = await this.parcelRepository.count({
+      where: [
+        { assigned_rider_id: riderId, status: ParcelStatus.DELIVERED },
+        { assigned_rider_id: riderId, status: ParcelStatus.PARTIAL_DELIVERY },
+        { assigned_rider_id: riderId, status: ParcelStatus.EXCHANGE },
+        { assigned_rider_id: riderId, status: ParcelStatus.DELIVERY_RESCHEDULED },
+      ],
     });
 
+    // ===== RETURNS: Pending (RETURNED, PAID_RETURN) + Completed (RETURNED_TO_HUB, RETURN_TO_MERCHANT) =====
+    const pendingReturns = await this.parcelRepository.count({
+      where: [
+        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED },
+        { assigned_rider_id: riderId, status: ParcelStatus.PAID_RETURN },
+      ],
+    });
+
+    const completedReturns = await this.parcelRepository.count({
+      where: [
+        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED_TO_HUB },
+        { assigned_rider_id: riderId, status: ParcelStatus.RETURN_TO_MERCHANT },
+      ],
+    });
 
     return {
       rider: {
         id: rider.id,
       },
       total_pickups: pickupsFromHub,
-      total_deliveries: outForDelivery,
-      total_returns: failedDelivery,
+      // Deliveries section
+      pending_deliveries: pendingDeliveries,
+      completed_deliveries: completedDeliveries,
+      total_deliveries: pendingDeliveries + completedDeliveries,
+      // Returns section
+      pending_returns: pendingReturns,
+      completed_returns: completedReturns,
+      total_returns: pendingReturns + completedReturns,
     };
   }
 }

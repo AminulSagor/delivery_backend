@@ -11,13 +11,27 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Req,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as path from 'path';
+import * as fs from 'fs';
 import { HubsService } from './hubs.service';
 import { ParcelsService } from '../parcels/parcels.service';
 import { CreateHubDto } from './dto/create-hub.dto';
 import { UpdateHubDto } from './dto/update-hub.dto';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { TransferParcelDto } from '../parcels/dto/transfer-parcel.dto';
+import { RecordSettlementDto } from './dto/record-settlement.dto';
+import { CalculateSettlementDto } from './dto/calculate-settlement.dto';
+import { SettlementQueryDto } from './dto/settlement-query.dto';
+import { CreateTransferRecordDto } from './dto/create-transfer-record.dto';
+import { UpdateTransferRecordDto } from './dto/update-transfer-record.dto';
+import { TransferRecordQueryDto } from './dto/transfer-record-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -31,6 +45,39 @@ import {
   toParcelListItem,
   toParcelActionResponse,
 } from '../common/interfaces/responses.interface';
+
+// File storage configuration for transfer proofs
+const transferProofStorage = diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = './uploads/transfer-proofs';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, `transfer-${uniqueSuffix}${ext}`);
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'application/pdf',
+  ];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new BadRequestException('Only JPG, PNG, and PDF files are allowed'),
+      false,
+    );
+  }
+};
 
 @Controller('hubs')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -424,6 +471,124 @@ export class HubsController {
     };
   }
 
+  // ===== RIDER SETTLEMENT ENDPOINTS =====
+
+  /**
+   * Get riders list for settlement selection
+   */
+  @Get('riders')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getHubRiders(@CurrentUser() user: any) {
+    const riders = await this.hubsService.getHubRiders(user.hubId);
+    return {
+      success: true,
+      data: { riders },
+      message: 'Riders retrieved successfully',
+    };
+  }
+
+  /**
+   * Get rider settlement details
+   */
+  @Get('riders/:riderId/settlement')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRiderSettlementDetails(
+    @Param('riderId', ParseUUIDPipe) riderId: string,
+    @CurrentUser() user: any,
+  ) {
+    const details = await this.hubsService.getRiderSettlementDetails(
+      riderId,
+      user.hubId,
+    );
+    return {
+      success: true,
+      data: details,
+      message: 'Settlement details retrieved successfully',
+    };
+  }
+
+  /**
+   * Calculate settlement discrepancy (real-time preview)
+   */
+  @Post('riders/:riderId/settlement/calculate')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async calculateSettlementDiscrepancy(
+    @Param('riderId', ParseUUIDPipe) riderId: string,
+    @Body() dto: CalculateSettlementDto,
+    @CurrentUser() user: any,
+  ) {
+    const calculation = await this.hubsService.calculateSettlementDiscrepancy(
+      riderId,
+      user.hubId,
+      dto.cash_received,
+    );
+    return {
+      success: true,
+      data: calculation,
+      message: 'Settlement calculation completed',
+    };
+  }
+
+  /**
+   * Record settlement transaction
+   */
+  @Post('riders/:riderId/settlement/record')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async recordSettlement(
+    @Param('riderId', ParseUUIDPipe) riderId: string,
+    @Body() dto: RecordSettlementDto,
+    @CurrentUser() user: any,
+  ) {
+    const settlement = await this.hubsService.recordSettlement(
+      riderId,
+      user.hubId,
+      user.hubManagerId,
+      dto.cash_received,
+    );
+    return {
+      success: true,
+      data: {
+        settlement_id: settlement.id,
+        rider_id: settlement.rider_id,
+        total_collected_amount: Number(settlement.total_collected_amount),
+        cash_received: Number(settlement.cash_received),
+        discrepancy_amount: Number(settlement.discrepancy_amount),
+        previous_due_amount: Number(settlement.previous_due_amount),
+        new_due_amount: Number(settlement.new_due_amount),
+        settlement_status: settlement.settlement_status,
+        settled_at: settlement.settled_at,
+      },
+      message: 'Settlement recorded successfully',
+    };
+  }
+
+  /**
+   * Get settlement history for a rider
+   */
+  @Get('riders/:riderId/settlement/history')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRiderSettlementHistory(
+    @Param('riderId', ParseUUIDPipe) riderId: string,
+    @Query() query: SettlementQueryDto,
+    @CurrentUser() user: any,
+  ) {
+    const history = await this.hubsService.getRiderSettlementHistory(
+      riderId,
+      user.hubId,
+      query,
+    );
+    return {
+      success: true,
+      data: history,
+      message: 'Settlement history retrieved successfully',
+    };
+  }
+
   // ===== ADMIN DYNAMIC :id ROUTES (must be last to avoid matching specific routes) =====
   @Roles(UserRole.ADMIN)
   @Get(':id')
@@ -458,6 +623,149 @@ export class HubsController {
     await this.hubsService.remove(id);
     return {
       message: 'Hub deleted successfully',
+    };
+  }
+
+  // ===== HUB TRANSFER RECORDS =====
+
+  /**
+   * Create transfer record
+   */
+  @Post('transfer-records')
+  @Roles(UserRole.HUB_MANAGER)
+  @UseInterceptors(
+    FileInterceptor('proof', {
+      storage: transferProofStorage,
+      fileFilter: fileFilter,
+      limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async createTransferRecord(
+    @Body() dto: CreateTransferRecordDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Proof file is required');
+    }
+
+    const hubManagerId = req.user.hubManagerId;
+    const record = await this.hubsService.createTransferRecord(
+      hubManagerId,
+      dto,
+      file,
+    );
+
+    return {
+      success: true,
+      data: { transfer_record: record },
+      message: 'Transfer record created successfully',
+    };
+  }
+
+  /**
+   * Get hub manager's transfer records
+   */
+  @Get('transfer-records')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getMyTransferRecords(
+    @Query() query: TransferRecordQueryDto,
+    @Req() req: any,
+  ) {
+    const hubManagerId = req.user.hubManagerId;
+    const { records, total } =
+      await this.hubsService.getHubManagerTransferRecords(hubManagerId, query);
+
+    return {
+      success: true,
+      data: {
+        records,
+        pagination: {
+          total,
+          page: query.page || 1,
+          limit: query.limit || 10,
+          totalPages: Math.ceil(total / (query.limit || 10)),
+        },
+      },
+      message: 'Transfer records retrieved successfully',
+    };
+  }
+
+  /**
+   * Get single transfer record
+   */
+  @Get('transfer-records/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getTransferRecordById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    const hubManagerId = req.user.hubManagerId;
+    const record = await this.hubsService.getTransferRecordById(
+      id,
+      hubManagerId,
+    );
+
+    return {
+      success: true,
+      data: { transfer_record: record },
+      message: 'Transfer record retrieved successfully',
+    };
+  }
+
+  /**
+   * Update transfer record
+   */
+  @Patch('transfer-records/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  @UseInterceptors(
+    FileInterceptor('proof', {
+      storage: transferProofStorage,
+      fileFilter: fileFilter,
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  @HttpCode(HttpStatus.OK)
+  async updateTransferRecord(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTransferRecordDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    const hubManagerId = req.user.hubManagerId;
+    const record = await this.hubsService.updateTransferRecord(
+      id,
+      hubManagerId,
+      dto,
+      file,
+    );
+
+    return {
+      success: true,
+      data: { transfer_record: record },
+      message: 'Transfer record updated successfully',
+    };
+  }
+
+  /**
+   * Delete transfer record
+   */
+  @Delete('transfer-records/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async deleteTransferRecord(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    const hubManagerId = req.user.hubManagerId;
+    await this.hubsService.deleteTransferRecord(id, hubManagerId);
+
+    return {
+      success: true,
+      message: 'Transfer record deleted successfully',
     };
   }
 }
