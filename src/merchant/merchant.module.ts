@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MerchantService } from './merchant.service';
 import { MerchantController } from './merchant.controller';
@@ -14,6 +14,7 @@ import { SmsService } from '../utils/sms.service';
 import { MerchantInvoiceController } from './controllers/merchant-invoice.controller';
 import { MerchantInvoiceService } from './services/merchant-invoice.service';
 import { InvoiceCalculationService } from './services/invoice-calculation.service';
+import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { InvoiceCalculationService } from './services/invoice-calculation.servic
       User,
     ]),
     UsersModule,
+    forwardRef(() => MerchantFinanceModule),
   ],
   providers: [
     MerchantService,

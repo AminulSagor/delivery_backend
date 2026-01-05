@@ -20,6 +20,7 @@ import { DeliveryVerificationsModule } from './delivery-verifications/delivery-v
 import { ThirdPartyProvidersModule } from './third-party-providers/third-party-providers.module';
 import { CarrybeeModule } from './carrybee/carrybee.module';
 import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations.module';
+import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 
 
 @Module({
@@ -45,6 +46,7 @@ import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations
     ThirdPartyProvidersModule,
     CarrybeeModule,
     CarrybeeLocationsModule,
+    MerchantFinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

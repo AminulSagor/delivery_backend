@@ -32,6 +32,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
+import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
 
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -164,6 +165,56 @@ export class ParcelsController {
       parcels: result.items,
       pagination: result.pagination,
       message: 'Parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Get today's parcel summary for merchant
+   * Shows count and total COD amount for each status category
+   * GET /parcels/today-summary
+   */
+  @Get('today-summary')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT)
+  async getTodaySummary(
+    @CurrentUser('userId') userId: string,
+    @Query() query: TodaySummaryQueryDto,
+  ) {
+    if (!userId) {
+      throw new ForbiddenException('userId missing in auth token');
+    }
+
+    const summary = await this.parcelsService.getTodaySummary(
+      userId,
+      query.date,
+    );
+
+    return {
+      success: true,
+      data: summary,
+      message: "Today's parcel summary retrieved successfully",
+    };
+  }
+
+  /**
+   * Get lifetime parcel summary for merchant
+   * Shows count and total COD amount for each status category (all time)
+   * GET /parcels/lifetime-summary
+   */
+  @Get('lifetime-summary')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT)
+  async getLifetimeSummary(@CurrentUser('userId') userId: string) {
+    if (!userId) {
+      throw new ForbiddenException('userId missing in auth token');
+    }
+
+    const summary = await this.parcelsService.getLifetimeSummary(userId);
+
+    return {
+      success: true,
+      data: summary,
+      message: 'Lifetime parcel summary retrieved successfully',
     };
   }
 

@@ -81,6 +81,14 @@ export class MerchantService {
     merchantId: string,
     adminId: string,
   ): Promise<Merchant> {
+    // Validate admin user exists (prevents FK constraint violation)
+    const adminUser = await this.usersService.findById(adminId);
+    if (!adminUser) {
+      throw new NotFoundException(
+        `Admin user with ID ${adminId} not found. Please ensure you are logged in with a valid admin account.`,
+      );
+    }
+
     const merchant = await this.merchantRepository.findOne({
       where: { id: merchantId },
       relations: ['user'],
