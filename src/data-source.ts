@@ -23,7 +23,7 @@ const baseConfig = {
     ? [path.join(__dirname, 'migrations/*.ts')]
     : ['dist/migrations/*.js'],
   synchronize: false,
-  logging: false, // Disable TypeORM query logging to reduce log spam
+  logging: false,
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
@@ -33,18 +33,13 @@ const productionConfig: DataSourceOptions = databaseUrl
       url: databaseUrl,
       ssl: { rejectUnauthorized: false },
       extra: {
-        // Connection pool settings
-        max: 5, // Reduced pool size for Railway
+        max: 5,
         min: 1,
-        idleTimeoutMillis: 60000, // 60 seconds idle timeout
-        connectionTimeoutMillis: 30000, // 30 seconds connection timeout
-        // Keep-alive settings to prevent connection drops
+        idleTimeoutMillis: 60000,
+        connectionTimeoutMillis: 30000,
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
       },
-      // Retry settings
-      retryAttempts: 5,
-      retryDelay: 3000, // 3 seconds between retries
     }
   : {
       ...baseConfig,
@@ -62,8 +57,6 @@ const productionConfig: DataSourceOptions = databaseUrl
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
       },
-      retryAttempts: 5,
-      retryDelay: 3000,
     };
 
 // Local development config: Use individual connection parameters
