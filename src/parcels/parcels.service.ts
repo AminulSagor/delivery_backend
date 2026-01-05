@@ -120,6 +120,337 @@ export class ParcelsService {
     return PricingZone.OUTSIDE_DHAKA;
   }
 
+  /**
+   * Get today's parcel summary for merchant
+   * Shows count and total COD amount for each status category
+   */
+  async getTodaySummary(
+    merchantId: string,
+    date?: string,
+  ): Promise<{
+    date: string;
+    summary: {
+      new_parcels: { count: number; amount: number };
+      pickup: { count: number; amount: number };
+      in_transit: { count: number; amount: number };
+      assigned: { count: number; amount: number };
+      out_for_delivery: { count: number; amount: number };
+      delivered: { count: number; amount: number };
+      delivery_rescheduled: { count: number; amount: number };
+      returned: { count: number; amount: number };
+      cancelled: { count: number; amount: number };
+    };
+    total: { count: number; amount: number };
+  }> {
+    // Use provided date or default to today
+    const targetDate = date ? new Date(date) : new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Helper function to calculate count and amount
+    const calculateStats = async (
+      whereCondition: FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[],
+    ): Promise<{ count: number; amount: number }> => {
+      const parcels = await this.parcelRepository.find({
+        where: whereCondition,
+        select: ['id', 'cod_amount'],
+      });
+
+      return {
+        count: parcels.length,
+        amount: parcels.reduce((sum, p) => sum + (Number(p.cod_amount) || 0), 0),
+      };
+    };
+
+    // 1. New Parcels (PENDING, created today)
+    const newParcels = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.PENDING,
+      created_at: Between(startOfDay, endOfDay),
+    });
+
+    // 2. Pickup (PICKED_UP, OUT_FOR_PICKUP - picked up today)
+    const pickup = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PICKED_UP,
+        picked_up_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.OUT_FOR_PICKUP,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+    ]);
+
+    // 3. In Transit (IN_TRANSIT, IN_HUB - in transit today)
+    const inTransit = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.IN_TRANSIT,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.IN_HUB,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+    ]);
+
+    // 4. Assigned (ASSIGNED_TO_RIDER, ASSIGNED_TO_THIRD_PARTY - assigned today)
+    const assigned = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.ASSIGNED_TO_RIDER,
+        assigned_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+        assigned_at: Between(startOfDay, endOfDay),
+      },
+    ]);
+
+    // 5. Out for Delivery
+    const outForDelivery = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.OUT_FOR_DELIVERY,
+      out_for_delivery_at: Between(startOfDay, endOfDay),
+    });
+
+    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE - delivered today)
+    const delivered = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.DELIVERED,
+        delivered_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PARTIAL_DELIVERY,
+        delivered_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.EXCHANGE,
+        delivered_at: Between(startOfDay, endOfDay),
+      },
+    ]);
+
+    // 7. Delivery Rescheduled
+    const deliveryRescheduled = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.DELIVERY_RESCHEDULED,
+      updated_at: Between(startOfDay, endOfDay),
+    });
+
+    // 8. Returned (RETURNED, PAID_RETURN, RETURN_TO_MERCHANT, RETURNED_TO_HUB)
+    const returned = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURNED,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PAID_RETURN,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURN_TO_MERCHANT,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURNED_TO_HUB,
+        updated_at: Between(startOfDay, endOfDay),
+      },
+    ]);
+
+    // 9. Cancelled
+    const cancelled = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.CANCELLED,
+      updated_at: Between(startOfDay, endOfDay),
+    });
+
+    // Calculate total for today (all parcels created today)
+    const totalToday = await calculateStats({
+      merchant_id: merchantId,
+      created_at: Between(startOfDay, endOfDay),
+    });
+
+    return {
+      date: targetDate.toISOString().split('T')[0],
+      summary: {
+        new_parcels: newParcels,
+        pickup: pickup,
+        in_transit: inTransit,
+        assigned: assigned,
+        out_for_delivery: outForDelivery,
+        delivered: delivered,
+        delivery_rescheduled: deliveryRescheduled,
+        returned: returned,
+        cancelled: cancelled,
+      },
+      total: totalToday,
+    };
+  }
+
+  /**
+   * Get lifetime parcel summary for merchant
+   * Shows count and total COD amount for each status category (all time)
+   */
+  async getLifetimeSummary(merchantId: string): Promise<{
+    summary: {
+      new_parcels: { count: number; amount: number };
+      pickup: { count: number; amount: number };
+      in_transit: { count: number; amount: number };
+      assigned: { count: number; amount: number };
+      out_for_delivery: { count: number; amount: number };
+      delivered: { count: number; amount: number };
+      delivery_rescheduled: { count: number; amount: number };
+      returned: { count: number; amount: number };
+      cancelled: { count: number; amount: number };
+    };
+    total: { count: number; amount: number };
+  }> {
+    // Helper function to calculate count and amount
+    const calculateStats = async (
+      whereCondition: FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[],
+    ): Promise<{ count: number; amount: number }> => {
+      const parcels = await this.parcelRepository.find({
+        where: whereCondition,
+        select: ['id', 'cod_amount'],
+      });
+
+      return {
+        count: parcels.length,
+        amount: parcels.reduce((sum, p) => sum + (Number(p.cod_amount) || 0), 0),
+      };
+    };
+
+    // 1. New Parcels (PENDING)
+    const newParcels = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.PENDING,
+    });
+
+    // 2. Pickup (PICKED_UP, OUT_FOR_PICKUP)
+    const pickup = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PICKED_UP,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.OUT_FOR_PICKUP,
+      },
+    ]);
+
+    // 3. In Transit (IN_TRANSIT, IN_HUB)
+    const inTransit = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.IN_TRANSIT,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.IN_HUB,
+      },
+    ]);
+
+    // 4. Assigned (ASSIGNED_TO_RIDER, ASSIGNED_TO_THIRD_PARTY)
+    const assigned = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.ASSIGNED_TO_RIDER,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+      },
+    ]);
+
+    // 5. Out for Delivery
+    const outForDelivery = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.OUT_FOR_DELIVERY,
+    });
+
+    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE)
+    const delivered = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.DELIVERED,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PARTIAL_DELIVERY,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.EXCHANGE,
+      },
+    ]);
+
+    // 7. Delivery Rescheduled
+    const deliveryRescheduled = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.DELIVERY_RESCHEDULED,
+    });
+
+    // 8. Returned (RETURNED, PAID_RETURN, RETURN_TO_MERCHANT, RETURNED_TO_HUB)
+    const returned = await calculateStats([
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURNED,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PAID_RETURN,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURN_TO_MERCHANT,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.RETURNED_TO_HUB,
+      },
+    ]);
+
+    // 9. Cancelled
+    const cancelled = await calculateStats({
+      merchant_id: merchantId,
+      status: ParcelStatus.CANCELLED,
+    });
+
+    // Calculate total (all parcels)
+    const total = await calculateStats({
+      merchant_id: merchantId,
+    });
+
+    return {
+      summary: {
+        new_parcels: newParcels,
+        pickup: pickup,
+        in_transit: inTransit,
+        assigned: assigned,
+        out_for_delivery: outForDelivery,
+        delivered: delivered,
+        delivery_rescheduled: deliveryRescheduled,
+        returned: returned,
+        cancelled: cancelled,
+      },
+      total: total,
+    };
+  }
+
   private parseRawNumeric(raw: string | undefined): number {
     const val = raw ? parseFloat(raw) : NaN;
     if (isNaN(val) || val < 0) {
