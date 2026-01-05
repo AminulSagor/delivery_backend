@@ -7,8 +7,9 @@
 const { spawn } = require('child_process');
 const { Client } = require('pg');
 
-const MAX_DB_RETRIES = 20;
-const DB_RETRY_DELAY = 3000; // 3 seconds
+const MAX_DB_RETRIES = 30;
+const DB_RETRY_DELAY = 5000; // 5 seconds
+const INITIAL_DELAY = 10000; // 10 seconds - wait before first attempt
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -23,13 +24,17 @@ async function waitForDatabase() {
   }
 
   console.log('[STARTUP] Waiting for database connection...');
+  console.log(`[STARTUP] Waiting ${INITIAL_DELAY / 1000}s before first attempt...`);
+  await sleep(INITIAL_DELAY);
+  
   console.log(`[STARTUP] Will retry up to ${MAX_DB_RETRIES} times...`);
 
   for (let attempt = 1; attempt <= MAX_DB_RETRIES; attempt++) {
     const client = new Client({
       connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 20000,
+      query_timeout: 10000,
     });
 
     try {
@@ -63,7 +68,7 @@ function startApp() {
   console.log('[STARTUP] Migrations will run automatically on startup');
   console.log('[STARTUP] ========================================');
   
-  const app = spawn('node', ['dist/main'], {
+  const app = spawn('node', ['dist/src/main'], {
     stdio: 'inherit',
     env: process.env,
   });
