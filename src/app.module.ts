@@ -29,7 +29,12 @@ import { MerchantFinanceModule } from './merchant-finance/merchant-finance.modul
       isGlobal: true,
       envFilePath: '.env',
     }),
-    TypeOrmModule.forRoot(dataSourceOptions),
+    TypeOrmModule.forRoot({
+      ...dataSourceOptions,
+      autoLoadEntities: true,
+      retryAttempts: 10,
+      retryDelay: 3000,
+    }),
     AdminModule,
     MerchantModule,
     UsersModule,

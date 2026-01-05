@@ -1,82 +1,26 @@
 /**
- * Start script for Railway deployment
- * Waits for database to be ready, then starts the NestJS app
- * Migrations run automatically via TypeORM's migrationsRun option
+ * Simplified Railway startup - let TypeORM handle DB connections
+ * No pre-connection checks, just start the app
  */
 
 const { spawn } = require('child_process');
-const { Client } = require('pg');
-
-const MAX_DB_RETRIES = 40;
-const DB_RETRY_DELAY = 3000; // 3 seconds
-const INITIAL_DELAY = 15000; // 15 seconds - wait for Railway DB to fully start
-
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function waitForDatabase() {
-  const databaseUrl = process.env.DATABASE_URL;
-  
-  if (!databaseUrl) {
-    console.log('[STARTUP] No DATABASE_URL found, starting app directly...');
-    return true;
-  }
-
-  console.log('[STARTUP] Waiting for database connection...');
-  console.log(`[STARTUP] Waiting ${INITIAL_DELAY / 1000}s before first attempt...`);
-  await sleep(INITIAL_DELAY);
-  
-  console.log(`[STARTUP] Will retry up to ${MAX_DB_RETRIES} times...`);
-
-  for (let attempt = 1; attempt <= MAX_DB_RETRIES; attempt++) {
-    // Try with explicit SSL configuration
-    const client = new Client({
-      connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false,
-        // Disable certificate verification for Railway
-        checkServerIdentity: () => undefined,
-      },
-      connectionTimeoutMillis: 20000,
-      query_timeout: 10000,
-      // Add keep-alive to prevent connection drops
-      keepAlive: true,
-      keepAliveInitialDelayMillis: 10000,
-    });
-
-    try {
-      console.log(`[STARTUP] Attempt ${attempt}/${MAX_DB_RETRIES}...`);
-      await client.connect();
-      const result = await client.query('SELECT 1 as test');
-      console.log(`[STARTUP] ✅ Database is ready!`);
-      await client.end();
-      return true;
-    } catch (error) {
-      const errMsg = error.code || error.message || 'Unknown error';
-      console.log(`[STARTUP] ❌ Failed: ${errMsg}`);
-      
-      try { await client.end(); } catch (e) {}
-
-      if (attempt < MAX_DB_RETRIES) {
-        // Exponential backoff: 3s, 6s, 9s, 12s, 15s, then cap at 15s
-        const delay = Math.min(DB_RETRY_DELAY * attempt, 15000);
-        console.log(`[STARTUP] Retrying in ${delay / 1000}s...`);
-        await sleep(delay);
-      }
-    }
-  }
-
-  console.error('[STARTUP] ❌ Database not available after all retries');
-  console.log('[STARTUP] ⚠️ Starting app anyway...');
-  return false;
-}
 
 function startApp() {
-  console.log('[STARTUP] ========================================');
-  console.log('[STARTUP] Starting NestJS application...');
-  console.log('[STARTUP] Migrations will run automatically on startup');
-  console.log('[STARTUP] ========================================');
+  console.log('');
+  console.log('========================================');
+  console.log('Railway Deployment - Starting App');
+  console.log('========================================');
+  console.log('');
+  console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET ✅' : 'NOT SET ❌');
+  console.log('PORT:', process.env.PORT || '3000');
+  console.log('NODE_ENV:', process.env.NODE_ENV || 'production');
+  console.log('');
+  console.log('TypeORM will handle DB connections automatically');
+  console.log('Migrations will run on first successful connection');
+  console.log('');
+  console.log('Starting NestJS application...');
+  console.log('========================================');
+  console.log('');
   
   const app = spawn('node', ['dist/src/main'], {
     stdio: 'inherit',
@@ -84,27 +28,15 @@ function startApp() {
   });
 
   app.on('error', (error) => {
-    console.error('[STARTUP] Failed to start app:', error);
+    console.error('[ERROR] Failed to start application:', error);
     process.exit(1);
   });
 
   app.on('exit', (code) => {
+    console.log(`[EXIT] Application exited with code ${code}`);
     process.exit(code || 0);
   });
 }
 
-async function main() {
-  console.log('');
-  console.log('[STARTUP] ========================================');
-  console.log('[STARTUP] Railway Startup Script v2');
-  console.log('[STARTUP] ========================================');
-  console.log('');
-  
-  await waitForDatabase();
-  startApp();
-}
-
-main().catch(err => {
-  console.error('[STARTUP] Fatal error:', err);
-  process.exit(1);
-});
+// Just start the app immediately
+startApp();
