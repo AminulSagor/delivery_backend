@@ -13,6 +13,7 @@ RUN npm ci
 COPY tsconfig*.json ./
 COPY nest-cli.json ./
 COPY src ./src
+COPY scripts ./scripts
 
 # Build the application
 RUN npm run build
@@ -30,9 +31,10 @@ RUN npm ci --omit=dev
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/scripts ./scripts
 
 # Expose port
 EXPOSE 3000
 
-# Start the application (skip migrations for now to debug)
-CMD ["node", "dist/main"]
+# Start with migration runner script
+CMD ["node", "scripts/start-with-migrations.js"]

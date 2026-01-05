@@ -1,1 +1,1 @@
-web: npm run typeorm:migrate:prod && npm run start:prod
+web: node scripts/start-with-migrations.js
