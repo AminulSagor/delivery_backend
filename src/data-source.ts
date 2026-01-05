@@ -33,10 +33,18 @@ const productionConfig: DataSourceOptions = databaseUrl
       url: databaseUrl,
       ssl: { rejectUnauthorized: false },
       extra: {
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        // Connection pool settings
+        max: 5, // Reduced pool size for Railway
+        min: 1,
+        idleTimeoutMillis: 60000, // 60 seconds idle timeout
+        connectionTimeoutMillis: 30000, // 30 seconds connection timeout
+        // Keep-alive settings to prevent connection drops
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000,
       },
+      // Retry settings
+      retryAttempts: 5,
+      retryDelay: 3000, // 3 seconds between retries
     }
   : {
       ...baseConfig,
@@ -47,10 +55,15 @@ const productionConfig: DataSourceOptions = databaseUrl
       database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
       ssl: { rejectUnauthorized: false },
       extra: {
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        max: 5,
+        min: 1,
+        idleTimeoutMillis: 60000,
+        connectionTimeoutMillis: 30000,
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000,
       },
+      retryAttempts: 5,
+      retryDelay: 3000,
     };
 
 // Local development config: Use individual connection parameters
