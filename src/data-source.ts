@@ -24,6 +24,7 @@ const baseConfig = {
     : ['dist/migrations/*.js'],
   synchronize: false,
   logging: false,
+  migrationsRun: true, // Auto-run migrations on app start
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
