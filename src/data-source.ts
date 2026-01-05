@@ -32,11 +32,14 @@ const productionConfig: DataSourceOptions = databaseUrl
   ? {
       ...baseConfig,
       url: databaseUrl,
-      ssl: { rejectUnauthorized: false },
+      ssl: {
+        rejectUnauthorized: false,
+        checkServerIdentity: () => undefined,
+      },
       extra: {
-        max: 5,
-        min: 1,
-        idleTimeoutMillis: 60000,
+        max: 10,
+        min: 2,
+        idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 30000,
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
@@ -49,11 +52,14 @@ const productionConfig: DataSourceOptions = databaseUrl
       username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
       password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
       database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
-      ssl: { rejectUnauthorized: false },
+      ssl: {
+        rejectUnauthorized: false,
+        checkServerIdentity: () => undefined,
+      },
       extra: {
-        max: 5,
-        min: 1,
-        idleTimeoutMillis: 60000,
+        max: 10,
+        min: 2,
+        idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 30000,
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,

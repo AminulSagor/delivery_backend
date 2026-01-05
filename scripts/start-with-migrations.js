@@ -7,9 +7,9 @@
 const { spawn } = require('child_process');
 const { Client } = require('pg');
 
-const MAX_DB_RETRIES = 30;
-const DB_RETRY_DELAY = 5000; // 5 seconds
-const INITIAL_DELAY = 10000; // 10 seconds - wait before first attempt
+const MAX_DB_RETRIES = 40;
+const DB_RETRY_DELAY = 3000; // 3 seconds
+const INITIAL_DELAY = 15000; // 15 seconds - wait for Railway DB to fully start
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -30,11 +30,19 @@ async function waitForDatabase() {
   console.log(`[STARTUP] Will retry up to ${MAX_DB_RETRIES} times...`);
 
   for (let attempt = 1; attempt <= MAX_DB_RETRIES; attempt++) {
+    // Try with explicit SSL configuration
     const client = new Client({
       connectionString: databaseUrl,
-      ssl: { rejectUnauthorized: false },
+      ssl: {
+        rejectUnauthorized: false,
+        // Disable certificate verification for Railway
+        checkServerIdentity: () => undefined,
+      },
       connectionTimeoutMillis: 20000,
       query_timeout: 10000,
+      // Add keep-alive to prevent connection drops
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
 
     try {
@@ -51,8 +59,10 @@ async function waitForDatabase() {
       try { await client.end(); } catch (e) {}
 
       if (attempt < MAX_DB_RETRIES) {
-        console.log(`[STARTUP] Retrying in ${DB_RETRY_DELAY / 1000}s...`);
-        await sleep(DB_RETRY_DELAY);
+        // Exponential backoff: 3s, 6s, 9s, 12s, 15s, then cap at 15s
+        const delay = Math.min(DB_RETRY_DELAY * attempt, 15000);
+        console.log(`[STARTUP] Retrying in ${delay / 1000}s...`);
+        await sleep(delay);
       }
     }
   }
