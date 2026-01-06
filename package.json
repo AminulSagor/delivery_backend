@@ -27,6 +27,7 @@
     "migrate:coverage": "ts-node -r tsconfig-paths/register scripts/migrate-and-import-coverage.ts",
     "wait-for-db": "node scripts/wait-for-db.js",
     "railway:deploy": "node scripts/start-with-migrations.js",
+    "railway:diagnose": "node scripts/railway-db-diagnostic.js",
     "docker:build": "docker-compose build",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
