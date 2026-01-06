@@ -30,8 +30,13 @@ if (databaseUrl && databaseUrl.includes('${{')) {
   throw new Error('DATABASE_URL contains unresolved Railway template syntax');
 }
 
-// Check if running on Railway
-const isProduction = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
+// Check if running on Railway or in production
+const isProduction = !!(
+  process.env.NODE_ENV === 'production' ||
+  process.env.RAILWAY_ENVIRONMENT ||
+  process.env.RAILWAY_PRIVATE_DOMAIN ||
+  databaseUrl
+);
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -48,21 +53,16 @@ const baseConfig = {
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
+// Railway requires: SSL + small pool size + short timeouts
 const productionConfig: DataSourceOptions = databaseUrl
   ? {
       ...baseConfig,
       url: databaseUrl,
-      ssl: { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false }, // Required for Railway proxy
       extra: {
-        max: 10,
-        min: 2,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 30000,
-        keepAlive: true,
-        keepAliveInitialDelayMillis: 10000,
-        ssl: {
-          rejectUnauthorized: false,
-        },
+        max: 5,                      // Small pool for Railway limits
+        idleTimeoutMillis: 30000,    // 30s idle timeout
+        connectionTimeoutMillis: 5000, // 5s connection timeout (Railway proxy)
       },
     }
   : {
@@ -72,17 +72,11 @@ const productionConfig: DataSourceOptions = databaseUrl
       username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
       password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
       database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
-      ssl: { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false }, // Required for Railway proxy
       extra: {
-        max: 10,
-        min: 2,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 30000,
-        keepAlive: true,
-        keepAliveInitialDelayMillis: 10000,
-        ssl: {
-          rejectUnauthorized: false,
-        },
+        max: 5,                      // Small pool for Railway limits
+        idleTimeoutMillis: 30000,    // 30s idle timeout
+        connectionTimeoutMillis: 5000, // 5s connection timeout (Railway proxy)
       },
     };
 
