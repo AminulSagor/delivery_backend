@@ -1,8 +1,38 @@
 # Railway Deployment Troubleshooting
 
-## Current Issue: Persistent ECONNRESET Errors
+## 🚨 Current Issue: DATABASE_URL Contains Template Syntax
 
-If you're getting **persistent `ECONNRESET`** errors (every single connection attempt fails), this indicates a **Railway configuration issue**, not a code issue.
+If your deployment logs show `DATABASE_URL` with template syntax like:
+```
+postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}
+```
+
+**This is the problem!** The variables are not being resolved, which means the database is **NOT properly linked** to your web service.
+
+### Quick Fix:
+1. Go to your **web service** (not database) in Railway dashboard
+2. Click **"Variables"** tab
+3. **Delete** the `DATABASE_URL` variable if it exists
+4. Click **"New Variable"** → **"Add a Reference"** (not "Add a Variable")
+5. Select your **PostgreSQL service** → **`DATABASE_URL`**
+6. Click **"Redeploy"**
+
+---
+
+## 🔍 Run Diagnostic Tool
+
+Before doing anything else, run this diagnostic to identify the exact issue:
+
+```bash
+npm run railway:diagnose
+```
+
+This will check:
+- ✅ Is DATABASE_URL set?
+- ✅ Does it contain unresolved template syntax?
+- ✅ Can we parse the connection string?
+- ✅ Can we connect to the database?
+- ✅ Are there any tables in the database?
 
 ---
 

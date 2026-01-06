@@ -10,6 +10,26 @@ const isTs = __filename.endsWith('.ts');
 // Check for DATABASE_URL first (Railway provides this)
 const databaseUrl = process.env.DATABASE_URL;
 
+// Check if DATABASE_URL contains unresolved Railway template syntax
+if (databaseUrl && databaseUrl.includes('${{')) {
+  console.error('');
+  console.error('❌ CRITICAL ERROR: DATABASE_URL contains unresolved Railway template syntax!');
+  console.error('   Current value contains: ${{...}}');
+  console.error('');
+  console.error('   This means the database is NOT properly linked to your web service.');
+  console.error('');
+  console.error('🔧 FIX in Railway Dashboard:');
+  console.error('   1. Go to your web service → Variables tab');
+  console.error('   2. Delete the DATABASE_URL variable');
+  console.error('   3. Click "New Variable" → "Add a Reference"');
+  console.error('   4. Select PostgreSQL service → DATABASE_URL');
+  console.error('   5. Redeploy');
+  console.error('');
+  console.error('📖 See RAILWAY_DATABASE_CONNECTION_FIX.md for detailed instructions');
+  console.error('');
+  throw new Error('DATABASE_URL contains unresolved Railway template syntax');
+}
+
 // Check if running on Railway
 const isProduction = !!(process.env.RAILWAY_PRIVATE_DOMAIN || databaseUrl);
 
@@ -79,9 +99,23 @@ const developmentConfig: DataSourceOptions = {
 // Select config based on environment
 export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
 
-// Single log line for startup (reduce log spam)
+// Database configuration logging
 if (process.env.NODE_ENV !== 'production') {
   console.log(`[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
+  
+  // Show connection details in development
+  if (databaseUrl) {
+    try {
+      const url = new URL(databaseUrl);
+      console.log(`[DATABASE] Connecting to: ${url.hostname}:${url.port || 5432}`);
+      console.log(`[DATABASE] Database: ${url.pathname.substring(1)}`);
+      console.log(`[DATABASE] User: ${url.username}`);
+    } catch (e) {
+      console.error('[DATABASE] Failed to parse DATABASE_URL:', e.message);
+    }
+  } else if (isProduction) {
+    console.warn('[DATABASE] WARNING: Running in production but DATABASE_URL is not set!');
+  }
 }
 
 const dataSource = new DataSource(dataSourceOptions);
