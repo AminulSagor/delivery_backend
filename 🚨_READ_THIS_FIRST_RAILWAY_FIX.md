@@ -4,9 +4,15 @@
 
 Deployment logs show:
 ```
+[BOOTSTRAP] Environment: development  ⬅️ WRONG on Railway!
 DATABASE_URL="postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@..."
 ERROR: read ECONNRESET
 ```
+
+**Root Causes:**
+1. ❌ Not running in production mode (`NODE_ENV` not set)
+2. ❌ Database not properly linked (template syntax)
+3. ❌ Pool size too large for Railway
 
 ## The Fix (5 Minutes)
 
@@ -16,14 +22,20 @@ ERROR: read ECONNRESET
    
 2. **Click "Variables" tab**
 
-3. **Delete DATABASE_URL** (if it shows `${{...}}`)
+3. **🚨 CRITICAL: Add NODE_ENV=production**
+   - Click: **"New Variable"**
+   - Name: `NODE_ENV`
+   - Value: `production`
+   - Click: **"Add"**
 
-4. **Click "New Variable" → "Add a Reference"**
+4. **Delete DATABASE_URL** (if it shows `${{...}}`)
+
+5. **Click "New Variable" → "Add a Reference"**
    - Select: **PostgreSQL service**
    - Choose: **DATABASE_URL**
-   - Click: **Add**
+   - Click: **"Add"**
 
-5. **Click "Redeploy"**
+6. **Click "Redeploy"**
 
 ---
 
@@ -31,9 +43,12 @@ ERROR: read ECONNRESET
 
 **Deployment logs should show:**
 ```
+[BOOTSTRAP] Environment: production  ⬅️ CORRECT!
 DATABASE_URL: SET ✅
 Database Host: postgres.railway.internal
+[Nest] LOG [TypeOrmModule dependencies initialized
 [Nest] LOG [NestApplication] Nest application successfully started
+🚀 Server running on port 8080 [production]
 ```
 
 ---
@@ -57,9 +72,14 @@ npm run railway:diagnose
 
 ## Why This Happens
 
-Railway won't resolve template syntax like `${{PGUSER}}` in manual variables.
+1. **NODE_ENV not set:** Railway PostgreSQL requires production mode for proper SSL/pooling
+2. **Template syntax:** Railway won't resolve `${{PGUSER}}` in manual variables
+3. **Pool size:** Default pool too large for Railway's connection limits
 
-You must use **"Add a Reference"** feature to link variables between services.
+**Solutions:**
+- Set `NODE_ENV=production` (MANDATORY)
+- Use **"Add a Reference"** to link database (not manual variables)
+- Code now uses optimized pool size (5) for Railway
 
 ---
 

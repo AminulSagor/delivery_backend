@@ -32,8 +32,8 @@ import { MerchantFinanceModule } from './merchant-finance/merchant-finance.modul
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      retryAttempts: 10,
-      retryDelay: 3000,
+      retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
+      retryDelay: 2000,  // 2s between retries
     }),
     AdminModule,
     MerchantModule,
