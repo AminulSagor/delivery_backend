@@ -1,12 +1,33 @@
-import { Controller, Get, Query, Param } from '@nestjs/common';
+import { Controller, Get, Query, Param, Post, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { CoverageAreasService } from './coverage-areas.service';
 import { SearchCoverageAreaDto } from './dto/search-coverage-area.dto';
 import { SuggestCoverageAreaDto } from './dto/suggest-coverage-area.dto';
 import { Public } from '../common/decorators/public.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 
 @Controller('coverage')
 export class CoverageAreasController {
   constructor(private readonly coverageAreasService: CoverageAreasService) {}
+
+  /**
+   * Sync coverage areas from Carrybee API (Admin only)
+   * Fetches cities, zones, and areas from Carrybee and populates coverage_areas table
+   */
+  @Post('sync')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async syncCoverageAreas() {
+    const result = await this.coverageAreasService.syncCoverageAreasFromCarrybee();
+    return {
+      success: true,
+      message: 'Coverage areas synced successfully from Carrybee',
+      data: result,
+    };
+  }
 
   @Public()
   @Get('search')
