@@ -4,9 +4,14 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Unique,
+  Index,
 } from 'typeorm';
 
 @Entity('coverage_areas')
+@Unique('UQ_coverage_areas_carrybee_ids', ['city_id', 'zone_id', 'area_id'])
+@Index('IDX_coverage_areas_city_id', ['city_id'])
+@Index('IDX_coverage_areas_zone_id', ['zone_id'])
 export class CoverageArea {
   @PrimaryGeneratedColumn('uuid')
   id: string;
