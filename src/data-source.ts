@@ -43,10 +43,10 @@ const baseConfig = {
   type: 'postgres' as const,
   entities: isTs
     ? [path.join(__dirname, '**/*.entity.ts')]
-    : ['dist/**/*.entity.js'],
+    : [path.join(__dirname, '**/*.entity.js')],
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
-    : ['dist/migrations/*.js'],
+    : [path.join(__dirname, 'migrations/*.js')],
   synchronize: false,
   logging: false,
   migrationsRun: true, // Auto-run migrations on app start
@@ -94,23 +94,36 @@ const developmentConfig: DataSourceOptions = {
 export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
 
 // Database configuration logging
-if (process.env.NODE_ENV !== 'production') {
-  console.log(`[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`);
-  
-  // Show connection details in development
-  if (databaseUrl) {
-    try {
-      const url = new URL(databaseUrl);
-      console.log(`[DATABASE] Connecting to: ${url.hostname}:${url.port || 5432}`);
-      console.log(`[DATABASE] Database: ${url.pathname.substring(1)}`);
-      console.log(`[DATABASE] User: ${url.username}`);
-    } catch (e) {
-      console.error('[DATABASE] Failed to parse DATABASE_URL:', e.message);
-    }
-  } else if (isProduction) {
-    console.warn('[DATABASE] WARNING: Running in production but DATABASE_URL is not set!');
+console.log('');
+console.log('='.repeat(60));
+console.log('[DATABASE CONFIG]');
+console.log('='.repeat(60));
+console.log(`Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
+console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
+console.log(`Migrations Auto-Run: ${baseConfig.migrationsRun ? '✅ ENABLED' : '❌ DISABLED'}`);
+
+// Show paths being used
+console.log(`Migration Path: ${JSON.stringify(dataSourceOptions.migrations)}`);
+console.log(`Entity Path: ${JSON.stringify(dataSourceOptions.entities)}`);
+
+// Show connection details
+if (databaseUrl) {
+  try {
+    const url = new URL(databaseUrl);
+    console.log(`Database Host: ${url.hostname}`);
+    console.log(`Database Port: ${url.port || '5432'}`);
+    console.log(`Database Name: ${url.pathname.substring(1)}`);
+    console.log(`Database User: ${url.username}`);
+  } catch (e) {
+    console.error('⚠️  Failed to parse DATABASE_URL:', e.message);
   }
+} else if (isProduction) {
+  console.warn('⚠️  WARNING: Running in production but DATABASE_URL is not set!');
 }
+
+console.log('='.repeat(60));
+console.log('');
 
 const dataSource = new DataSource(dataSourceOptions);
 
