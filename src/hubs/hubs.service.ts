@@ -161,6 +161,27 @@ export class HubsService {
     }
   }
 
+
+
+  async getTopMerchantStatistics (hubId:string): Promise<{
+    top_merchant: Array<{
+      merchant_id: string;
+      merchant_name: string;
+      merchant_phone: string;
+      successful_parcels: number;
+      total_parcels: number;
+      total_transaction_amount: number;
+      total_cod_collected: number;
+      total_delivery_charges: number;
+      net_amount: number
+
+    }>
+  }>
+  
+  {
+    return 
+  }
+
   async findOne(id: string): Promise<Hub> {
     try {
       // Validate UUID format
