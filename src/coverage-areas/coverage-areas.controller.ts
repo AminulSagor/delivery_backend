@@ -13,6 +13,18 @@ export class CoverageAreasController {
   constructor(private readonly coverageAreasService: CoverageAreasService) {}
 
   /**
+   * Test Carrybee API connection (Admin only)
+   * Useful for debugging - checks if Carrybee API is accessible
+   */
+  @Get('test-carrybee')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async testCarrybeeConnection() {
+    const testResult = await this.coverageAreasService.testCarrybeeConnection();
+    return testResult;
+  }
+
+  /**
    * Sync coverage areas from Carrybee API (Admin only)
    * Fetches cities, zones, and areas from Carrybee and populates coverage_areas table
    */
@@ -22,10 +34,23 @@ export class CoverageAreasController {
   @HttpCode(HttpStatus.OK)
   async syncCoverageAreas() {
     const result = await this.coverageAreasService.syncCoverageAreasFromCarrybee();
+    
+    const hasErrors = result.errors && result.errors.length > 0;
+    const message = hasErrors
+      ? `Sync completed with ${result.errors.length} error(s). Check logs for details.`
+      : 'Coverage areas synced successfully from Carrybee';
+
     return {
-      success: true,
-      message: 'Coverage areas synced successfully from Carrybee',
-      data: result,
+      success: result.synced > 0,
+      message,
+      data: {
+        synced: result.synced,
+        cities: result.cities,
+        zones: result.zones,
+        areas: result.areas,
+        total_errors: result.errors.length,
+        errors: result.errors.slice(0, 10), // Return first 10 errors only
+      },
     };
   }
 
