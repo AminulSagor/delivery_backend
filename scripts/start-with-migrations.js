@@ -1,14 +1,17 @@
 /**
- * Simplified Railway startup - let TypeORM handle DB connections
- * No pre-connection checks, just start the app
+ * Railway startup script with CSV import
+ * 1. Validates DATABASE_URL
+ * 2. Imports coverage areas from CSV
+ * 3. Starts the NestJS application (migrations run automatically via TypeORM)
  */
 
 const { spawn } = require('child_process');
+const { importCoverageAreas } = require('./import-coverage-production');
 
-function startApp() {
+async function startDeployment() {
   console.log('');
   console.log('========================================');
-  console.log('Railway Deployment - Starting App');
+  console.log('Railway Deployment - Starting');
   console.log('========================================');
   console.log('');
   
@@ -50,7 +53,23 @@ function startApp() {
   console.log('TypeORM will handle DB connections automatically');
   console.log('Migrations will run on first successful connection');
   console.log('');
-  console.log('Starting NestJS application...');
+
+  // Import coverage areas from CSV before starting the app
+  console.log('========================================');
+  console.log('Step 1: Import Coverage Areas');
+  console.log('========================================');
+  
+  try {
+    await importCoverageAreas();
+  } catch (error) {
+    console.error('⚠️  Coverage areas import failed:', error.message);
+    console.log('⏭️  Continuing with app startup...');
+    console.log('');
+  }
+
+  // Start the application
+  console.log('========================================');
+  console.log('Step 2: Starting NestJS Application');
   console.log('========================================');
   console.log('');
   
@@ -70,5 +89,8 @@ function startApp() {
   });
 }
 
-// Just start the app immediately
-startApp();
+// Start the deployment process
+startDeployment().catch((error) => {
+  console.error('💥 Deployment failed:', error);
+  process.exit(1);
+});

@@ -33,6 +33,9 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/scripts ./scripts
 
+# Copy CSV file for coverage areas
+COPY finalcsv-area.csv ./
+
 # Expose port
 EXPOSE 3000
 
