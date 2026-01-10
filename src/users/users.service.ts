@@ -72,4 +72,23 @@ export class UsersService {
     }
     return user;
   }
+
+  async updatePassword(userId: string, hash: string): Promise<void> {
+    await this.usersRepository.update(userId, { password_hash: hash });
+  }
+
+  async updateOtp(userId: string, otp: string, expiresAt: Date): Promise<void> {
+    await this.usersRepository.update(userId, {
+      reset_otp: otp,
+      reset_otp_expires: expiresAt,
+    });
+  }
+
+  async updatePasswordAndClearOtp(userId: string, hash: string): Promise<void> {
+    await this.usersRepository.update(userId, {
+      password_hash: hash,
+      reset_otp: null,
+      reset_otp_expires: null,
+    });
+  }
 }

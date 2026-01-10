@@ -41,6 +41,12 @@ export class User {
   @Column({ type: 'text', nullable: true })
   refresh_token: string;
 
+  @Column({ type: 'varchar', length: 6, nullable: true })
+  reset_otp: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reset_otp_expires: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 

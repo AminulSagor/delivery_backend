@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CustomerResponseDto } from './dto/check-customer-phone.dto';
 
 @Injectable()
 export class CustomerService {
@@ -18,7 +19,7 @@ export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private readonly customersRepository: Repository<Customer>,
-  ) { }
+  ) {}
 
   // Standard create (if you call it directly)
   async create(dto: CreateCustomerDto): Promise<Customer> {
@@ -48,9 +49,6 @@ export class CustomerService {
     return customer;
   }
 
-
-
-
   // customer.service.ts
   async checkByPhone(phone: string): Promise<{
     exists: boolean;
@@ -72,13 +70,6 @@ export class CustomerService {
       customer: null,
     };
   }
-
-
-
-
-
-
-
 
   // ✅ RACE-SAFE helper used from parcel creation
   async findOrCreateFromParcelPayload(payload: {
@@ -143,7 +134,10 @@ export class CustomerService {
 
   async findOneByPhone(phone: string): Promise<Customer> {
     const customer = await this.customersRepository.findOne({
-      where: { phone_number: phone },
+      where: [
+        { phone_number: phone }, // Check primary number
+        { secondary_number: phone }, // OR check secondary number
+      ],
     });
 
     if (!customer) {
@@ -153,6 +147,20 @@ export class CustomerService {
     }
 
     return customer;
+  }
+
+  async getCustomerByPhone(phone: string): Promise<CustomerResponseDto> {
+    const customer = await this.customersRepository.findOne({
+      where: [{ phone_number: phone }, { secondary_number: phone }],
+    });
+
+    return {
+      id: customer?.id ?? null,
+      customer_name: customer?.customer_name ?? '',
+      phone_number: customer?.phone_number ?? '',
+      secondary_number: customer?.secondary_number ?? '',
+      delivery_address: customer?.delivery_address ?? '',
+    };
   }
 
   async update(phone: string, dto: UpdateCustomerDto): Promise<Customer> {
@@ -198,8 +206,6 @@ export class CustomerService {
 
     await this.customersRepository.remove(customer);
 
-    this.logger.log(
-      `Customer deleted: ${customer.id} (phone: ${phone})`,
-    );
+    this.logger.log(`Customer deleted: ${customer.id} (phone: ${phone})`);
   }
 }

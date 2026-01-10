@@ -46,10 +46,10 @@ const baseConfig = {
     : [path.join(__dirname, '**/*.entity.js')],
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
-    : [path.join(__dirname, 'migrations/*.js')],
-  synchronize: false,
-  logging: false,
-  migrationsRun: true, // Auto-run migrations on app start
+    : ['dist/migrations/*.js'],
+  // synchronize: false,
+  synchronize: true,
+  logging: false, // Disable TypeORM query logging to reduce log spam
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
@@ -86,13 +86,20 @@ const developmentConfig: DataSourceOptions = {
   host: process.env.PG_HOST || 'localhost',
   port: parseInt(process.env.PG_PORT || '5432', 10),
   username: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || 'password',
+  password: process.env.PG_PASSWORD,
   database: process.env.PG_DB || 'courier_db',
 };
 
 // Select config based on environment
-export const dataSourceOptions: DataSourceOptions = isProduction ? productionConfig : developmentConfig;
+export const dataSourceOptions: DataSourceOptions = isProduction
+  ? productionConfig
+  : developmentConfig;
 
+// Single log line for startup (reduce log spam)
+if (process.env.NODE_ENV !== 'production') {
+  console.log(
+    `[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`,
+  );
 // Database configuration logging
 console.log('');
 console.log('='.repeat(60));

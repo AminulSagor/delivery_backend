@@ -3,6 +3,8 @@
  * Only includes fields that frontend actually needs
  */
 
+import { StoreStatus } from 'src/stores/entities/store.entity';
+
 // ===== PARCEL RESPONSES =====
 
 export interface ParcelListItem {
@@ -150,6 +152,13 @@ export interface StoreDetail extends StoreListItem {
   facebook_page: string | null;
   carrybee_store_id: string | null;
   created_at: Date;
+  status: StoreStatus;
+
+  performance?: {
+    total_parcels_handled: number;
+    successfully_delivered: number;
+    total_returns: number;
+  };
 }
 
 // ===== MERCHANT RESPONSES =====
@@ -207,15 +216,21 @@ export function toParcelListItem(parcel: any): ParcelListItem {
     status: parcel.status,
     delivery_type: parcel.delivery_type,
     created_at: parcel.created_at,
-    store: parcel.store ? {
-      id: parcel.store.id,
-      business_name: parcel.store.business_name,
-    } : undefined,
-    assigned_rider: parcel.assignedRider ? {
-      id: parcel.assignedRider.id,
-      full_name: parcel.assignedRider.user?.full_name || parcel.assignedRider.full_name,
-      phone: parcel.assignedRider.user?.phone || parcel.assignedRider.phone,
-    } : null,
+    store: parcel.store
+      ? {
+          id: parcel.store.id,
+          business_name: parcel.store.business_name,
+        }
+      : undefined,
+    assigned_rider: parcel.assignedRider
+      ? {
+          id: parcel.assignedRider.id,
+          full_name:
+            parcel.assignedRider.user?.full_name ||
+            parcel.assignedRider.full_name,
+          phone: parcel.assignedRider.user?.phone || parcel.assignedRider.phone,
+        }
+      : null,
   };
 }
 
@@ -232,17 +247,21 @@ export function toParcelDetail(parcel: any): ParcelDetail {
     assigned_at: parcel.assigned_at,
     picked_up_at: parcel.picked_up_at,
     delivered_at: parcel.delivered_at,
-    delivery_coverage_area: parcel.delivery_coverage_area ? {
-      id: parcel.delivery_coverage_area.id,
-      area: parcel.delivery_coverage_area.area,
-      zone: parcel.delivery_coverage_area.zone,
-      city: parcel.delivery_coverage_area.city,
-      division: parcel.delivery_coverage_area.division,
-    } : null,
-    current_hub: parcel.currentHub ? {
-      id: parcel.currentHub.id,
-      branch_name: parcel.currentHub.branch_name,
-    } : null,
+    delivery_coverage_area: parcel.delivery_coverage_area
+      ? {
+          id: parcel.delivery_coverage_area.id,
+          area: parcel.delivery_coverage_area.area,
+          zone: parcel.delivery_coverage_area.zone,
+          city: parcel.delivery_coverage_area.city,
+          division: parcel.delivery_coverage_area.division,
+        }
+      : null,
+    current_hub: parcel.currentHub
+      ? {
+          id: parcel.currentHub.id,
+          branch_name: parcel.currentHub.branch_name,
+        }
+      : null,
   };
 }
 
@@ -263,10 +282,12 @@ export function toRiderListItem(rider: any): RiderListItem {
     photo: rider.photo,
     bike_type: rider.bike_type,
     is_active: rider.is_active,
-    hub: rider.hub ? {
-      id: rider.hub.id,
-      branch_name: rider.hub.branch_name,
-    } : null,
+    hub: rider.hub
+      ? {
+          id: rider.hub.id,
+          branch_name: rider.hub.branch_name,
+        }
+      : null,
   };
 }
 
@@ -301,21 +322,29 @@ export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
     comment: pickup.comment,
     pickup_date: pickup.pickup_date,
     created_at: pickup.created_at,
-    store: pickup.store ? {
-      id: pickup.store.id,
-      business_name: pickup.store.business_name,
-      phone_number: pickup.store.phone_number,
-      business_address: pickup.store.business_address,
-    } : undefined,
-    assigned_rider: pickup.assignedRider ? {
-      id: pickup.assignedRider.id,
-      full_name: pickup.assignedRider.user?.full_name || pickup.assignedRider.full_name,
-      phone: pickup.assignedRider.user?.phone || pickup.assignedRider.phone,
-    } : null,
+    store: pickup.store
+      ? {
+          id: pickup.store.id,
+          business_name: pickup.store.business_name,
+          phone_number: pickup.store.phone_number,
+          business_address: pickup.store.business_address,
+        }
+      : undefined,
+    assigned_rider: pickup.assignedRider
+      ? {
+          id: pickup.assignedRider.id,
+          full_name:
+            pickup.assignedRider.user?.full_name ||
+            pickup.assignedRider.full_name,
+          phone: pickup.assignedRider.user?.phone || pickup.assignedRider.phone,
+        }
+      : null,
   };
 }
 
-export function toPickupRequestActionResponse(pickup: any): PickupRequestActionResponse {
+export function toPickupRequestActionResponse(
+  pickup: any,
+): PickupRequestActionResponse {
   return {
     id: pickup.id,
     status: pickup.status,
@@ -332,10 +361,12 @@ export function toStoreListItem(store: any): StoreListItem {
     email: store.email,
     is_default: store.is_default,
     is_carrybee_synced: store.is_carrybee_synced || false,
-    hub: store.hub ? {
-      id: store.hub.id,
-      branch_name: store.hub.branch_name,
-    } : null,
+    hub: store.hub
+      ? {
+          id: store.hub.id,
+          branch_name: store.hub.branch_name,
+        }
+      : null,
   };
 }
 
@@ -348,6 +379,19 @@ export function toStoreDetail(store: any): StoreDetail {
     facebook_page: store.facebook_page,
     carrybee_store_id: store.carrybee_store_id,
     created_at: store.created_at,
+    status: store.status,
+
+    performance: store.performance
+      ? {
+          total_parcels_handled: Number(
+            store.performance.total_parcels_handled,
+          ),
+          successfully_delivered: Number(
+            store.performance.successfully_delivered,
+          ),
+          total_returns: Number(store.performance.total_returns),
+        }
+      : undefined,
   };
 }
 
