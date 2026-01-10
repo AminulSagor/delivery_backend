@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, Not } from 'typeorm';
@@ -16,6 +18,7 @@ import { InvoiceCalculationService } from './invoice-calculation.service';
 import { GenerateInvoiceDto } from '../dto/generate-invoice.dto';
 import { PayInvoiceDto } from '../dto/pay-invoice.dto';
 import { InvoiceQueryDto } from '../dto/invoice-query.dto';
+import { MerchantFinanceService } from '../../merchant-finance/merchant-finance.service';
 import * as ExcelJS from 'exceljs';
 
 @Injectable()
@@ -34,6 +37,8 @@ export class MerchantInvoiceService {
     @InjectRepository(MerchantPayoutMethod)
     private payoutMethodRepository: Repository<MerchantPayoutMethod>,
     private invoiceCalculationService: InvoiceCalculationService,
+    @Inject(forwardRef(() => MerchantFinanceService))
+    private merchantFinanceService: MerchantFinanceService,
   ) {}
 
   /**
@@ -372,6 +377,20 @@ export class MerchantInvoiceService {
       );
 
       await queryRunner.commitTransaction();
+
+      // Update merchant finance - move from pending to invoiced
+      try {
+        await this.merchantFinanceService.moveToInvoiced(
+          merchantId,
+          totals.payable_amount,
+          savedInvoice.id,
+          invoiceNo,
+        );
+      } catch (financeError) {
+        this.logger.warn(
+          `Failed to update merchant finance for invoice ${invoiceNo}: ${financeError.message}`,
+        );
+      }
 
       this.logger.log(
         `Invoice ${invoiceNo} (${transactionId}) generated for merchant ${merchantId} with ${totals.total_parcels} parcels`,
@@ -739,6 +758,22 @@ export class MerchantInvoiceService {
 
       await queryRunner.commitTransaction();
 
+      // Record payment in merchant finance
+      try {
+        await this.merchantFinanceService.recordInvoicePayment(
+          invoice.merchant_id,
+          Number(invoice.payable_amount),
+          invoice.id,
+          invoice.invoice_no,
+          dto.payment_reference || null,
+          adminUserId,
+        );
+      } catch (financeError) {
+        this.logger.warn(
+          `Failed to record payment in merchant finance for invoice ${invoice.invoice_no}: ${financeError.message}`,
+        );
+      }
+
       this.logger.log(
         `Invoice ${invoice.invoice_no} marked as paid by admin ${adminUserId}`,
       );
@@ -772,8 +807,34 @@ export class MerchantInvoiceService {
       throw new BadRequestException('Cannot change status of paid invoice');
     }
 
+    const oldStatus = invoice.invoice_status;
     invoice.invoice_status = status;
     await this.merchantInvoiceRepository.save(invoice);
+
+    // Update merchant finance based on status change
+    try {
+      const amount = Number(invoice.payable_amount);
+
+      if (oldStatus === InvoiceStatus.UNPAID && status === InvoiceStatus.PROCESSING) {
+        // Moving from UNPAID to PROCESSING
+        await this.merchantFinanceService.moveToProcessing(
+          invoice.merchant_id,
+          amount,
+          invoice.id,
+        );
+      } else if (oldStatus === InvoiceStatus.PROCESSING && status === InvoiceStatus.UNPAID) {
+        // Moving back from PROCESSING to UNPAID
+        await this.merchantFinanceService.moveBackToInvoiced(
+          invoice.merchant_id,
+          amount,
+          invoice.id,
+        );
+      }
+    } catch (financeError) {
+      this.logger.warn(
+        `Failed to update merchant finance for status change: ${financeError.message}`,
+      );
+    }
 
     this.logger.log(`Invoice ${invoice.invoice_no} status changed to ${status}`);
 
@@ -1600,6 +1661,372 @@ export class MerchantInvoiceService {
       invoices: invoicesList,
       total: totalCount,
       summary,
+    };
+  }
+
+  /**
+   * Get merchant payment dashboard
+   * Shows: Total Earning, Last Paid at, Available Balance
+   */
+  async getMerchantPaymentDashboard(merchantUserId: string): Promise<any> {
+    // Get user info
+    const user = await this.userRepository.findOne({
+      where: { id: merchantUserId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get merchant profile
+    const merchant = await this.merchantRepository.findOne({
+      where: { user_id: merchantUserId },
+    });
+
+    // Get all invoices for this merchant
+    const allInvoices = await this.merchantInvoiceRepository.find({
+      where: { merchant_id: merchantUserId },
+      relations: ['payoutMethod'],
+      order: { created_at: 'DESC' },
+    });
+
+    // Separate invoices by status
+    const paidInvoices = allInvoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.PAID,
+    );
+    const unpaidInvoices = allInvoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.UNPAID,
+    );
+    const processingInvoices = allInvoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.PROCESSING,
+    );
+
+    // Calculate Total Earning (from PAID invoices)
+    const totalEarning = paidInvoices.reduce(
+      (sum, inv) => sum + Number(inv.payable_amount),
+      0,
+    );
+
+    // Calculate amounts in pending invoices
+    const invoicedUnpaid = unpaidInvoices.reduce(
+      (sum, inv) => sum + Number(inv.payable_amount),
+      0,
+    );
+    const invoicedProcessing = processingInvoices.reduce(
+      (sum, inv) => sum + Number(inv.payable_amount),
+      0,
+    );
+
+    // Get eligible parcels that are NOT yet invoiced
+    const eligibleParcels = await this.getEligibleParcels(merchantUserId);
+    const uninvoicedAmount = eligibleParcels.reduce((sum, parcel) => {
+      const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+      return sum + breakdown.net_payable;
+    }, 0);
+
+    // Available Balance = uninvoiced + unpaid invoices + processing invoices
+    const availableBalance = uninvoicedAmount + invoicedUnpaid + invoicedProcessing;
+
+    // Pending Clearance = unpaid + processing invoices
+    const pendingClearance = invoicedUnpaid + invoicedProcessing;
+
+    // Get Last Paid info
+    const lastPaidInvoice = paidInvoices.length > 0
+      ? paidInvoices.sort((a, b) => 
+          new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime()
+        )[0]
+      : null;
+
+    // Get parcel statistics
+    const deliveredStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+    ];
+    const returnedStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+
+    const deliveredCount = await this.parcelRepository.count({
+      where: {
+        merchant_id: merchantUserId,
+        status: In(deliveredStatuses),
+      },
+    });
+
+    const returnedCount = await this.parcelRepository.count({
+      where: {
+        merchant_id: merchantUserId,
+        status: In(returnedStatuses),
+      },
+    });
+
+    // Get recent payments (last 5 paid invoices)
+    const recentPayments = paidInvoices
+      .sort((a, b) => new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime())
+      .slice(0, 5)
+      .map((inv) => ({
+        invoice_id: inv.id,
+        invoice_no: inv.invoice_no,
+        amount: Number(inv.payable_amount),
+        paid_at: inv.paid_at,
+        payment_reference: inv.payment_reference,
+      }));
+
+    return {
+      merchant: {
+        id: merchant?.id || null,
+        user_id: user.id,
+        name: user.full_name,
+        phone: user.phone,
+        email: user.email,
+      },
+
+      payment_summary: {
+        total_earning: totalEarning,
+        available_balance: availableBalance,
+        pending_clearance: pendingClearance,
+        last_paid_at: lastPaidInvoice?.paid_at || null,
+        last_paid_amount: lastPaidInvoice ? Number(lastPaidInvoice.payable_amount) : null,
+      },
+
+      balance_breakdown: {
+        uninvoiced_amount: uninvoicedAmount,
+        invoiced_unpaid: invoicedUnpaid,
+        invoiced_processing: invoicedProcessing,
+      },
+
+      statistics: {
+        total_invoices: allInvoices.length,
+        paid_invoices: paidInvoices.length,
+        unpaid_invoices: unpaidInvoices.length,
+        processing_invoices: processingInvoices.length,
+        total_parcels_delivered: deliveredCount,
+        total_parcels_returned: returnedCount,
+      },
+
+      recent_payments: recentPayments,
+    };
+  }
+
+  /**
+   * Get merchant payment history with pagination and filtering
+   */
+  async getMerchantPaymentHistory(
+    merchantUserId: string,
+    query: {
+      page?: number;
+      limit?: number;
+      from_date?: string;
+      to_date?: string;
+      status?: 'PAID' | 'UNPAID' | 'PROCESSING';
+    },
+  ): Promise<any> {
+    const { page = 1, limit = 10, from_date, to_date, status } = query;
+
+    // Build query
+    const queryBuilder = this.merchantInvoiceRepository
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.payoutMethod', 'payoutMethod')
+      .leftJoinAndSelect('invoice.paidByUser', 'paidByUser')
+      .where('invoice.merchant_id = :merchantUserId', { merchantUserId });
+
+    // Apply status filter
+    if (status) {
+      queryBuilder.andWhere('invoice.invoice_status = :status', { status });
+    }
+
+    // Apply date filters
+    if (from_date) {
+      queryBuilder.andWhere('invoice.created_at >= :from_date', { from_date });
+    }
+    if (to_date) {
+      queryBuilder.andWhere('invoice.created_at <= :to_date', { to_date });
+    }
+
+    // Get total count
+    const total = await queryBuilder.getCount();
+
+    // Apply pagination
+    queryBuilder
+      .orderBy('invoice.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const invoices = await queryBuilder.getMany();
+
+    // Transform to response format
+    const payments = invoices.map((invoice) => ({
+      invoice_id: invoice.id,
+      invoice_no: invoice.invoice_no,
+      transaction_id: invoice.transaction_id,
+      date: invoice.created_at,
+      total_parcels: invoice.total_parcels,
+      total_cod_collected: Number(invoice.total_cod_collected),
+      total_delivery_charges: Number(invoice.total_delivery_charges),
+      total_return_charges: Number(invoice.total_return_charges),
+      payable_amount: Number(invoice.payable_amount),
+      status: invoice.invoice_status,
+      paid_at: invoice.paid_at,
+      payment_reference: invoice.payment_reference,
+      payment_method: invoice.payoutMethod
+        ? {
+            type: invoice.payoutMethod.method_type,
+            details: this.getPaymentMethodDetails(invoice.payoutMethod),
+          }
+        : null,
+    }));
+
+    // Calculate summary for all matching invoices (not just current page)
+    const allMatchingInvoices = await this.merchantInvoiceRepository
+      .createQueryBuilder('invoice')
+      .where('invoice.merchant_id = :merchantUserId', { merchantUserId })
+      .getMany();
+
+    const summary = {
+      total_paid: allMatchingInvoices
+        .filter((inv) => inv.invoice_status === InvoiceStatus.PAID)
+        .reduce((sum, inv) => sum + Number(inv.payable_amount), 0),
+      total_pending: allMatchingInvoices
+        .filter((inv) => inv.invoice_status === InvoiceStatus.UNPAID)
+        .reduce((sum, inv) => sum + Number(inv.payable_amount), 0),
+      total_processing: allMatchingInvoices
+        .filter((inv) => inv.invoice_status === InvoiceStatus.PROCESSING)
+        .reduce((sum, inv) => sum + Number(inv.payable_amount), 0),
+    };
+
+    return {
+      payments,
+      pagination: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+      },
+      summary,
+    };
+  }
+
+  /**
+   * Get admin view of all merchants' payment summary
+   * For admin to see overview of merchant payments
+   */
+  async getAdminMerchantPaymentSummary(query: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    has_pending_balance?: boolean;
+  }): Promise<any> {
+    const { page = 1, limit = 10, search, has_pending_balance } = query;
+
+    // Get all merchants with their user info
+    const merchantQueryBuilder = this.merchantRepository
+      .createQueryBuilder('merchant')
+      .leftJoinAndSelect('merchant.user', 'user');
+
+    if (search) {
+      merchantQueryBuilder.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const [merchants, totalMerchants] = await merchantQueryBuilder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    // For each merchant, calculate payment summary
+    const merchantSummaries = await Promise.all(
+      merchants.map(async (merchant) => {
+        // Get invoices for this merchant
+        const invoices = await this.merchantInvoiceRepository.find({
+          where: { merchant_id: merchant.user_id },
+        });
+
+        const paidInvoices = invoices.filter(
+          (inv) => inv.invoice_status === InvoiceStatus.PAID,
+        );
+        const unpaidInvoices = invoices.filter(
+          (inv) => inv.invoice_status === InvoiceStatus.UNPAID,
+        );
+        const processingInvoices = invoices.filter(
+          (inv) => inv.invoice_status === InvoiceStatus.PROCESSING,
+        );
+
+        const totalEarning = paidInvoices.reduce(
+          (sum, inv) => sum + Number(inv.payable_amount),
+          0,
+        );
+        const pendingBalance =
+          unpaidInvoices.reduce((sum, inv) => sum + Number(inv.payable_amount), 0) +
+          processingInvoices.reduce((sum, inv) => sum + Number(inv.payable_amount), 0);
+
+        // Get eligible parcels not yet invoiced
+        const eligibleParcels = await this.getEligibleParcels(merchant.user_id);
+        const uninvoicedAmount = eligibleParcels.reduce((sum, parcel) => {
+          const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+          return sum + breakdown.net_payable;
+        }, 0);
+
+        const availableBalance = uninvoicedAmount + pendingBalance;
+
+        // Get last paid date
+        const lastPaidInvoice = paidInvoices.length > 0
+          ? paidInvoices.sort((a, b) =>
+              new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime()
+            )[0]
+          : null;
+
+        return {
+          merchant_id: merchant.id,
+          user_id: merchant.user_id,
+          name: merchant.user?.full_name || 'N/A',
+          phone: merchant.user?.phone || 'N/A',
+          total_earning: totalEarning,
+          available_balance: availableBalance,
+          pending_invoices: unpaidInvoices.length + processingInvoices.length,
+          last_paid_at: lastPaidInvoice?.paid_at || null,
+          last_paid_amount: lastPaidInvoice ? Number(lastPaidInvoice.payable_amount) : null,
+          uninvoiced_parcels: eligibleParcels.length,
+        };
+      }),
+    );
+
+    // Filter by pending balance if requested
+    let filteredSummaries = merchantSummaries;
+    if (has_pending_balance) {
+      filteredSummaries = merchantSummaries.filter(
+        (m) => m.available_balance > 0,
+      );
+    }
+
+    // Calculate grand totals
+    const grandTotals = {
+      total_merchants: filteredSummaries.length,
+      total_earning: filteredSummaries.reduce((sum, m) => sum + m.total_earning, 0),
+      total_available_balance: filteredSummaries.reduce(
+        (sum, m) => sum + m.available_balance,
+        0,
+      ),
+      total_pending_invoices: filteredSummaries.reduce(
+        (sum, m) => sum + m.pending_invoices,
+        0,
+      ),
+    };
+
+    return {
+      merchants: filteredSummaries,
+      pagination: {
+        total: totalMerchants,
+        page,
+        limit,
+        total_pages: Math.ceil(totalMerchants / limit),
+      },
+      summary: grandTotals,
     };
   }
 

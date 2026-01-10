@@ -22,6 +22,7 @@ import { InvoiceQueryDto } from '../dto/invoice-query.dto';
 import { UnpaidByStoreQueryDto } from '../dto/unpaid-by-store-query.dto';
 import { UpdateInvoiceStatusDto } from '../dto/update-invoice-status.dto';
 import { InvoiceDetailsQueryDto } from '../dto/invoice-details-query.dto';
+import { PaymentHistoryQueryDto } from '../dto/merchant-payment-dashboard.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -157,6 +158,111 @@ export class MerchantInvoiceController {
         summary,
       },
       message: 'Pending invoices list retrieved successfully',
+    };
+  }
+
+  // ===== PAYMENT DASHBOARD ENDPOINTS =====
+
+  /**
+   * Get merchant payment dashboard
+   * Shows: Total Earning, Last Paid at, Available Balance
+   * GET /merchant-invoices/payment-dashboard
+   */
+  @Get('payment-dashboard')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getMerchantPaymentDashboard(
+    @Query('merchant_id') merchantId: string,
+    @Req() req: any,
+  ) {
+    // If merchant role, use their own ID
+    const targetMerchantId =
+      req.user.role === UserRole.MERCHANT ? req.user.userId : merchantId;
+
+    if (!targetMerchantId) {
+      return {
+        success: false,
+        message: 'Merchant ID is required',
+      };
+    }
+
+    const dashboard = await this.merchantInvoiceService.getMerchantPaymentDashboard(
+      targetMerchantId,
+    );
+
+    return {
+      success: true,
+      data: dashboard,
+      message: 'Merchant payment dashboard retrieved successfully',
+    };
+  }
+
+  /**
+   * Get merchant payment history with pagination and filtering
+   * GET /merchant-invoices/payment-history
+   */
+  @Get('payment-history')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getMerchantPaymentHistory(
+    @Query('merchant_id') merchantId: string,
+    @Query() query: PaymentHistoryQueryDto,
+    @Req() req: any,
+  ) {
+    // If merchant role, use their own ID
+    const targetMerchantId =
+      req.user.role === UserRole.MERCHANT ? req.user.userId : merchantId;
+
+    if (!targetMerchantId) {
+      return {
+        success: false,
+        message: 'Merchant ID is required',
+      };
+    }
+
+    const history = await this.merchantInvoiceService.getMerchantPaymentHistory(
+      targetMerchantId,
+      {
+        page: query.page ? parseInt(query.page, 10) : 1,
+        limit: query.limit ? parseInt(query.limit, 10) : 10,
+        from_date: query.from_date,
+        to_date: query.to_date,
+        status: query.status,
+      },
+    );
+
+    return {
+      success: true,
+      data: history,
+      message: 'Merchant payment history retrieved successfully',
+    };
+  }
+
+  /**
+   * Get admin view of all merchants' payment summary
+   * Shows overview of merchant payments for admin
+   * GET /merchant-invoices/admin/payment-summary
+   */
+  @Get('admin/payment-summary')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getAdminMerchantPaymentSummary(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('has_pending_balance') hasPendingBalance?: string,
+  ) {
+    const summary = await this.merchantInvoiceService.getAdminMerchantPaymentSummary({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 10,
+      search,
+      has_pending_balance: hasPendingBalance === 'true',
+    });
+
+    return {
+      success: true,
+      data: summary,
+      message: 'Admin merchant payment summary retrieved successfully',
     };
   }
 

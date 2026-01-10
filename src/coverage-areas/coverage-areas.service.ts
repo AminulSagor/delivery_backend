@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { CoverageArea } from './entities/coverage-area.entity';
 import { SearchCoverageAreaDto } from './dto/search-coverage-area.dto';
 import { SuggestCoverageAreaDto } from './dto/suggest-coverage-area.dto';
+import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 
 interface CoverageAreaWithNorms extends CoverageArea {
   _city_norm?: string;
@@ -13,10 +14,220 @@ interface CoverageAreaWithNorms extends CoverageArea {
 
 @Injectable()
 export class CoverageAreasService {
+  private readonly logger = new Logger(CoverageAreasService.name);
+
   constructor(
     @InjectRepository(CoverageArea)
     private coverageAreaRepository: Repository<CoverageArea>,
+    private readonly carrybeeApiService: CarrybeeApiService,
   ) {}
+
+  /**
+   * Map city names to their divisions
+   * This is a simple mapping for Bangladesh's major cities
+   */
+  private getCityDivision(cityName: string): string {
+    const divisionMap: Record<string, string> = {
+      'Dhaka': 'Dhaka',
+      'Chattogram': 'Chattogram',
+      'Chittagong': 'Chattogram',
+      'Rajshahi': 'Rajshahi',
+      'Khulna': 'Khulna',
+      'Barishal': 'Barishal',
+      'Sylhet': 'Sylhet',
+      'Rangpur': 'Rangpur',
+      'Mymensingh': 'Mymensingh',
+      'Gazipur': 'Dhaka',
+      'Narayanganj': 'Dhaka',
+      'Cumilla': 'Chattogram',
+      'Comilla': 'Chattogram',
+      'Cox\'s Bazar': 'Chattogram',
+      'Jessore': 'Khulna',
+    };
+
+    // Check if city name contains any of the division keywords
+    for (const [city, division] of Object.entries(divisionMap)) {
+      if (cityName.toLowerCase().includes(city.toLowerCase())) {
+        return division;
+      }
+    }
+
+    // Default to the city name itself if no mapping found
+    return cityName;
+  }
+
+  /**
+   * Test Carrybee API connection
+   * Returns basic info about available cities to verify API is working
+   */
+  async testCarrybeeConnection(): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+    error?: string;
+  }> {
+    try {
+      this.logger.log('Testing Carrybee API connection...');
+      const cities = await this.carrybeeApiService.getCities();
+      
+      if (!cities || cities.length === 0) {
+        return {
+          success: false,
+          message: 'Carrybee API returned no cities',
+          data: { cities_count: 0 },
+        };
+      }
+
+      // Try to get zones for the first city
+      const firstCity = cities[0];
+      const zones = await this.carrybeeApiService.getZones(firstCity.id);
+
+      return {
+        success: true,
+        message: 'Carrybee API connection successful',
+        data: {
+          cities_count: cities.length,
+          sample_city: firstCity,
+          sample_zones_count: zones?.length || 0,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Carrybee API connection test failed', error.message);
+      return {
+        success: false,
+        message: 'Failed to connect to Carrybee API',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Sync locations from Carrybee API to coverage_areas table
+   * Similar to carrybee-locations sync but populates coverage_areas
+   */
+  async syncCoverageAreasFromCarrybee(): Promise<{
+    synced: number;
+    cities: number;
+    zones: number;
+    areas: number;
+    errors: string[];
+  }> {
+    this.logger.log('Starting coverage areas sync from Carrybee...');
+
+    let totalSynced = 0;
+    let citiesCount = 0;
+    let zonesCount = 0;
+    let areasCount = 0;
+    const errors: string[] = [];
+
+    try {
+      // 1. Fetch all cities from Carrybee
+      this.logger.log('Fetching cities from Carrybee API...');
+      const cities = await this.carrybeeApiService.getCities();
+      
+      if (!cities || cities.length === 0) {
+        const errorMsg = 'No cities returned from Carrybee API';
+        this.logger.error(errorMsg);
+        errors.push(errorMsg);
+        return {
+          synced: 0,
+          cities: 0,
+          zones: 0,
+          areas: 0,
+          errors,
+        };
+      }
+
+      this.logger.log(`✅ Fetched ${cities.length} cities from Carrybee`);
+      citiesCount = cities.length;
+
+      for (const city of cities) {
+        const division = this.getCityDivision(city.name);
+
+        // Determine if city is in Dhaka
+        const isDhaka = city.name.toLowerCase().includes('dhaka') || 
+                        city.name.toLowerCase().includes('gazipur') ||
+                        city.name.toLowerCase().includes('narayanganj');
+
+        // 2. Fetch zones for this city
+        try {
+          const zones = await this.carrybeeApiService.getZones(city.id);
+          this.logger.log(`Fetched ${zones.length} zones for city ${city.name}`);
+          zonesCount += zones.length;
+
+          for (const zone of zones) {
+            // 3. Fetch areas for this zone
+            try {
+              const areas = await this.carrybeeApiService.getAreas(city.id, zone.id);
+              
+              if (!areas || areas.length === 0) {
+                const warnMsg = `No areas found for zone ${zone.name} in ${city.name}`;
+                this.logger.warn(warnMsg);
+                continue;
+              }
+
+              this.logger.log(`Fetched ${areas.length} areas for zone ${zone.name} in ${city.name}`);
+              areasCount += areas.length;
+
+              for (const area of areas) {
+                try {
+                  // Upsert into coverage_areas table
+                  await this.coverageAreaRepository.upsert(
+                    {
+                      division: division,
+                      city: city.name,
+                      city_id: city.id,
+                      zone: zone.name,
+                      zone_id: zone.id,
+                      area: area.name,
+                      area_id: area.id,
+                      inside_dhaka_flag: isDhaka,
+                    },
+                    ['city_id', 'zone_id', 'area_id'], // Use these as conflict target
+                  );
+                  totalSynced++;
+
+                  // Log progress every 100 areas
+                  if (totalSynced % 100 === 0) {
+                    this.logger.log(`✅ Synced ${totalSynced} coverage areas...`);
+                  }
+                } catch (dbError) {
+                  const errMsg = `DB Error syncing area ${area.name}: ${dbError.message}`;
+                  this.logger.error(errMsg);
+                  errors.push(errMsg);
+                }
+              }
+            } catch (error) {
+              const errMsg = `Failed to fetch/sync areas for zone ${zone.id} (${zone.name}): ${error.message}`;
+              this.logger.error(errMsg);
+              errors.push(errMsg);
+            }
+          }
+        } catch (error) {
+          const errMsg = `Failed to fetch/sync zones for city ${city.id} (${city.name}): ${error.message}`;
+          this.logger.error(errMsg);
+          errors.push(errMsg);
+        }
+      }
+
+      this.logger.log(
+        `🎉 Sync completed! Synced ${totalSynced} coverage areas (${citiesCount} cities, ${zonesCount} zones, ${areasCount} areas). Errors: ${errors.length}`,
+      );
+
+      return {
+        synced: totalSynced,
+        cities: citiesCount,
+        zones: zonesCount,
+        areas: areasCount,
+        errors,
+      };
+    } catch (error) {
+      const errMsg = `Fatal error during sync: ${error.message}`;
+      this.logger.error(errMsg);
+      errors.push(errMsg);
+      throw new Error(`Failed to sync coverage areas from Carrybee: ${error.message}`);
+    }
+  }
 
   async search(searchDto: SearchCoverageAreaDto): Promise<CoverageArea[]> {
     const query = this.coverageAreaRepository.createQueryBuilder('coverage');

@@ -66,7 +66,7 @@ carrybee-locations.csv
 carrybee-locations.json
 carrybee-locations.html
 carrybee-locations.md
-finalcsv-area.csv
+# finalcsv-area.csv - KEEP THIS FILE (needed for Railway deployment)
 newman_report.json
 
 # Development notes (not needed in repo)

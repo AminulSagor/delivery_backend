@@ -6,9 +6,16 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 
 async function bootstrap() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isRailway = !!process.env.RAILWAY_ENVIRONMENT;
+  
+  console.log('[BOOTSTRAP] Starting application...');
+  console.log(`[BOOTSTRAP] Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`[BOOTSTRAP] Platform: ${isRailway ? 'Railway' : 'Local'}`);
+  console.log(`[BOOTSTRAP] Port: ${process.env.PORT || 3000}`);
   
   const app = await NestFactory.create(AppModule, {
-    logger: isProduction ? ['error', 'warn'] : ['log', 'error', 'warn', 'debug'],
+    logger: isProduction ? ['error', 'warn', 'log'] : ['log', 'error', 'warn', 'debug'],
+    abortOnError: false, // Don't crash on startup errors
   });
   
   // Enable CORS for all origins (configure as needed for production)

@@ -31,7 +31,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.replace('Bearer ', '');
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_change_this_in_production');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
       request.user = decoded; // Attach user info to request
       return true;
     } catch (error) {

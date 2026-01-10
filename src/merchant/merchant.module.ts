@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MerchantService } from './merchant.service';
 import { MerchantController } from './merchant.controller';
@@ -17,6 +17,7 @@ import { InvoiceCalculationService } from './services/invoice-calculation.servic
 import { MerchantProfile } from './entities/merchant-profile.entity';
 import { Store } from 'src/stores/entities/store.entity';
 import { S3Service } from 'src/upload/s3-upload.service';
+import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { S3Service } from 'src/upload/s3-upload.service';
       Store,
     ]),
     UsersModule,
+    forwardRef(() => MerchantFinanceModule),
   ],
   providers: [
     MerchantService,

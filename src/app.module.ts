@@ -21,6 +21,8 @@ import { ThirdPartyProvidersModule } from './third-party-providers/third-party-p
 import { CarrybeeModule } from './carrybee/carrybee.module';
 import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations.module';
 import { UploadModule } from './upload/upload.module';
+import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
+
 
 @Module({
   imports: [
@@ -28,7 +30,12 @@ import { UploadModule } from './upload/upload.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    TypeOrmModule.forRoot(dataSourceOptions),
+    TypeOrmModule.forRoot({
+      ...dataSourceOptions,
+      autoLoadEntities: true,
+      retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
+      retryDelay: 2000,  // 2s between retries
+    }),
     AdminModule,
     MerchantModule,
     UsersModule,
@@ -46,6 +53,7 @@ import { UploadModule } from './upload/upload.module';
     CarrybeeModule,
     CarrybeeLocationsModule,
     UploadModule,
+    MerchantFinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
