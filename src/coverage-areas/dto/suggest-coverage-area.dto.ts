@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, MinLength, Max, IsNumber, Min } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  Max,
+  IsNumber,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SuggestCoverageAreaDto {
@@ -15,3 +23,8 @@ export class SuggestCoverageAreaDto {
   limit?: number = 20;
 }
 
+export class SuggestAddressDto {
+  @IsNotEmpty()
+  @IsString()
+  address: string;
+}

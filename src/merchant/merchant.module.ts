@@ -14,17 +14,22 @@ import { SmsService } from '../utils/sms.service';
 import { MerchantInvoiceController } from './controllers/merchant-invoice.controller';
 import { MerchantInvoiceService } from './services/merchant-invoice.service';
 import { InvoiceCalculationService } from './services/invoice-calculation.service';
+import { MerchantProfile } from './entities/merchant-profile.entity';
+import { Store } from 'src/stores/entities/store.entity';
+import { S3Service } from 'src/upload/s3-upload.service';
 import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Merchant,
+      MerchantProfile,
       MerchantPayoutMethod,
       PayoutTransaction,
       MerchantInvoice,
       Parcel,
       User,
+      Store,
     ]),
     UsersModule,
     forwardRef(() => MerchantFinanceModule),
@@ -35,6 +40,7 @@ import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.modu
     InvoiceCalculationService,
     EmailService,
     SmsService,
+    S3Service,
   ],
   controllers: [MerchantController, MerchantInvoiceController],
   exports: [MerchantService, MerchantInvoiceService, InvoiceCalculationService],

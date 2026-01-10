@@ -21,25 +21,36 @@ export class SmsService {
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('SMS_API_KEY', '');
-    this.apiUrl = this.configService.get<string>('SMS_API_URL', 'https://api.sms.net.bd/sendsms');
+    this.apiUrl = this.configService.get<string>(
+      'SMS_API_URL',
+      'https://api.sms.net.bd/sendsms',
+    );
     this.senderId = this.configService.get<string>('SMS_SENDER_ID', '');
     this.contentId = this.configService.get<string>('SMS_CONTENT_ID', '');
-    
+
     // Check if SMS credentials are configured
-    this.smsEnabled = !!(this.apiKey && this.apiKey !== 'your-sms-api-key-here');
+    this.smsEnabled = !!(
+      this.apiKey && this.apiKey !== 'your-sms-api-key-here'
+    );
 
     if (this.smsEnabled) {
       this.logger.log('✅ SMS service initialized with SMS.net.bd');
       this.logger.log(`📱 SMS API URL: ${this.apiUrl}`);
     } else {
-      this.logger.warn('⚠️  SMS service running in STUB mode - No API key configured');
+      this.logger.warn(
+        '⚠️  SMS service running in STUB mode - No API key configured',
+      );
     }
   }
 
   /**
    * Check SMS balance
    */
-  async checkBalance(): Promise<{ success: boolean; balance?: string; message: string }> {
+  async checkBalance(): Promise<{
+    success: boolean;
+    balance?: string;
+    message: string;
+  }> {
     if (!this.smsEnabled) {
       this.logger.warn('SMS service not configured');
       return {
@@ -79,7 +90,10 @@ export class SmsService {
   /**
    * Send SMS using SMS.net.bd API
    */
-  private async sendSms(to: string, message: string): Promise<{ success: boolean; requestId?: number; message: string }> {
+  public async sendSms(
+    to: string,
+    message: string,
+  ): Promise<{ success: boolean; requestId?: number; message: string }> {
     if (!this.smsEnabled) {
       this.logger.log(`[STUB] Would send SMS to ${to}: ${message}`);
       return {
@@ -102,11 +116,11 @@ export class SmsService {
       formData.append('api_key', this.apiKey);
       formData.append('msg', message);
       formData.append('to', formattedPhone);
-      
+
       if (this.senderId) {
         formData.append('sender_id', this.senderId);
       }
-      
+
       if (this.contentId) {
         formData.append('content_id', this.contentId);
       }
@@ -153,7 +167,12 @@ export class SmsService {
    */
   async sendMerchantApprovalSms(
     merchant: Merchant,
-  ): Promise<{ success: boolean; stub?: boolean; message: string; requestId?: number }> {
+  ): Promise<{
+    success: boolean;
+    stub?: boolean;
+    message: string;
+    requestId?: number;
+  }> {
     if (!merchant.user?.phone) {
       this.logger.warn(`SMS skipped - no phone for merchant ${merchant.id}`);
       return {
@@ -191,7 +210,14 @@ export class SmsService {
   /**
    * Send test SMS
    */
-  async sendTestSms(to: string): Promise<{ success: boolean; stub?: boolean; message: string; requestId?: number }> {
+  async sendTestSms(
+    to: string,
+  ): Promise<{
+    success: boolean;
+    stub?: boolean;
+    message: string;
+    requestId?: number;
+  }> {
     if (!this.smsEnabled) {
       this.logger.log(`[STUB] Would send test SMS to ${to}`);
       return {

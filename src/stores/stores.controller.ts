@@ -18,7 +18,11 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
-import { toStoreListItem, toStoreDetail } from '../common/interfaces/responses.interface';
+import {
+  toStoreListItem,
+  toStoreDetail,
+} from '../common/interfaces/responses.interface';
+import { StoreStatus } from './entities/store.entity';
 
 @Controller('stores')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,13 +30,42 @@ export class StoresController {
   constructor(private readonly storesService: StoresService) {}
 
   // Admin endpoints
+
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Patch('admin/:id/approve')
+  async approveStore(@Param('id') id: string) {
+    await this.storesService.approveStore(id);
+
+    // Minimal response as requested
+    return {
+      store_id: id,
+      status: StoreStatus.APPROVED,
+      message: 'Store approved successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Patch('admin/:id/decline')
+  async rejectStore(@Param('id') id: string) {
+    await this.storesService.rejectStore(id);
+
+    // Minimal response as requested
+    return {
+      store_id: id,
+      status: StoreStatus.DECLINED,
+      message: 'Store declined successfully',
+    };
+  }
+
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @Get('admin/all')
   async findAllStores() {
     const stores = await this.storesService.findAllStores();
     return {
-      stores: stores.map(toStoreListItem),
+      stores: stores.map(toStoreDetail),
       message: 'All stores retrieved successfully',
     };
   }
@@ -83,7 +116,7 @@ export class StoresController {
   async findAll(@CurrentUser() user: any) {
     const stores = await this.storesService.findAllByMerchant(user.userId);
     return {
-      stores: stores.map(toStoreListItem),
+      stores: stores,
       message: 'Stores retrieved successfully',
     };
   }

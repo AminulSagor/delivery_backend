@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Merchant } from '../../merchant/entities/merchant.entity';
@@ -55,7 +56,7 @@ export const RIDER_DELIVERY_STATUSES = [
   ParcelStatus.RETURNED,
 ] as const;
 
-export type RiderDeliveryStatus = typeof RIDER_DELIVERY_STATUSES[number];
+export type RiderDeliveryStatus = (typeof RIDER_DELIVERY_STATUSES)[number];
 
 /**
  * Statuses that always require a reason (regardless of amount match)
@@ -75,6 +76,7 @@ export enum PaymentStatus {
 }
 
 @Entity('parcels')
+@Index(['store_id', 'status'])
 export class Parcel {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -105,7 +107,9 @@ export class Parcel {
   @Column({ type: 'uuid', nullable: true })
   pickup_request_id: string | null;
 
-  @ManyToOne(() => PickupRequest, (pickupRequest) => pickupRequest.parcels, { onDelete: 'SET NULL' })
+  @ManyToOne(() => PickupRequest, (pickupRequest) => pickupRequest.parcels, {
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'pickup_request_id' })
   pickupRequest: PickupRequest | null;
 
@@ -241,7 +245,9 @@ export class Parcel {
   @Column({ type: 'uuid', nullable: true })
   assigned_rider_id: string | null;
 
-  @ManyToOne(() => Rider, (rider) => rider.assignedParcels, { onDelete: 'SET NULL' })
+  @ManyToOne(() => Rider, (rider) => rider.assignedParcels, {
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'assigned_rider_id' })
   assignedRider: Rider | null;
 

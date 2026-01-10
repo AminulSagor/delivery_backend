@@ -9,6 +9,13 @@ import {
 } from 'typeorm';
 import { Merchant } from '../../merchant/entities/merchant.entity';
 import { Hub } from '../../hubs/entities/hub.entity';
+import { User } from 'src/users/entities/user.entity';
+
+export enum StoreStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  DECLINED = 'DECLINED',
+}
 
 @Entity('stores')
 export class Store {
@@ -49,6 +56,13 @@ export class Store {
 
   @Column({ type: 'boolean', default: false })
   is_default: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: StoreStatus,
+    default: StoreStatus.PENDING,
+  })
+  status: StoreStatus;
 
   // ===== LOCATION FIELDS =====
   @Column({ type: 'varchar', length: 100, nullable: true })

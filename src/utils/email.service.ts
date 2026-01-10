@@ -13,8 +13,12 @@ export class EmailService {
     // Check if email credentials are configured
     const smtpUser = this.configService.get<string>('SMTP_USER');
     const smtpPassword = this.configService.get<string>('SMTP_PASSWORD');
-    
-    this.emailEnabled = !!(smtpUser && smtpPassword && smtpUser !== 'your-email@yourdomain.com');
+
+    this.emailEnabled = !!(
+      smtpUser &&
+      smtpPassword &&
+      smtpUser !== 'your-email@yourdomain.com'
+    );
 
     if (this.emailEnabled) {
       // Create Zoho Mail transporter
@@ -34,7 +38,9 @@ export class EmailService {
       this.logger.log('✅ Email service initialized with Zoho Mail');
       this.logger.log(`📧 Email from: ${smtpUser}`);
     } else {
-      this.logger.warn('⚠️  Email service running in STUB mode - No credentials configured');
+      this.logger.warn(
+        '⚠️  Email service running in STUB mode - No credentials configured',
+      );
     }
   }
 
@@ -85,11 +91,17 @@ export class EmailService {
     }
 
     try {
-      const fromEmail = this.configService.get<string>('EMAIL_FROM') || this.configService.get<string>('SMTP_USER') || '';
-      
+      const fromEmail =
+        this.configService.get<string>('EMAIL_FROM') ||
+        this.configService.get<string>('SMTP_USER') ||
+        '';
+
       const mailOptions = {
         from: {
-          name: this.configService.get<string>('EMAIL_FROM_NAME', 'Courier Delivery Service'),
+          name: this.configService.get<string>(
+            'EMAIL_FROM_NAME',
+            'Courier Delivery Service',
+          ),
           address: fromEmail,
         },
         to: merchant.user.email,
@@ -99,7 +111,7 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      
+
       this.logger.log(`✅ Approval email sent to ${merchant.user.email}`);
       if (info && typeof info === 'object' && 'messageId' in info) {
         this.logger.debug(`Email ID: ${info.messageId}`);
@@ -110,7 +122,10 @@ export class EmailService {
         message: `Approval email sent to ${merchant.user.email}`,
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to send approval email to ${merchant.user.email}`, error);
+      this.logger.error(
+        `❌ Failed to send approval email to ${merchant.user.email}`,
+        error,
+      );
       return {
         success: false,
         message: `Failed to send email: ${error.message}`,
@@ -121,7 +136,9 @@ export class EmailService {
   /**
    * Send test email
    */
-  async sendTestEmail(to: string): Promise<{ success: boolean; stub?: boolean; message: string }> {
+  async sendTestEmail(
+    to: string,
+  ): Promise<{ success: boolean; stub?: boolean; message: string }> {
     if (!this.emailEnabled) {
       this.logger.log(`[STUB] Would send test email to ${to}`);
       return {
@@ -132,11 +149,17 @@ export class EmailService {
     }
 
     try {
-      const fromEmail = this.configService.get<string>('EMAIL_FROM') || this.configService.get<string>('SMTP_USER') || '';
-      
+      const fromEmail =
+        this.configService.get<string>('EMAIL_FROM') ||
+        this.configService.get<string>('SMTP_USER') ||
+        '';
+
       const mailOptions = {
         from: {
-          name: this.configService.get<string>('EMAIL_FROM_NAME', 'Courier Delivery Service'),
+          name: this.configService.get<string>(
+            'EMAIL_FROM_NAME',
+            'Courier Delivery Service',
+          ),
           address: fromEmail,
         },
         to,
@@ -160,7 +183,7 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      
+
       this.logger.log(`✅ Test email sent to ${to}`);
       if (info && typeof info === 'object' && 'messageId' in info) {
         this.logger.debug(`Email ID: ${info.messageId}`);
@@ -272,5 +295,43 @@ If you have any questions, please contact our support team.
 
 © ${new Date().getFullYear()} Courier Delivery Service. All rights reserved.
     `.trim();
+  }
+
+  async sendGenericEmail(
+    to: string,
+    subject: string,
+    htmlBody: string,
+  ): Promise<boolean> {
+    if (!this.emailEnabled) {
+      this.logger.log(`[STUB] Would send generic email to ${to}: ${subject}`);
+      return true;
+    }
+
+    try {
+      const fromEmail =
+        this.configService.get<string>('EMAIL_FROM') ||
+        this.configService.get<string>('SMTP_USER') ||
+        '';
+
+      const mailOptions = {
+        from: {
+          name: this.configService.get<string>(
+            'EMAIL_FROM_NAME',
+            'Courier Delivery Service',
+          ),
+          address: fromEmail,
+        },
+        to,
+        subject,
+        html: htmlBody,
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`✅ Generic email sent to ${to}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Failed to send generic email to ${to}`, error);
+      return false; // Return false so the caller knows it failed
+    }
   }
 }
