@@ -15,6 +15,9 @@ export class Store {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', length: 20, unique: true, nullable: true })
+  store_code: string | null; // Auto-generated unique code (e.g., TSH001)
+
   @Column({ type: 'uuid' })
   merchant_id: string;
 

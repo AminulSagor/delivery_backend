@@ -104,16 +104,17 @@ export class CreateParcelDto {
   delivery_type?: DeliveryType;
 
   // ===== CASH ON DELIVERY =====
+  // Note: is_cod is automatically determined by cod_amount > 0
   @IsOptional()
-  @IsBoolean()
-  is_cod?: boolean;
-
-  @ValidateIf((o) => o.is_cod === true)
-  @IsNotEmpty({ message: 'COD amount is required when is_cod is true' })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Type(() => Number)
-  cod_amount?: number;
+  cod_amount?: number; // If > 0, COD charge will be applied
+
+  // ===== EXCHANGE FLAG =====
+  @IsOptional()
+  @IsBoolean()
+  is_exchange?: boolean; // True if this parcel is an exchange item
 
   // ===== SPECIAL INSTRUCTIONS =====
   @IsOptional()

@@ -11,11 +11,11 @@ import {
 } from 'class-validator';
 
 export class CreateHubDto {
+  @IsOptional()
   @IsString({ message: 'Hub code must be a string' })
-  @IsNotEmpty({ message: 'Hub code is required' })
   @MaxLength(50, { message: 'Hub code cannot exceed 50 characters' })
   @Matches(/^[A-Z0-9_-]+$/, { message: 'Hub code must contain only uppercase letters, numbers, hyphens, and underscores' })
-  hub_code: string;
+  hub_code?: string; // Now optional - will be auto-generated if not provided
 
   @IsString({ message: 'Branch name must be a string' })
   @IsNotEmpty({ message: 'Branch name is required' })

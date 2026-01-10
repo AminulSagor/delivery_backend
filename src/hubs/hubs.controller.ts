@@ -589,6 +589,27 @@ export class HubsController {
     };
   }
 
+  // ===== TOP MERCHANT STATISTICS (HUB MANAGER) =====
+
+  /**
+   * Get top merchant and successful parcels count (Hub Manager)
+   * 
+   * Returns the #1 merchant with most successful parcels in this hub
+   * along with total successful parcels count for the hub
+   */
+  @Get('top-merchant')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getTopMerchant(@CurrentUser() user: any) {
+    const result = await this.hubsService.getTopMerchantStatistics(user.hubId);
+
+    return {
+      success: true,
+      data: result,
+      message: 'Top merchant statistics retrieved successfully',
+    };
+  }
+
   // ===== ADMIN DYNAMIC :id ROUTES (must be last to avoid matching specific routes) =====
   @Roles(UserRole.ADMIN)
   @Get(':id')

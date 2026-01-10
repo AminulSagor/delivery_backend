@@ -874,13 +874,8 @@ export class ParcelsService {
         throw new NotFoundException(
           `Delivery coverage area not found. Please select a valid delivery area.`,
         );
-      if (
-        createParcelDto.is_cod &&
-        (!createParcelDto.cod_amount || createParcelDto.cod_amount <= 0)
-      )
-        throw new BadRequestException(
-          'COD amount must be greater than 0 when COD is enabled.',
-        );
+      // Auto-determine is_cod based on cod_amount
+      const isCod = !!(createParcelDto.cod_amount && createParcelDto.cod_amount > 0);
       if (createParcelDto.product_weight && createParcelDto.product_weight < 0)
         throw new BadRequestException('Product weight cannot be negative.');
       const phoneRegex = /^01[0-9]{9}$/;
@@ -911,7 +906,7 @@ export class ParcelsService {
           merchantId,
           createParcelDto.delivery_coverage_area_id || null,
           createParcelDto.product_weight || 0,
-          createParcelDto.is_cod || false,
+          isCod,
           createParcelDto.cod_amount || 0,
         );
       } catch (error) {
@@ -955,6 +950,8 @@ export class ParcelsService {
         status: ParcelStatus.PENDING,
         payment_status: PaymentStatus.UNPAID,
         delivery_type: createParcelDto.delivery_type || DeliveryType.NORMAL, // Default to Normal (1)
+        is_cod: isCod, // Auto-set based on cod_amount > 0
+        is_exchange: createParcelDto.is_exchange || false, // Exchange flag
         delivery_charge: charges.delivery_charge,
         weight_charge: charges.weight_charge,
         cod_charge: charges.cod_charge,
@@ -1621,14 +1618,7 @@ export class ParcelsService {
             'Invalid customer phone number. Must be in format: 01XXXXXXXXX',
           );
       }
-      if (
-        updateParcelDto.is_cod !== undefined &&
-        updateParcelDto.is_cod &&
-        (!updateParcelDto.cod_amount || updateParcelDto.cod_amount <= 0)
-      )
-        throw new BadRequestException(
-          'COD amount must be greater than 0 when COD is enabled.',
-        );
+      
       if (
         updateParcelDto.product_weight !== undefined &&
         updateParcelDto.product_weight < 0
@@ -1660,6 +1650,12 @@ export class ParcelsService {
           );
       }
       Object.assign(parcel, updateParcelDto);
+      
+      // Auto-set is_cod based on cod_amount if it's being updated
+      if (updateParcelDto.cod_amount !== undefined) {
+        parcel.is_cod = updateParcelDto.cod_amount > 0;
+      }
+      
       let updatedParcel;
       try {
         updatedParcel = await this.parcelRepository.save(parcel);
