@@ -133,16 +133,19 @@ export interface PickupRequestActionResponse {
 
 export interface StoreListItem {
   id: string;
+  store_code: string | null; // Auto-generated unique code
   business_name: string;
   business_address: string;
   phone_number: string;
   email: string | null;
+  facebook_page: string | null;
   is_default: boolean;
   is_carrybee_synced: boolean;
-  hub?: {
-    id: string;
-    branch_name: string;
-  } | null;
+  performance: {
+    total_parcels: number;
+    successfully_delivered: number;
+    total_returns: number;
+  };
 }
 
 export interface StoreDetail extends StoreListItem {
@@ -355,29 +358,31 @@ export function toPickupRequestActionResponse(
 export function toStoreListItem(store: any): StoreListItem {
   return {
     id: store.id,
+    store_code: store.store_code || null,
     business_name: store.business_name,
     business_address: store.business_address,
     phone_number: store.phone_number,
     email: store.email,
+    facebook_page: store.facebook_page || null,
     is_default: store.is_default,
     is_carrybee_synced: store.is_carrybee_synced || false,
-    hub: store.hub
-      ? {
-          id: store.hub.id,
-          branch_name: store.hub.branch_name,
-        }
-      : null,
+    performance: store.performance || {
+      total_parcels: 0,
+      successfully_delivered: 0,
+      total_returns: 0,
+    },
+    
   };
 }
 
 export function toStoreDetail(store: any): StoreDetail {
   return {
     ...toStoreListItem(store),
-    district: store.district,
-    thana: store.thana,
-    area: store.area,
-    facebook_page: store.facebook_page,
-    carrybee_store_id: store.carrybee_store_id,
+    district: store.district || null,
+    thana: store.thana || null,
+    area: store.area || null,
+    facebook_page: store.facebook_page || null,
+    carrybee_store_id: store.carrybee_store_id || null,
     created_at: store.created_at,
     status: store.status,
 

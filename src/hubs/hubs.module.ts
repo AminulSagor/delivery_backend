@@ -11,6 +11,8 @@ import { UsersService } from '../users/users.service';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
+import { Store } from '../stores/entities/store.entity';
+import { Parcel } from '../parcels/entities/parcel.entity';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { DeliveryVerification } from '../delivery-verifications/entities/deliver
       User,
       Rider,
       DeliveryVerification,
+      Store,
+      Parcel,
     ]),
     forwardRef(() => ParcelsModule),
   ],

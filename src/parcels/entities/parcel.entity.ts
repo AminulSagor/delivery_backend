@@ -169,10 +169,13 @@ export class Parcel {
   total_charge: number;
 
   @Column({ type: 'boolean', default: false })
-  is_cod: boolean;
+  is_cod: boolean; // Auto-set based on cod_amount > 0
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   cod_amount: number;
+
+  @Column({ type: 'boolean', default: false })
+  is_exchange: boolean; // True if this is an exchange parcel
 
   // ===== FINANCIAL TRACKING (Enhanced for Invoice System) =====
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })

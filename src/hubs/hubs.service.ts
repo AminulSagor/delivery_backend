@@ -7,7 +7,7 @@ import {
   Logger
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, Between, In } from 'typeorm';
 import { Hub } from './entities/hub.entity';
 import { HubManager } from './entities/hub-manager.entity';
 import { RiderSettlement } from './entities/rider-settlement.entity';
@@ -19,11 +19,14 @@ import { CreateTransferRecordDto } from './dto/create-transfer-record.dto';
 import { UpdateTransferRecordDto } from './dto/update-transfer-record.dto';
 import { TransferRecordQueryDto } from './dto/transfer-record-query.dto';
 import { UsersService } from '../users/users.service';
+import { User } from '../users/entities/user.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { SettlementStatus } from '../common/enums/settlement-status.enum';
 import { TransferRecordStatus } from '../common/enums/transfer-record-status.enum';
 import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
+import { Store } from '../stores/entities/store.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 
 @Injectable()
 export class HubsService {
@@ -42,25 +45,75 @@ export class HubsService {
     private readonly riderRepository: Repository<Rider>,
     @InjectRepository(DeliveryVerification)
     private readonly deliveryVerificationRepository: Repository<DeliveryVerification>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
+    @InjectRepository(Parcel)
+    private readonly parcelRepository: Repository<Parcel>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly usersService: UsersService,
   ) {}
 
+  /**
+   * Generate unique hub code based on area
+   * Format: HUB-{AREA_CODE}-{NUMBER}
+   * Example: HUB-DHK-001, HUB-CTG-002
+   */
+  private async generateUniqueHubCode(area: string): Promise<string> {
+    // Extract first 3 letters from area and convert to uppercase
+    const areaCode = area
+      .replace(/[^a-zA-Z]/g, '') // Remove non-alphabetic characters
+      .substring(0, 3)
+      .toUpperCase()
+      .padEnd(3, 'X'); // Pad with X if less than 3 chars
+
+    // Find all existing hub codes with this area prefix
+    const existingHubs = await this.hubRepository
+      .createQueryBuilder('hub')
+      .where('hub.hub_code LIKE :prefix', { prefix: `HUB-${areaCode}-%` })
+      .orderBy('hub.hub_code', 'DESC')
+      .getMany();
+
+    let nextNumber = 1;
+
+    if (existingHubs.length > 0) {
+      // Extract the highest number from existing codes
+      const numbers = existingHubs
+        .map((hub) => {
+          const match = hub.hub_code.match(/HUB-[A-Z]{3}-(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        })
+        .filter((num) => !isNaN(num));
+
+      if (numbers.length > 0) {
+        nextNumber = Math.max(...numbers) + 1;
+      }
+    }
+
+    // Format: HUB-DHK-001
+    return `HUB-${areaCode}-${nextNumber.toString().padStart(3, '0')}`;
+  }
+
   async create(createHubDto: CreateHubDto): Promise<Hub> {
     try {
-      // Validate hub_code format
-      if (!createHubDto.hub_code || createHubDto.hub_code.trim() === '') {
-        throw new BadRequestException('Hub code cannot be empty');
-      }
+      // Auto-generate hub_code if not provided
+      let hubCode = createHubDto.hub_code;
+      
+      if (!hubCode || hubCode.trim() === '') {
+        hubCode = await this.generateUniqueHubCode(createHubDto.area);
+      } else {
+        hubCode = hubCode.toUpperCase();
+        
+        // Check if manually provided hub_code already exists
+        const existing = await this.hubRepository.findOne({
+          where: { hub_code: hubCode },
+        });
 
-      // Check if hub_code already exists
-      const existing = await this.hubRepository.findOne({
-        where: { hub_code: createHubDto.hub_code.toUpperCase() },
-      });
-
-      if (existing) {
-        throw new ConflictException(
-          `Hub with code '${createHubDto.hub_code}' already exists`,
-        );
+        if (existing) {
+          throw new ConflictException(
+            `Hub with code '${hubCode}' already exists`,
+          );
+        }
       }
 
       // Check if manager phone already exists
@@ -105,7 +158,7 @@ export class HubsService {
       // Create hub with manager_user_id
       const hub = this.hubRepository.create({
         ...createHubDto,
-        hub_code: createHubDto.hub_code.toUpperCase(),
+        hub_code: hubCode,
         manager_user_id: managerUser.id,
       });
       const savedHub = await this.hubRepository.save(hub);
@@ -922,6 +975,174 @@ export class HubsService {
       );
       throw new InternalServerErrorException(
         'Failed to delete transfer record. Please try again later.',
+      );
+    }
+  }
+
+  /**
+   * Get the top merchant (by successful parcels) with their transaction details
+   */
+  async getTopMerchantStatistics(hubId: string): Promise<{
+    top_merchant: {
+      merchant_id: string;
+      merchant_name: string;
+      merchant_phone: string;
+      successful_parcels: number;
+      total_parcels: number;
+      total_transaction_amount: number;
+      total_cod_collected: number;
+      total_delivery_charges: number;
+      net_amount: number;
+    } | null;
+    hub_successful_parcels_total: number;
+  }> {
+    try {
+      // Get all stores assigned to this hub
+      const stores = await this.storeRepository.find({
+        where: { hub_id: hubId },
+        select: ['id'],
+      });
+
+      const storeIds = stores.map((store) => store.id);
+
+      if (storeIds.length === 0) {
+        return {
+          top_merchant: null,
+          hub_successful_parcels_total: 0,
+        };
+      }
+
+      // Successful delivery statuses
+      const successfulStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+      ];
+
+      // Get all parcels for this hub's stores
+      const parcels = await this.parcelRepository.find({
+        where: { store_id: In(storeIds) },
+        select: [
+          'id',
+          'merchant_id',
+          'status',
+          'cod_collected_amount',
+          'cod_amount',
+          'total_charge',
+        ],
+      });
+
+      // Total successful parcels for the entire hub
+      const hubSuccessfulParcelsTotal = parcels.filter((p) =>
+        successfulStatuses.includes(p.status),
+      ).length;
+
+      // Get unique merchant IDs
+      const uniqueMerchantIds = [...new Set(parcels.map((p) => p.merchant_id))];
+
+      // Fetch merchant user data
+      const merchantUsers = await this.userRepository.find({
+        where: { id: In(uniqueMerchantIds) },
+        select: ['id', 'full_name', 'phone'],
+      });
+
+      // Create merchant info map
+      const merchantInfoMap = new Map<string, User>();
+      for (const user of merchantUsers) {
+        merchantInfoMap.set(user.id, user);
+      }
+
+      // Group by merchant
+      const merchantMap = new Map<
+        string,
+        {
+          merchant_id: string;
+          merchant_name: string;
+          merchant_phone: string;
+          successful_parcels: number;
+          total_parcels: number;
+          total_transaction_amount: number;
+          total_cod_collected: number;
+          total_delivery_charges: number;
+          net_amount: number;
+        }
+      >();
+
+      for (const parcel of parcels) {
+        const merchantId = parcel.merchant_id;
+        const merchantUser = merchantInfoMap.get(merchantId);
+        const merchantName = merchantUser?.full_name || 'Unknown';
+        const merchantPhone = merchantUser?.phone || 'N/A';
+
+        if (!merchantMap.has(merchantId)) {
+          merchantMap.set(merchantId, {
+            merchant_id: merchantId,
+            merchant_name: merchantName,
+            merchant_phone: merchantPhone,
+            successful_parcels: 0,
+            total_parcels: 0,
+            total_transaction_amount: 0,
+            total_cod_collected: 0,
+            total_delivery_charges: 0,
+            net_amount: 0,
+          });
+        }
+
+        const data = merchantMap.get(merchantId)!;
+        data.total_parcels++;
+
+        // Check if successful delivery
+        if (successfulStatuses.includes(parcel.status)) {
+          data.successful_parcels++;
+
+          const codCollected = Number(
+            parcel.cod_collected_amount || parcel.cod_amount || 0,
+          );
+          const deliveryCharge = Number(parcel.total_charge || 0);
+
+          data.total_cod_collected += codCollected;
+          data.total_delivery_charges += deliveryCharge;
+          data.total_transaction_amount += codCollected;
+          data.net_amount += codCollected - deliveryCharge;
+        }
+      }
+
+      // Find the top merchant (only #1)
+      const merchants = Array.from(merchantMap.values());
+
+      if (merchants.length === 0) {
+        return {
+          top_merchant: null,
+          hub_successful_parcels_total: hubSuccessfulParcelsTotal,
+        };
+      }
+
+      // Sort and get only the first one
+      const topMerchant = merchants.sort(
+        (a, b) => b.successful_parcels - a.successful_parcels,
+      )[0];
+
+      return {
+        top_merchant: {
+          ...topMerchant,
+          total_transaction_amount: Number(
+            topMerchant.total_transaction_amount.toFixed(2),
+          ),
+          total_cod_collected: Number(topMerchant.total_cod_collected.toFixed(2)),
+          total_delivery_charges: Number(
+            topMerchant.total_delivery_charges.toFixed(2),
+          ),
+          net_amount: Number(topMerchant.net_amount.toFixed(2)),
+        },
+        hub_successful_parcels_total: hubSuccessfulParcelsTotal,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get top merchant statistics for hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve top merchant statistics. Please try again later.',
       );
     }
   }
