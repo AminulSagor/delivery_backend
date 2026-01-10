@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { MerchantService } from './merchant.service';
 import { MerchantSignupDto } from './dto/create-merchant.dto';
@@ -21,12 +22,27 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { toMerchantListItem, toMerchantDetail } from '../common/interfaces/responses.interface';
+import {
+  toMerchantListItem,
+  toMerchantDetail,
+} from '../common/interfaces/responses.interface';
+import { GetUploadUrlDto } from 'src/upload/dto/get-upload-url.dto';
+import { S3Service } from 'src/upload/s3-upload.service';
+import {
+  UpdateBinDto,
+  UpdateNidDto,
+  UpdateProfileDetailsDto,
+  UpdateTinDto,
+  UpdateTradeLicenseDto,
+} from './dto/update-profile-details.dto';
 
 @Controller('merchants')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class MerchantController {
-  constructor(private readonly merchantService: MerchantService) {}
+  constructor(
+    private readonly merchantService: MerchantService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   @Public()
   @Post('signup')
@@ -86,11 +102,11 @@ export class MerchantController {
 
   @Roles(UserRole.ADMIN)
   @Patch(':id/approve')
-  async approve(
-    @Param('id') id: string,
-    @CurrentUser() user: any,
-  ) {
-    const merchant = await this.merchantService.approveMerchant(id, user.userId);
+  async approve(@Param('id') id: string, @CurrentUser() user: any) {
+    const merchant = await this.merchantService.approveMerchant(
+      id,
+      user.userId,
+    );
     return {
       id: merchant.id,
       status: merchant.status,
@@ -260,5 +276,35 @@ export class MerchantController {
       data: { method },
       message: 'Payout method verified successfully',
     };
+  }
+
+  @Get('settings')
+  getSettings(@Request() req) {
+    return this.merchantService.getSettings(req.user.merchantId);
+  }
+
+  @Patch('profile-details')
+  updateProfileDetails(@Request() req, @Body() dto: UpdateProfileDetailsDto) {
+    return this.merchantService.updateProfileDetails(req.user.merchantId, dto);
+  }
+
+  @Patch('documents/nid')
+  updateNid(@Request() req, @Body() dto: UpdateNidDto) {
+    return this.merchantService.updateNid(req.user.merchantId, dto);
+  }
+
+  @Patch('documents/trade-license')
+  updateTradeLicense(@Request() req, @Body() dto: UpdateTradeLicenseDto) {
+    return this.merchantService.updateTradeLicense(req.user.merchantId, dto);
+  }
+
+  @Patch('documents/tin')
+  updateTin(@Request() req, @Body() dto: UpdateTinDto) {
+    return this.merchantService.updateTin(req.user.merchantId, dto);
+  }
+
+  @Patch('documents/bin')
+  updateBin(@Request() req, @Body() dto: UpdateBinDto) {
+    return this.merchantService.updateBin(req.user.merchantId, dto);
   }
 }

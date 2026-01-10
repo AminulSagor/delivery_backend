@@ -39,10 +39,7 @@ export class CustomerController {
 
   // 🔹 Create full customer (called if check says exists === false)
   @Post()
-  async create(
-    @CurrentUser() user: any,
-    @Body() dto: CreateCustomerDto,
-  ) {
+  async create(@CurrentUser() user: any, @Body() dto: CreateCustomerDto) {
     const customer = await this.customerService.create(dto);
     return {
       customer,
@@ -53,6 +50,11 @@ export class CustomerController {
   @Get()
   async findAll(@CurrentUser() user: any) {
     return await this.customerService.findAll();
+  }
+
+  @Get('get/:phone')
+  async getByPhone(@Param('phone') phone: string, @CurrentUser() user: any) {
+    return await this.customerService.getCustomerByPhone(phone);
   }
 
   // Get customer by phone number instead of id

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Store } from './entities/store.entity';
+import { Store, StoreStatus } from './entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
@@ -14,6 +14,7 @@ import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 import { CoverageAreasService } from '../coverage-areas/coverage-areas.service';
+import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
 
 @Injectable()
 export class StoresService {
@@ -91,24 +92,25 @@ export class StoresService {
         relations: ['user'],
       });
 
-      const contactPersonName = merchantWithUser?.user?.full_name || 'Store Owner';
+      const contactPersonName =
+        merchantWithUser?.user?.full_name || 'Store Owner';
       const contactPhone = this.carrybeeApiService.formatPhoneForCarrybee(
         store.phone_number,
       );
 
       // Carrybee truncates name to 30 chars
       const truncatedName = store.business_name.substring(0, 30).trim();
-      
+
       // First check if store already exists in Carrybee (by name)
       const existingStores = await this.carrybeeApiService.getStores();
-      let carrybeeStore = existingStores.find((s: any) => 
-        s.name === store.business_name || s.name === truncatedName
+      let carrybeeStore = existingStores.find(
+        (s: any) => s.name === store.business_name || s.name === truncatedName,
       );
 
       if (!carrybeeStore) {
         // Create store in Carrybee
         this.logger.log(`Creating new store in Carrybee: ${truncatedName}`);
-        
+
         await this.carrybeeApiService.createStore({
           name: store.business_name,
           contact_person_name: contactPersonName,
@@ -121,11 +123,14 @@ export class StoresService {
 
         // Get Carrybee store ID after creation
         const updatedStores = await this.carrybeeApiService.getStores();
-        carrybeeStore = updatedStores.find((s: any) => 
-          s.name === store.business_name || s.name === truncatedName
+        carrybeeStore = updatedStores.find(
+          (s: any) =>
+            s.name === store.business_name || s.name === truncatedName,
         );
       } else {
-        this.logger.log(`Store "${store.business_name}" already exists in Carrybee, reusing ID: ${carrybeeStore.id}`);
+        this.logger.log(
+          `Store "${store.business_name}" already exists in Carrybee, reusing ID: ${carrybeeStore.id}`,
+        );
       }
 
       if (carrybeeStore) {
@@ -133,9 +138,13 @@ export class StoresService {
         store.is_carrybee_synced = true;
         store.carrybee_synced_at = new Date();
         await this.storesRepository.save(store);
-        this.logger.log(`Store ${store.id} synced to Carrybee with ID: ${carrybeeStore.id}`);
+        this.logger.log(
+          `Store ${store.id} synced to Carrybee with ID: ${carrybeeStore.id}`,
+        );
       } else {
-        this.logger.warn(`Store created in Carrybee but could not retrieve store ID for "${store.business_name}"`);
+        this.logger.warn(
+          `Store created in Carrybee but could not retrieve store ID for "${store.business_name}"`,
+        );
       }
     } catch (error) {
       this.logger.error(
@@ -169,10 +178,62 @@ export class StoresService {
       },
     });
 
-    return stores;
+    // 2. Calculate stats for ALL stores belonging to this merchant
+    // We use a raw query or QueryBuilder for performance to do a GROUP BY
+    const stats = await this.storesRepository.manager
+      .createQueryBuilder(Parcel, 'parcel')
+      .select('parcel.store_id', 'store_id')
+      .addSelect('COUNT(parcel.id)', 'total_handled')
+      .addSelect(
+        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        'delivered_count',
+      )
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        'return_count',
+      )
+      .where('parcel.merchant_id = :merchantId', { merchantId: merchant.id })
+      .groupBy('parcel.store_id')
+      .setParameters({
+        delivered: ParcelStatus.DELIVERED,
+        returns: [
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.PAID_RETURN,
+        ],
+      })
+      .getRawMany();
+
+    // 3. Merge stats into stores
+    return stores.map((store) => {
+      const storeStats = stats.find((s) => s.store_id === store.id) || {
+        total_handled: '0',
+        delivered_count: '0',
+        return_count: '0',
+      };
+
+      return {
+        ...store, // Existing store details
+        performance: {
+          total_parcels_handled: parseInt(storeStats.total_handled, 10),
+          successfully_delivered: parseInt(storeStats.delivered_count, 10),
+          total_returns: parseInt(storeStats.return_count, 10),
+        },
+      };
+    });
   }
 
-  async findDefaultStore(userId: string): Promise<Store | null> {
+  async findDefaultStore(userId: string): Promise<
+    | (Store & {
+        performance: {
+          total_parcels_handled: number;
+          successfully_delivered: number;
+          total_returns: number;
+        };
+      })
+    | null
+  > {
     const merchant = await this.merchantRepository.findOne({
       where: { user_id: userId },
     });
@@ -185,10 +246,56 @@ export class StoresService {
       where: { merchant_id: merchant.id, is_default: true },
     });
 
-    return defaultStore;
+    if (!defaultStore) {
+      return null;
+    }
+
+    const stats = await this.storesRepository.manager
+      .createQueryBuilder(Parcel, 'parcel')
+      .select('COUNT(parcel.id)', 'total_handled')
+      .addSelect(
+        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        'delivered_count',
+      )
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        'return_count',
+      )
+      // FIXED: Use 'defaultStore.id' instead of undefined 'id'
+      .where('parcel.store_id = :storeId', { storeId: defaultStore.id })
+      .setParameters({
+        delivered: ParcelStatus.DELIVERED,
+        returns: [
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.PAID_RETURN,
+        ],
+      })
+      .getRawOne();
+
+    return {
+      ...defaultStore,
+      performance: {
+        total_parcels_handled: parseInt(stats.total_handled || '0', 10),
+        successfully_delivered: parseInt(stats.delivered_count || '0', 10),
+        total_returns: parseInt(stats.return_count || '0', 10),
+      },
+    };
   }
 
-  async findOne(id: string, userId: string): Promise<Store> {
+  async findOne(
+    id: string,
+    userId: string,
+  ): Promise<
+    Store & {
+      performance: {
+        total_parcels_handled: number;
+        successfully_delivered: number;
+        total_returns: number;
+      };
+    }
+  > {
     const merchant = await this.merchantRepository.findOne({
       where: { user_id: userId },
     });
@@ -207,7 +314,37 @@ export class StoresService {
       );
     }
 
-    return store;
+    const stats = await this.storesRepository.manager
+      .createQueryBuilder(Parcel, 'parcel')
+      .select('COUNT(parcel.id)', 'total_handled')
+      .addSelect(
+        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        'delivered_count',
+      )
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        'return_count',
+      )
+      .where('parcel.store_id = :storeId', { storeId: id })
+      .setParameters({
+        delivered: ParcelStatus.DELIVERED,
+        returns: [
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.PAID_RETURN,
+        ],
+      })
+      .getRawOne();
+
+    return {
+      ...store,
+      performance: {
+        total_parcels_handled: parseInt(stats.total_handled || '0', 10),
+        successfully_delivered: parseInt(stats.delivered_count || '0', 10),
+        total_returns: parseInt(stats.return_count || '0', 10),
+      },
+    };
   }
 
   async update(
@@ -287,10 +424,106 @@ export class StoresService {
   }
 
   // Admin methods
-  async findAllStores(): Promise<Store[]> {
-    return await this.storesRepository.find({
+  // ===== ADMIN: STORE APPROVAL =====
+
+  async approveStore(id: string): Promise<Store> {
+    const store = await this.storesRepository.findOne({ where: { id } });
+
+    if (!store) {
+      throw new NotFoundException(`Store with ID ${id} not found`);
+    }
+
+    // 1. Check if already handled
+    if (store.status === StoreStatus.APPROVED) {
+      throw new BadRequestException('Store is already approved.');
+    }
+    if (store.status === StoreStatus.DECLINED) {
+      throw new BadRequestException(
+        'Cannot approve a store that has been declined.',
+      );
+    }
+
+    // 2. Update status
+    store.status = StoreStatus.APPROVED;
+    await this.storesRepository.save(store);
+
+    console.log(`[STORE APPROVED] Store ${id} status set to APPROVED`);
+    return store;
+  }
+
+  async rejectStore(id: string): Promise<Store> {
+    const store = await this.storesRepository.findOne({ where: { id } });
+
+    if (!store) {
+      throw new NotFoundException(`Store with ID ${id} not found`);
+    }
+
+    // 1. Check if already handled
+    if (store.status === StoreStatus.DECLINED) {
+      throw new BadRequestException('Store is already declined.');
+    }
+    if (store.status === StoreStatus.APPROVED) {
+      throw new BadRequestException(
+        'Cannot decline a store that is already approved.',
+      );
+    }
+
+    // 2. Update status
+    store.status = StoreStatus.DECLINED;
+    await this.storesRepository.save(store);
+
+    console.log(`[STORE DECLINED] Store ${id} status set to DECLINED`);
+    return store;
+  }
+
+  async findAllStores(): Promise<any[]> {
+    // 1. Fetch all stores with relations
+    const stores = await this.storesRepository.find({
       relations: ['merchant', 'merchant.user', 'hub'],
       order: { created_at: 'DESC' },
+    });
+
+    // 2. Fetch aggregated stats for ALL stores in one query
+    const stats = await this.storesRepository.manager
+      .createQueryBuilder(Parcel, 'parcel')
+      .select('parcel.store_id', 'store_id')
+      .addSelect('COUNT(parcel.id)', 'total_handled')
+      .addSelect(
+        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        'delivered_count',
+      )
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        'return_count',
+      )
+      .groupBy('parcel.store_id')
+      .setParameters({
+        delivered: ParcelStatus.DELIVERED,
+        returns: [
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.PAID_RETURN,
+        ],
+      })
+      .getRawMany();
+
+    // 3. Merge stats into stores
+    return stores.map((store) => {
+      const storeStats = stats.find((s) => s.store_id === store.id) || {
+        total_handled: '0',
+        delivered_count: '0',
+        return_count: '0',
+      };
+
+      return {
+        ...store,
+        performance: {
+          total_parcels_handled: parseInt(storeStats.total_handled, 10),
+          successfully_delivered: parseInt(storeStats.delivered_count, 10),
+          total_returns: parseInt(storeStats.return_count, 10),
+        },
+      };
     });
   }
 
@@ -315,7 +548,9 @@ export class StoresService {
     store.hub_id = hubId;
     await this.storesRepository.save(store);
 
-    console.log(`[STORE HUB ASSIGNED] Store ${store.business_name} assigned to hub ${hub.branch_name}`);
+    console.log(
+      `[STORE HUB ASSIGNED] Store ${store.business_name} assigned to hub ${hub.branch_name}`,
+    );
 
     return store;
   }
@@ -332,7 +567,9 @@ export class StoresService {
       throw new NotFoundException('Hub manager profile not found');
     }
 
-    console.log(`[HUB MANAGER STORES] User ID: ${userId}, Hub ID: ${hubManager.hub_id}`);
+    console.log(
+      `[HUB MANAGER STORES] User ID: ${userId}, Hub ID: ${hubManager.hub_id}`,
+    );
 
     // Find all stores assigned to this hub - include hub relation
     const stores = await this.storesRepository.find({
@@ -341,7 +578,9 @@ export class StoresService {
       order: { created_at: 'DESC' },
     });
 
-    console.log(`[HUB MANAGER STORES] Found ${stores.length} stores for hub ${hubManager.hub_id}`);
+    console.log(
+      `[HUB MANAGER STORES] Found ${stores.length} stores for hub ${hubManager.hub_id}`,
+    );
 
     // Return full store entities for toStoreListItem mapping
     return stores;
