@@ -6,9 +6,11 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToOne,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { MerchantStatus } from '../../common/enums/merchant-status.enum';
+import { MerchantProfile } from './merchant-profile.entity';
 
 @Entity('merchants')
 export class Merchant {
@@ -21,6 +23,11 @@ export class Merchant {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @OneToOne(() => MerchantProfile, (profile) => profile.merchant, {
+    cascade: true, // Allows saving profile automatically when saving merchant
+  })
+  merchant_profile: MerchantProfile;
 
   @Column({ type: 'varchar', length: 255 })
   thana: string;
