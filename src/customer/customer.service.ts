@@ -11,6 +11,7 @@ import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerResponseDto } from './dto/check-customer-phone.dto';
+import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
 
 @Injectable()
 export class CustomerService {
@@ -19,6 +20,8 @@ export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private readonly customersRepository: Repository<Customer>,
+    @InjectRepository(Parcel)
+    private parcelsRepository: Repository<Parcel>,
   ) {}
 
   // Standard create (if you call it directly)
@@ -149,17 +152,80 @@ export class CustomerService {
     return customer;
   }
 
-  async getCustomerByPhone(phone: string): Promise<CustomerResponseDto> {
+  async getCustomerByPhone(
+    phone: string,
+    merchantId: string,
+  ): Promise<CustomerResponseDto> {
     const customer = await this.customersRepository.findOne({
-      where: [{ phone_number: phone }, { secondary_number: phone }],
+      where: { phone_number: phone },
     });
 
+    if (!customer) {
+      // Return empty/null structure if customer doesn't exist yet
+      return {
+        id: null,
+        customer_name: '',
+        phone_number: phone,
+        secondary_number: '',
+        delivery_address: '',
+        history: {
+          delivered_count: 0,
+          cancelled_count: 0,
+        },
+      };
+    }
+
+    // 2. Define Status Groups
+    // Successful statuses (Money Received)
+    const successStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    // Failure statuses (Returned/Rejected)
+    const cancelStatuses = [
+      // ParcelStatus.RETURNED,
+      // ParcelStatus.RETURNED_TO_HUB,
+      // ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.CANCELLED,
+      // ParcelStatus.FAILED_DELIVERY,
+    ];
+
+    // 3. Aggregate Stats for THIS Merchant only
+    const history = await this.parcelsRepository
+      .createQueryBuilder('parcel')
+      .select('COUNT(parcel.id)', 'total_count')
+      // Sum SUCCESS counts
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...successStatuses) THEN 1 ELSE 0 END)`,
+        'delivered_count',
+      )
+      // Sum CANCEL counts
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...cancelStatuses) THEN 1 ELSE 0 END)`,
+        'cancelled_count',
+      )
+      .where('parcel.customer_id = :customerId', { customerId: customer.id })
+      .andWhere('parcel.merchant_id = :merchantId', { merchantId }) // Filter by Merchant
+      .setParameters({ successStatuses, cancelStatuses })
+      .getRawOne();
+
+    // 4. Calculate Percentage
+    const deliveredCount = parseInt(history.delivered_count || '0', 10);
+    const cancelledCount = parseInt(history.cancelled_count || '0', 10);
+
     return {
-      id: customer?.id ?? null,
-      customer_name: customer?.customer_name ?? '',
-      phone_number: customer?.phone_number ?? '',
-      secondary_number: customer?.secondary_number ?? '',
-      delivery_address: customer?.delivery_address ?? '',
+      id: customer.id,
+      customer_name: customer.customer_name,
+      phone_number: customer.phone_number,
+      secondary_number: customer.secondary_number || '',
+      delivery_address: customer.delivery_address,
+      history: {
+        delivered_count: deliveredCount,
+        cancelled_count: cancelledCount,
+      },
     };
   }
 

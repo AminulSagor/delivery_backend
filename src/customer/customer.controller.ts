@@ -54,7 +54,7 @@ export class CustomerController {
 
   @Get('get/:phone')
   async getByPhone(@Param('phone') phone: string, @CurrentUser() user: any) {
-    return await this.customerService.getCustomerByPhone(phone);
+    return await this.customerService.getCustomerByPhone(phone, user.userId);
   }
 
   // Get customer by phone number instead of id
