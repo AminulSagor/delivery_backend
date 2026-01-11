@@ -274,12 +274,18 @@ export class StoresService {
       .where('parcel.merchant_id = :merchantId', { merchantId: merchant.id })
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: ParcelStatus.DELIVERED,
+        delivered: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ],
         returns: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
-          ParcelStatus.PAID_RETURN,
+          ParcelStatus.CANCELLED,
+          ParcelStatus.FAILED_DELIVERY,
         ],
       })
       .getRawMany();
@@ -343,12 +349,18 @@ export class StoresService {
       // FIXED: Use 'defaultStore.id' instead of undefined 'id'
       .where('parcel.store_id = :storeId', { storeId: defaultStore.id })
       .setParameters({
-        delivered: ParcelStatus.DELIVERED,
+        delivered: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ],
         returns: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
-          ParcelStatus.PAID_RETURN,
+          ParcelStatus.CANCELLED,
+          ParcelStatus.FAILED_DELIVERY,
         ],
       })
       .getRawOne();
@@ -406,12 +418,18 @@ export class StoresService {
       )
       .where('parcel.store_id = :storeId', { storeId: id })
       .setParameters({
-        delivered: ParcelStatus.DELIVERED,
+        delivered: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ],
         returns: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
-          ParcelStatus.PAID_RETURN,
+          ParcelStatus.CANCELLED,
+          ParcelStatus.FAILED_DELIVERY,
         ],
       })
       .getRawOne();
@@ -577,12 +595,18 @@ export class StoresService {
       )
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: ParcelStatus.DELIVERED,
+        delivered: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ],
         returns: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
-          ParcelStatus.PAID_RETURN,
+          ParcelStatus.CANCELLED,
+          ParcelStatus.FAILED_DELIVERY,
         ],
       })
       .getRawMany();
