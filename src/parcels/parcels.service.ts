@@ -763,6 +763,23 @@ export class ParcelsService {
     return zoneBackup;
   }
 
+  /**
+   * Calculate all charges for a parcel using zone-based weight charging
+   * 
+   * WEIGHT CHARGE ALGORITHM (per zone):
+   * 1. First 0.5 kg is FREE for all zones
+   * 2. Remaining weight is charged per step:
+   *    - INSIDE_DHAKA: 0.5 kg steps, 10 BDT/step
+   *    - SUB_DHAKA: 2.0 kg steps, 20 BDT/step
+   *    - OUTSIDE_DHAKA: 1.0 kg steps, 20 BDT/step
+   * 3. Steps are rounded UP (any fraction = 1 step)
+   * 
+   * @param merchantId - Merchant/Store ID for store-specific pricing
+   * @param deliveryCoverageAreaId - Delivery area to determine zone
+   * @param weight - Parcel weight in kg
+   * @param isCod - Whether this is a Cash on Delivery order
+   * @param codAmount - COD amount to collect
+   */
   private async calculateCharges(
     merchantId: string,
     deliveryCoverageAreaId: string | null,
@@ -773,7 +790,9 @@ export class ParcelsService {
     delivery_charge: number;
     weight_charge: number;
     cod_charge: number;
+    discount: number;
     total_charge: number;
+    receivable_amount: number;
   }> {
     let deliveryArea: CoverageArea | null = null;
     if (deliveryCoverageAreaId) {
@@ -785,31 +804,73 @@ export class ParcelsService {
           `Delivery coverage area with ID ${deliveryCoverageAreaId} not found`,
         );
     }
+    
     const pricingZone = this.determinePricingZone(deliveryArea);
+    
+    // Get base pricing configuration
     const pricingConfig = await this.pricingService.getActivePricing(
       merchantId,
       pricingZone,
     );
-    let baseDeliveryCharge = 60,
-      weightChargePerKg = 10,
-      codPercentage = 1.0;
+    
+    // Base delivery charge and percentages
+    let baseDeliveryCharge = 60;
+    let codPercentage = 1.0;
+    let discountPercentage = 0;
+    
     if (pricingConfig) {
       baseDeliveryCharge = Number(pricingConfig.delivery_charge);
-      weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
       codPercentage = Number(pricingConfig.cod_percentage);
+      discountPercentage = pricingConfig.discount_percentage 
+        ? Number(pricingConfig.discount_percentage) 
+        : 0;
     } else {
-      if (pricingZone === PricingZone.OUTSIDE_DHAKA) baseDeliveryCharge = 120;
-      else if (pricingZone === PricingZone.SUB_DHAKA) baseDeliveryCharge = 80;
+      // Zone-specific fallback base charges
+      if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
+        baseDeliveryCharge = 120;
+        codPercentage = 2.5;
+      } else if (pricingZone === PricingZone.SUB_DHAKA) {
+        baseDeliveryCharge = 80;
+        codPercentage = 2.0;
+      }
     }
-    const weightCharge = Math.ceil(weight) * weightChargePerKg;
-    const codCharge = isCod ? Math.round(codAmount * (codPercentage / 100)) : 0;
-    const deliveryCharge = baseDeliveryCharge + weightCharge;
-    const totalCharge = deliveryCharge + codCharge;
+    
+    // Calculate weight charge using the new zone-based algorithm
+    const weightChargeResult = await this.pricingService.calculateWeightCharge(
+      merchantId, // Use merchantId as storeId for lookup
+      pricingZone,
+      weight,
+    );
+    
+    const weightCharge = weightChargeResult.weight_charge;
+    
+    // COD charge: percentage of COD amount
+    const codCharge = isCod 
+      ? Math.round((codAmount * codPercentage / 100) * 100) / 100 
+      : 0;
+    
+    // Discount: percentage of delivery charge
+    const discount = Math.round((baseDeliveryCharge * discountPercentage / 100) * 100) / 100;
+    
+    // Total charge = base delivery + weight charge + COD charge - discount
+    const totalCharge = Math.round((baseDeliveryCharge + weightCharge + codCharge - discount) * 100) / 100;
+    
+    // Receivable amount = COD amount - total charge
+    const receivableAmount = Math.round((codAmount - totalCharge) * 100) / 100;
+    
+    this.logger.log(
+      `[CHARGES CALCULATED] Zone: ${pricingZone}, Delivery: ${baseDeliveryCharge}, ` +
+      `Weight: ${weightCharge} (${weight}kg), COD: ${codCharge}, Discount: ${discount}, ` +
+      `Total: ${totalCharge}, Receivable: ${receivableAmount} BDT`,
+    );
+    
     return {
-      delivery_charge: deliveryCharge,
+      delivery_charge: baseDeliveryCharge,
       weight_charge: weightCharge,
       cod_charge: codCharge,
+      discount: discount,
       total_charge: totalCharge,
+      receivable_amount: receivableAmount,
     };
   }
 
@@ -874,13 +935,11 @@ export class ParcelsService {
         throw new NotFoundException(
           `Delivery coverage area not found. Please select a valid delivery area.`,
         );
-      if (
-        createParcelDto.is_cod &&
-        (!createParcelDto.cod_amount || createParcelDto.cod_amount <= 0)
-      )
-        throw new BadRequestException(
-          'COD amount must be greater than 0 when COD is enabled.',
-        );
+      
+      // COD amount = product_price (if product has a price, it's COD)
+      const codAmount = createParcelDto.product_price || 0;
+      const isCod = codAmount > 0;
+      
       if (createParcelDto.product_weight && createParcelDto.product_weight < 0)
         throw new BadRequestException('Product weight cannot be negative.');
       const phoneRegex = /^01[0-9]{9}$/;
@@ -894,7 +953,7 @@ export class ParcelsService {
           {
             customer_name: createParcelDto.customer_name,
             customer_phone: createParcelDto.customer_phone,
-            delivery_address: createParcelDto.delivery_address,
+            delivery_address: createParcelDto.customer_address,
           },
         );
         customer = result.customer;
@@ -911,8 +970,8 @@ export class ParcelsService {
           merchantId,
           createParcelDto.delivery_coverage_area_id || null,
           createParcelDto.product_weight || 0,
-          createParcelDto.is_cod || false,
-          createParcelDto.cod_amount || 0,
+          isCod,
+          codAmount,
         );
       } catch (error) {
         this.logger.error(`[PRICING ERROR] ${error.message}`, error.stack);
@@ -949,16 +1008,22 @@ export class ParcelsService {
       const parcel = this.parcelRepository.create({
         ...createParcelDto,
         merchant_id: merchantId,
+        merchant_order_id: createParcelDto.merchant_order_id, // From frontend
         customer_id: customer.id,
         tracking_number: trackingNumber,
         pickup_request_id: pickupRequest?.id || null, // Phase 2: Link to pickup request
         status: ParcelStatus.PENDING,
         payment_status: PaymentStatus.UNPAID,
         delivery_type: createParcelDto.delivery_type || DeliveryType.NORMAL, // Default to Normal (1)
+        is_cod: isCod, // Auto-set based on product_price > 0
+        cod_amount: codAmount, // Set from product_price
+        is_exchange: createParcelDto.is_exchange || false, // Exchange flag
         delivery_charge: charges.delivery_charge,
         weight_charge: charges.weight_charge,
         cod_charge: charges.cod_charge,
         total_charge: charges.total_charge,
+        // Receivable amount calculated by backend (same as /calculate-pricing)
+        receivable_amount: Math.max(0, charges.receivable_amount),
         // Auto-populate Carrybee IDs from coverage area
         recipient_carrybee_city_id,
         recipient_carrybee_zone_id,
@@ -1110,13 +1175,12 @@ export class ParcelsService {
     calculateDto: CalculatePricingDto,
     merchantId?: string,
   ): Promise<{
-    zone: string;
-    delivery_charge: number;
-    weight_charge_per_kg: number;
-    cod_percentage: number;
-    discount_percentage: number | null;
-    start_date: Date | null;
-    end_date: Date | null;
+    delivery_fee: number;
+    cod_fee: number;
+    weight_charge: number;
+    discount: number;
+    total_fee: number;
+    receivable_amount: number;
   }> {
     try {
       if (!userId) throw new ForbiddenException('User ID (userId) is required');
@@ -1162,40 +1226,56 @@ export class ParcelsService {
         calculateDto.store_id,
         pricingZone,
       );
-      let baseDeliveryCharge = 60,
-        weightChargePerKg = 10,
-        codPercentage = 1.0,
-        discountPercentage: number | null = null,
-        startDate: Date | null = null,
-        endDate: Date | null = null;
+      
+      // Get default/fixed values for this zone
+      const defaults = this.pricingService.getDefaultPricingValues(pricingZone);
+      
+      // Fixed values (not configurable)
+      const freeWeightKg = defaults.free_weight_kg;  // Always 0.5 kg
+      const chargePerStep = defaults.charge_per_step; // 10 for INSIDE_DHAKA, 20 for others
+      
+      // Configurable values
+      let deliveryFee = defaults.delivery_charge;
+      let codPercentage = defaults.cod_percentage;
+      let weightStepKg = defaults.weight_step_kg;
+      let discountPercentage: number = 0;
+        
       if (pricingConfig) {
-        baseDeliveryCharge = Number(pricingConfig.delivery_charge);
-        weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
+        deliveryFee = Number(pricingConfig.delivery_charge);
         codPercentage = Number(pricingConfig.cod_percentage);
+        weightStepKg = Number(pricingConfig.weight_step_kg) || defaults.weight_step_kg;
         discountPercentage = pricingConfig.discount_percentage
           ? Number(pricingConfig.discount_percentage)
-          : null;
-        startDate = pricingConfig.start_date;
-        endDate = pricingConfig.end_date;
-      } else {
-        if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
-          baseDeliveryCharge = 120;
-          weightChargePerKg = 25;
-          codPercentage = 2.5;
-        } else if (pricingZone === PricingZone.SUB_DHAKA) {
-          baseDeliveryCharge = 80;
-          weightChargePerKg = 20;
-          codPercentage = 2.0;
-        }
+          : 0;
       }
+
+      // Calculate weight charge
+      const billableWeight = Math.max(0, calculateDto.weight_kg - freeWeightKg);
+      let weightCharge = 0;
+      if (billableWeight > 0) {
+        const totalSteps = Math.ceil(billableWeight / weightStepKg);
+        weightCharge = totalSteps * chargePerStep;
+      }
+
+      // Calculate COD fee
+      const codFee = Math.round((calculateDto.amount_to_receive * codPercentage) / 100 * 100) / 100;
+
+      // Calculate discount (on delivery fee)
+      const discount = Math.round((deliveryFee * discountPercentage) / 100 * 100) / 100;
+
+      // Calculate total fee
+      const totalFee = Math.round((deliveryFee + codFee + weightCharge - discount) * 100) / 100;
+
+      // Calculate receivable amount
+      const receivableAmount = Math.round((calculateDto.amount_to_receive - totalFee) * 100) / 100;
+      
       return {
-        zone: pricingZone,
-        delivery_charge: baseDeliveryCharge,
-        weight_charge_per_kg: weightChargePerKg,
-        cod_percentage: codPercentage,
-        discount_percentage: discountPercentage,
-        start_date: startDate,
-        end_date: endDate,
+        delivery_fee: deliveryFee,
+        cod_fee: codFee,
+        weight_charge: weightCharge,
+        discount: discount,
+        total_fee: totalFee,
+        receivable_amount: receivableAmount,
       };
     } catch (error) {
       if (
@@ -1231,7 +1311,13 @@ export class ParcelsService {
     total_fee: number;
     breakdown: {
       base_delivery_charge: number;
-      weight_charge_per_kg: number;
+      // Zone-based weight charge details
+      free_weight_kg: number;
+      billable_weight_kg: number;
+      weight_step_kg: number;
+      charge_per_step: number;
+      total_steps: number;
+      weight_charge_breakdown: string;
       cod_percentage: number;
       discount_percentage: number | null;
       weight_kg: number;
@@ -1293,13 +1379,11 @@ export class ParcelsService {
 
       // Default pricing values
       let baseDeliveryCharge = 60;
-      let weightChargePerKg = 10;
       let codPercentage = 1.0;
       let discountPercentage: number | null = null;
 
       if (pricingConfig) {
         baseDeliveryCharge = Number(pricingConfig.delivery_charge);
-        weightChargePerKg = Number(pricingConfig.weight_charge_per_kg);
         codPercentage = Number(pricingConfig.cod_percentage);
         discountPercentage = pricingConfig.discount_percentage
           ? Number(pricingConfig.discount_percentage)
@@ -1308,11 +1392,9 @@ export class ParcelsService {
         // Fallback pricing based on zone
         if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
           baseDeliveryCharge = 120;
-          weightChargePerKg = 25;
           codPercentage = 2.5;
         } else if (pricingZone === PricingZone.SUB_DHAKA) {
           baseDeliveryCharge = 80;
-          weightChargePerKg = 20;
           codPercentage = 2.0;
         }
       }
@@ -1325,9 +1407,13 @@ export class ParcelsService {
         ? Math.round((codAmount * codPercentage / 100) * 100) / 100 
         : 0;
 
-      // Weight charge: charge per kg for weight above 0.5kg (first 0.5kg is included in base)
-      const chargeableWeight = Math.max(0, weight - 0.5);
-      const weightCharge = Math.round(chargeableWeight * weightChargePerKg * 100) / 100;
+      // Weight charge: Use zone-based step calculation
+      const weightChargeResult = await this.pricingService.calculateWeightCharge(
+        calculateDto.store_id,
+        pricingZone,
+        weight,
+      );
+      const weightCharge = weightChargeResult.weight_charge;
 
       // Subtotal before discount
       const subtotal = deliveryFee + codFee + weightCharge;
@@ -1354,7 +1440,13 @@ export class ParcelsService {
         total_fee: totalFee,
         breakdown: {
           base_delivery_charge: baseDeliveryCharge,
-          weight_charge_per_kg: weightChargePerKg,
+          // Zone-based weight charge details
+          free_weight_kg: weightChargeResult.free_weight_kg,
+          billable_weight_kg: weightChargeResult.billable_weight_kg,
+          weight_step_kg: weightChargeResult.weight_step_kg,
+          charge_per_step: weightChargeResult.charge_per_step,
+          total_steps: weightChargeResult.total_steps,
+          weight_charge_breakdown: weightChargeResult.breakdown,
           cod_percentage: codPercentage,
           discount_percentage: discountPercentage,
           weight_kg: weight,
@@ -1507,7 +1599,7 @@ export class ParcelsService {
         store_name: parcel.store?.business_name || 'N/A',
         customer_name: parcel.customer_name,
         customer_phone: parcel.customer_phone,
-        delivery_address: parcel.delivery_address,
+        customer_address: parcel.customer_address,
         zone: parcel.delivery_coverage_area?.area || 'N/A',
         delivery_charge: parcel.delivery_charge,
         weight_charge: parcel.weight_charge,
@@ -1621,14 +1713,7 @@ export class ParcelsService {
             'Invalid customer phone number. Must be in format: 01XXXXXXXXX',
           );
       }
-      if (
-        updateParcelDto.is_cod !== undefined &&
-        updateParcelDto.is_cod &&
-        (!updateParcelDto.cod_amount || updateParcelDto.cod_amount <= 0)
-      )
-        throw new BadRequestException(
-          'COD amount must be greater than 0 when COD is enabled.',
-        );
+      
       if (
         updateParcelDto.product_weight !== undefined &&
         updateParcelDto.product_weight < 0
@@ -1660,6 +1745,13 @@ export class ParcelsService {
           );
       }
       Object.assign(parcel, updateParcelDto);
+      
+      // Auto-set is_cod and cod_amount based on product_price if it's being updated
+      if (updateParcelDto.product_price !== undefined) {
+        parcel.cod_amount = updateParcelDto.product_price;
+        parcel.is_cod = updateParcelDto.product_price > 0;
+      }
+      
       let updatedParcel;
       try {
         updatedParcel = await this.parcelRepository.save(parcel);
@@ -2548,8 +2640,8 @@ export class ParcelsService {
       store_id: originalParcel.store_id,
 
       // For return: pickup from customer address, deliver to merchant/store
-      pickup_address: originalParcel.delivery_address,
-      delivery_address: originalParcel.pickup_address,
+      delivery_area: originalParcel.customer_address,
+      customer_address: originalParcel.delivery_area,
 
       // Customer info (original merchant becomes recipient)
       customer_name: originalParcel.store?.business_name || 'Merchant',
@@ -2689,7 +2781,7 @@ export class ParcelsService {
       reason: parcel.return_reason || null,
 
       destination: {
-        address: parcel.delivery_address,
+        address: parcel.customer_address,
         zone: zoneInfo,
       },
 
@@ -2741,8 +2833,8 @@ export class ParcelsService {
         if (
           !item.customer_phone ||
           !item.customer_name ||
-          !item.pickup_address ||
-          !item.delivery_address
+          !item.delivery_area ||
+          !item.customer_address
         ) {
           throw new Error(
             'Missing mandatory fields (phone, name, pickup address, delivery address).',
@@ -2751,7 +2843,7 @@ export class ParcelsService {
 
         // 2. Heuristic: choose best coverage area
         const coverageArea = this.findBestCoverageAreaFromAddress(
-          item.delivery_address,
+          item.customer_address,
           coverageAreas,
         );
 
@@ -2849,8 +2941,8 @@ export class ParcelsService {
           delivery_coverage_area_id: item.delivery_coverage_area_id,
           customer_name: item.customer_name,
           customer_phone: item.customer_phone,
-          delivery_address: item.delivery_address,
-          pickup_address: item.pickup_address,
+          customer_address: item.customer_address,
+          delivery_area: item.delivery_area,
 
           // Numerics
           product_weight: weight,

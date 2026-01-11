@@ -13,7 +13,8 @@ export interface ParcelListItem {
   merchant_order_id: string | null;
   customer_name: string;
   customer_phone: string;
-  delivery_address: string;
+  customer_secondary_phone: string | null;
+  customer_address: string;
   product_description: string | null;
   product_weight: number;
   total_charge: number;
@@ -36,7 +37,7 @@ export interface ParcelListItem {
 }
 
 export interface ParcelDetail extends ParcelListItem {
-  pickup_address: string;
+  delivery_area: string;
   product_price: number;
   delivery_charge: number;
   weight_charge: number;
@@ -133,12 +134,19 @@ export interface PickupRequestActionResponse {
 
 export interface StoreListItem {
   id: string;
+  store_code: string | null; // Auto-generated unique code
   business_name: string;
   business_address: string;
   phone_number: string;
   email: string | null;
+  facebook_page: string | null;
   is_default: boolean;
   is_carrybee_synced: boolean;
+  performance?: {
+    total_parcels_handled: number;
+    successfully_delivered: number;
+    total_returns: number;
+  };
   hub?: {
     id: string;
     branch_name: string;
@@ -153,12 +161,6 @@ export interface StoreDetail extends StoreListItem {
   carrybee_store_id: string | null;
   created_at: Date;
   status: StoreStatus;
-
-  performance?: {
-    total_parcels_handled: number;
-    successfully_delivered: number;
-    total_returns: number;
-  };
 }
 
 // ===== MERCHANT RESPONSES =====
@@ -207,7 +209,8 @@ export function toParcelListItem(parcel: any): ParcelListItem {
     merchant_order_id: parcel.merchant_order_id,
     customer_name: parcel.customer_name,
     customer_phone: parcel.customer_phone,
-    delivery_address: parcel.delivery_address,
+    customer_secondary_phone: parcel.customer_secondary_phone || null,
+    customer_address: parcel.customer_address,
     product_description: parcel.product_description,
     product_weight: parcel.product_weight,
     total_charge: parcel.total_charge,
@@ -237,7 +240,7 @@ export function toParcelListItem(parcel: any): ParcelListItem {
 export function toParcelDetail(parcel: any): ParcelDetail {
   return {
     ...toParcelListItem(parcel),
-    pickup_address: parcel.pickup_address,
+    delivery_area: parcel.delivery_area,
     product_price: parcel.product_price,
     delivery_charge: parcel.delivery_charge,
     weight_charge: parcel.weight_charge,
@@ -355,12 +358,19 @@ export function toPickupRequestActionResponse(
 export function toStoreListItem(store: any): StoreListItem {
   return {
     id: store.id,
+    store_code: store.store_code || null,
     business_name: store.business_name,
     business_address: store.business_address,
     phone_number: store.phone_number,
     email: store.email,
+    facebook_page: store.facebook_page || null,
     is_default: store.is_default,
     is_carrybee_synced: store.is_carrybee_synced || false,
+    performance: store.performance || {
+      total_parcels_handled: 0,
+      successfully_delivered: 0,
+      total_returns: 0,
+    },
     hub: store.hub
       ? {
           id: store.hub.id,
@@ -373,25 +383,13 @@ export function toStoreListItem(store: any): StoreListItem {
 export function toStoreDetail(store: any): StoreDetail {
   return {
     ...toStoreListItem(store),
-    district: store.district,
-    thana: store.thana,
-    area: store.area,
-    facebook_page: store.facebook_page,
-    carrybee_store_id: store.carrybee_store_id,
+    district: store.district || null,
+    thana: store.thana || null,
+    area: store.area || null,
+    facebook_page: store.facebook_page || null,
+    carrybee_store_id: store.carrybee_store_id || null,
     created_at: store.created_at,
     status: store.status,
-
-    performance: store.performance
-      ? {
-          total_parcels_handled: Number(
-            store.performance.total_parcels_handled,
-          ),
-          successfully_delivered: Number(
-            store.performance.successfully_delivered,
-          ),
-          total_returns: Number(store.performance.total_returns),
-        }
-      : undefined,
   };
 }
 

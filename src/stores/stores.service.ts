@@ -10,11 +10,11 @@ import { Store, StoreStatus } from './entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 import { CoverageAreasService } from '../coverage-areas/coverage-areas.service';
-import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
 
 @Injectable()
 export class StoresService {
@@ -29,9 +29,84 @@ export class StoresService {
     private hubRepository: Repository<Hub>,
     @InjectRepository(HubManager)
     private hubManagerRepository: Repository<HubManager>,
+    @InjectRepository(Parcel)
+    private parcelRepository: Repository<Parcel>,
     private carrybeeApiService: CarrybeeApiService,
     private coverageAreasService: CoverageAreasService,
   ) {}
+
+  /**
+   * Generate unique store code from business name
+   * Format: First 3 letters + 3 digit number (e.g., TSH001)
+   */
+  private async generateStoreCode(businessName: string): Promise<string> {
+    // Extract first 3 letters from business name (uppercase)
+    const prefix = businessName
+      .replace(/[^A-Za-z]/g, '') // Remove non-letters
+      .substring(0, 3)
+      .toUpperCase()
+      .padEnd(3, 'X'); // Ensure 3 characters
+
+    // Find the highest number for this prefix
+    const existingStores = await this.storesRepository
+      .createQueryBuilder('store')
+      .where('store.store_code LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('store.store_code', 'DESC')
+      .getMany();
+
+    let nextNumber = 1;
+    if (existingStores.length > 0) {
+      const lastCode = existingStores[0].store_code;
+      if (lastCode) {
+        const lastNumber = parseInt(lastCode.substring(3)) || 0;
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    // Format: PREFIX + 3-digit number (e.g., TSH001)
+    return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+  }
+
+  /**
+   * Calculate performance metrics for a store
+   */
+  async getStorePerformance(storeId: string): Promise<{
+    total_parcels: number;
+    successfully_delivered: number;
+    total_returns: number;
+  }> {
+    const parcels = await this.parcelRepository.find({
+      where: { store_id: storeId },
+      select: ['id', 'status'],
+    });
+
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+    ];
+
+    const returnStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+
+    const successfullyDelivered = parcels.filter((p) =>
+      successfulStatuses.includes(p.status),
+    ).length;
+
+    const totalReturns = parcels.filter((p) =>
+      returnStatuses.includes(p.status),
+    ).length;
+
+    return {
+      total_parcels: parcels.length,
+      successfully_delivered: successfullyDelivered,
+      total_returns: totalReturns,
+    };
+  }
 
   async create(userId: string, dto: CreateStoreDto): Promise<Store> {
     // Find the merchant by user_id
@@ -51,12 +126,16 @@ export class StoresService {
       );
     }
 
+    // Generate unique store code
+    const storeCode = await this.generateStoreCode(dto.business_name);
+
     const store = new Store();
     store.merchant_id = merchant.id;
+    store.store_code = storeCode; // Auto-generated
     store.business_name = dto.business_name;
     store.business_address = dto.business_address;
-    store.district = dto.district;
-    store.thana = dto.thana;
+    store.district = dto.district ?? null;
+    store.thana = dto.thana ?? null;
     store.area = dto.area ?? null;
     store.phone_number = dto.phone_number;
     store.email = dto.email ?? null;
@@ -161,7 +240,7 @@ export class StoresService {
     return store;
   }
 
-  async findAllByMerchant(userId: string): Promise<Store[]> {
+  async findAllByMerchant(userId: string): Promise<any[]> {
     const merchant = await this.merchantRepository.findOne({
       where: { user_id: userId },
     });
@@ -205,7 +284,7 @@ export class StoresService {
       })
       .getRawMany();
 
-    // 3. Merge stats into stores
+    // 3. Merge stats into stores (including store_code)
     return stores.map((store) => {
       const storeStats = stats.find((s) => s.store_id === store.id) || {
         total_handled: '0',
@@ -214,7 +293,7 @@ export class StoresService {
       };
 
       return {
-        ...store, // Existing store details
+        ...store, // Existing store details (includes store_code)
         performance: {
           total_parcels_handled: parseInt(storeStats.total_handled, 10),
           successfully_delivered: parseInt(storeStats.delivered_count, 10),

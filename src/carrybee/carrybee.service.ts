@@ -366,7 +366,7 @@ export class CarrybeeService {
     }
 
     // 14. Validate recipient address length (Carrybee requires 10-200 chars)
-    const recipientAddress = parcel.delivery_address?.trim() || '';
+    const recipientAddress = parcel.customer_address?.trim() || '';
     if (recipientAddress.length < 10) {
       throw new BadRequestException(
         `Delivery address is too short (minimum 10 characters, got ${recipientAddress.length}). Please update the parcel with a more detailed address.`,

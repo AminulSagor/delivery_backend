@@ -22,14 +22,14 @@ export class CreateStoreDto {
   business_address: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MinLength(2)
-  district: string;
+  district?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MinLength(2)
-  thana: string;
+  thana?: string;
 
   @IsString()
   @IsOptional()

@@ -218,7 +218,7 @@ export class HubsController {
           tracking_number: result.return_parcel.tracking_number,
           original_parcel_id: result.return_parcel.original_parcel_id,
           status: result.return_parcel.status,
-          delivery_address: result.return_parcel.delivery_address,
+          customer_address: result.return_parcel.customer_address,
         },
       },
       message: 'Return parcel created. Assign to rider for delivery back to merchant.',
@@ -586,6 +586,27 @@ export class HubsController {
       success: true,
       data: history,
       message: 'Settlement history retrieved successfully',
+    };
+  }
+
+  // ===== TOP MERCHANT STATISTICS (HUB MANAGER) =====
+
+  /**
+   * Get top merchant and successful parcels count (Hub Manager)
+   * 
+   * Returns the #1 merchant with most successful parcels in this hub
+   * along with total successful parcels count for the hub
+   */
+  @Get('top-merchant')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getTopMerchant(@CurrentUser() user: any) {
+    const result = await this.hubsService.getTopMerchantStatistics(user.hubId);
+
+    return {
+      success: true,
+      data: result,
+      message: 'Top merchant statistics retrieved successfully',
     };
   }
 

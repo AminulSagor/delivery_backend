@@ -587,7 +587,7 @@ export class MerchantInvoiceService {
           customer_id: parcel.customer_id,
           customer_name: parcel.customer_name,
           customer_phone: parcel.customer_phone,
-          delivery_address: parcel.delivery_address,
+          customer_address: parcel.customer_address,
         },
 
         // Store Information
@@ -1440,7 +1440,7 @@ export class MerchantInvoiceService {
           id: parcel.customer_id || null,
           name: parcel.customer_name,
           phone: parcel.customer_phone,
-          address: parcel.delivery_address,
+          address: parcel.customer_address,
         },
         hub: hub
           ? {

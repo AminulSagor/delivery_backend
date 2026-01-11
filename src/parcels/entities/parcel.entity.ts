@@ -120,12 +120,11 @@ export class Parcel {
   @Column({ type: 'varchar', length: 100, nullable: true })
   merchant_order_id: string | null;
 
-  // ===== PICKUP INFORMATION =====
-  // Simplified: only pickup address
+  // ===== DELIVERY AREA (Merchant's pickup location) =====
   @Column({ type: 'text' })
-  pickup_address: string;
+  delivery_area: string;
 
-  // ===== DELIVERY INFORMATION =====
+  // ===== CUSTOMER INFORMATION =====
   @Column({ type: 'uuid', nullable: true })
   delivery_coverage_area_id: string | null;
 
@@ -139,8 +138,11 @@ export class Parcel {
   @Column({ type: 'varchar', length: 20 })
   customer_phone: string;
 
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  customer_secondary_phone: string | null;
+
   @Column({ type: 'text' })
-  delivery_address: string;
+  customer_address: string;
 
   // ===== PARCEL DETAILS =====
   @Column({ type: 'varchar', length: 255, nullable: true })
@@ -169,10 +171,16 @@ export class Parcel {
   total_charge: number;
 
   @Column({ type: 'boolean', default: false })
-  is_cod: boolean;
+  is_cod: boolean; // Auto-set based on cod_amount > 0
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   cod_amount: number;
+
+  @Column({ type: 'boolean', default: false })
+  is_exchange: boolean; // True if this is an exchange parcel
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  receivable_amount: number; // Amount merchant receives = product_price - total_charge
 
   // ===== FINANCIAL TRACKING (Enhanced for Invoice System) =====
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
