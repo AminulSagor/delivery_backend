@@ -102,6 +102,7 @@ export class ParcelsController {
       id: parcel.id,
       tracking_number: parcel.tracking_number,
       total_charge: parcel.total_charge,
+      receivable_amount: parcel.receivable_amount,
       message: 'Parcel created successfully',
     };
   }

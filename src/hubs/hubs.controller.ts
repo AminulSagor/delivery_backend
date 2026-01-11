@@ -218,7 +218,7 @@ export class HubsController {
           tracking_number: result.return_parcel.tracking_number,
           original_parcel_id: result.return_parcel.original_parcel_id,
           status: result.return_parcel.status,
-          delivery_address: result.return_parcel.delivery_address,
+          customer_address: result.return_parcel.customer_address,
         },
       },
       message: 'Return parcel created. Assign to rider for delivery back to merchant.',

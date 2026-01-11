@@ -47,8 +47,9 @@ const baseConfig = {
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
     : ['dist/migrations/*.js'],
-  // synchronize: false,
-  synchronize: true,
+  // IMPORTANT: Set to false for production
+  // Use migrations or fix scripts for schema changes
+  synchronize: false,
   logging: false, // Disable TypeORM query logging to reduce log spam
 };
 
@@ -100,6 +101,8 @@ if (process.env.NODE_ENV !== 'production') {
   console.log(
     `[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`,
   );
+}
+
 // Database configuration logging
 console.log('');
 console.log('='.repeat(60));
@@ -108,7 +111,7 @@ console.log('='.repeat(60));
 console.log(`Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
 console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
-console.log(`Migrations Auto-Run: ${baseConfig.migrationsRun ? '✅ ENABLED' : '❌ DISABLED'}`);
+console.log(`Synchronize: ${baseConfig.synchronize ? '✅ ENABLED' : '❌ DISABLED'}`);
 
 // Show paths being used
 console.log(`Migration Path: ${JSON.stringify(dataSourceOptions.migrations)}`);

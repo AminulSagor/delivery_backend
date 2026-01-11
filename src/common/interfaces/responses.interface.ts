@@ -13,7 +13,8 @@ export interface ParcelListItem {
   merchant_order_id: string | null;
   customer_name: string;
   customer_phone: string;
-  delivery_address: string;
+  customer_secondary_phone: string | null;
+  customer_address: string;
   product_description: string | null;
   product_weight: number;
   total_charge: number;
@@ -36,7 +37,7 @@ export interface ParcelListItem {
 }
 
 export interface ParcelDetail extends ParcelListItem {
-  pickup_address: string;
+  delivery_area: string;
   product_price: number;
   delivery_charge: number;
   weight_charge: number;
@@ -208,7 +209,8 @@ export function toParcelListItem(parcel: any): ParcelListItem {
     merchant_order_id: parcel.merchant_order_id,
     customer_name: parcel.customer_name,
     customer_phone: parcel.customer_phone,
-    delivery_address: parcel.delivery_address,
+    customer_secondary_phone: parcel.customer_secondary_phone || null,
+    customer_address: parcel.customer_address,
     product_description: parcel.product_description,
     product_weight: parcel.product_weight,
     total_charge: parcel.total_charge,
@@ -238,7 +240,7 @@ export function toParcelListItem(parcel: any): ParcelListItem {
 export function toParcelDetail(parcel: any): ParcelDetail {
   return {
     ...toParcelListItem(parcel),
-    pickup_address: parcel.pickup_address,
+    delivery_area: parcel.delivery_area,
     product_price: parcel.product_price,
     delivery_charge: parcel.delivery_charge,
     weight_charge: parcel.weight_charge,

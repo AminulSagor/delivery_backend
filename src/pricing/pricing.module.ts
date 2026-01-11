@@ -6,7 +6,12 @@ import { PricingConfiguration } from './entities/pricing-configuration.entity';
 import { ReturnChargeConfiguration } from './entities/return-charge-configuration.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PricingConfiguration, ReturnChargeConfiguration])],
+  imports: [
+    TypeOrmModule.forFeature([
+      PricingConfiguration,
+      ReturnChargeConfiguration,
+    ]),
+  ],
   controllers: [PricingController],
   providers: [PricingService],
   exports: [PricingService],

@@ -29,11 +29,11 @@ export class BulkOrderItemDto {
 
   @IsNotEmpty()
   @IsString()
-  delivery_address: string;
+  customer_address: string;
 
   @IsNotEmpty()
   @IsString()
-  pickup_address: string;
+  delivery_area: string;
 
   @IsOptional()
   @IsUUID()

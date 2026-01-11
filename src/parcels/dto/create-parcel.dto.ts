@@ -22,21 +22,21 @@ export class CreateParcelDto {
   // ===== MERCHANT REFERENCE =====
   // merchant_id comes from JWT (userId), not from body
 
-  @IsOptional()
+  @IsNotEmpty({ message: 'Merchant order ID is required' })
   @IsString()
   @MaxLength(100)
-  merchant_order_id?: string;
+  merchant_order_id: string; // Merchant's own order reference
 
   @IsOptional()
   @IsUUID()
   store_id?: string; // UUID of merchant's store (if using predefined store)
 
-  // ===== PICKUP INFORMATION =====
+  // ===== DELIVERY AREA (Merchant's pickup location) =====
   @IsNotEmpty()
   @IsString()
-  pickup_address: string;
+  delivery_area: string;
 
-  // ===== DELIVERY INFORMATION =====
+  // ===== CUSTOMER INFORMATION =====
   @IsOptional()
   @IsUUID()
   delivery_coverage_area_id?: string; // Selected from coverage area autocomplete
@@ -53,9 +53,16 @@ export class CreateParcelDto {
   })
   customer_phone: string;
 
+  @IsOptional()
+  @IsString()
+  @Matches(/^01[0-9]{9}$/, {
+    message: 'Customer secondary phone must be a valid Bangladesh number (01XXXXXXXXX)',
+  })
+  customer_secondary_phone?: string;
+
   @IsNotEmpty()
   @IsString()
-  delivery_address: string;
+  customer_address: string;
 
   // ===== RECIPIENT CARRYBEE LOCATION (for Carrybee delivery) =====
   @IsOptional()
@@ -103,15 +110,8 @@ export class CreateParcelDto {
   @Type(() => Number)
   delivery_type?: DeliveryType;
 
-  // ===== CASH ON DELIVERY =====
-  // Note: is_cod is automatically determined by cod_amount > 0
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Type(() => Number)
-  cod_amount?: number; // If > 0, COD charge will be applied
-
   // ===== EXCHANGE FLAG =====
+  // Note: COD amount is automatically set from product_price
   @IsOptional()
   @IsBoolean()
   is_exchange?: boolean; // True if this parcel is an exchange item

@@ -322,7 +322,7 @@ export class RidersController {
         tracking_number: parcel.tracking_number,
         customer_name: parcel.customer_name,
         customer_phone: parcel.customer_phone,
-        delivery_address: parcel.delivery_address,
+        customer_address: parcel.customer_address,
         is_cod: parcel.is_cod,
         cod_amount: parcel.cod_amount,
         total_charge: parcel.total_charge,
