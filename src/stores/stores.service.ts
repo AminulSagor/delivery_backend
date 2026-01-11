@@ -129,14 +129,27 @@ export class StoresService {
     // Generate unique store code
     const storeCode = await this.generateStoreCode(dto.business_name);
 
+    // Get location names from coverage_areas table
+    const locationNames = await this.coverageAreasService.getLocationNamesByIds(
+      dto.carrybee_city_id,
+      dto.carrybee_zone_id,
+      dto.carrybee_area_id,
+    );
+
+    if (!locationNames) {
+      throw new BadRequestException(
+        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
+      );
+    }
+
     const store = new Store();
     store.merchant_id = merchant.id;
     store.store_code = storeCode; // Auto-generated
     store.business_name = dto.business_name;
     store.business_address = dto.business_address;
-    store.district = dto.district ?? null;
-    store.thana = dto.thana ?? null;
-    store.area = dto.area ?? null;
+    store.district = locationNames.district;  // Auto-populated from coverage_areas
+    store.thana = locationNames.thana;        // Auto-populated from coverage_areas
+    store.area = locationNames.area;          // Auto-populated from coverage_areas
     store.phone_number = dto.phone_number;
     store.email = dto.email ?? null;
     store.facebook_page = dto.facebook_page ?? null;
@@ -144,19 +157,6 @@ export class StoresService {
     store.carrybee_city_id = dto.carrybee_city_id;
     store.carrybee_zone_id = dto.carrybee_zone_id;
     store.carrybee_area_id = dto.carrybee_area_id;
-
-    // Validate location IDs against coverage_areas table
-    const isValidLocation = await this.coverageAreasService.validateLocationIds(
-      dto.carrybee_city_id,
-      dto.carrybee_zone_id,
-      dto.carrybee_area_id,
-    );
-
-    if (!isValidLocation) {
-      throw new BadRequestException(
-        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
-      );
-    }
 
     // Save store first
     await this.storesRepository.save(store);
@@ -456,19 +456,47 @@ export class StoresService {
       store.business_name = dto.business_name;
     if (dto.business_address !== undefined)
       store.business_address = dto.business_address;
-    if (dto.district !== undefined) store.district = dto.district;
-    if (dto.thana !== undefined) store.thana = dto.thana;
-    if (dto.area !== undefined) store.area = dto.area;
     if (dto.phone_number !== undefined) store.phone_number = dto.phone_number;
     if (dto.email !== undefined) store.email = dto.email;
     if (dto.facebook_page !== undefined)
       store.facebook_page = dto.facebook_page;
-    if (dto.carrybee_city_id !== undefined)
-      store.carrybee_city_id = dto.carrybee_city_id;
-    if (dto.carrybee_zone_id !== undefined)
-      store.carrybee_zone_id = dto.carrybee_zone_id;
-    if (dto.carrybee_area_id !== undefined)
-      store.carrybee_area_id = dto.carrybee_area_id;
+
+    // If location IDs are being updated, auto-populate district/thana/area
+    if (
+      dto.carrybee_city_id !== undefined ||
+      dto.carrybee_zone_id !== undefined ||
+      dto.carrybee_area_id !== undefined
+    ) {
+      const cityId = dto.carrybee_city_id ?? store.carrybee_city_id;
+      const zoneId = dto.carrybee_zone_id ?? store.carrybee_zone_id;
+      const areaId = dto.carrybee_area_id ?? store.carrybee_area_id;
+
+      // Ensure all location IDs are provided
+      if (!cityId || !zoneId || !areaId) {
+        throw new BadRequestException(
+          'All location IDs (city_id, zone_id, area_id) must be provided.',
+        );
+      }
+
+      const locationNames = await this.coverageAreasService.getLocationNamesByIds(
+        cityId,
+        zoneId,
+        areaId,
+      );
+
+      if (!locationNames) {
+        throw new BadRequestException(
+          'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
+        );
+      }
+
+      store.carrybee_city_id = cityId;
+      store.carrybee_zone_id = zoneId;
+      store.carrybee_area_id = areaId;
+      store.district = locationNames.district;
+      store.thana = locationNames.thana;
+      store.area = locationNames.area;
+    }
 
     await this.storesRepository.save(store);
 

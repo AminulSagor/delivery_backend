@@ -91,13 +91,6 @@ export class CarrybeeService {
       }
     }
 
-    // Validate store has required location fields
-    if (!store.district || !store.thana) {
-      throw new BadRequestException(
-        'Store must have district and thana before syncing to Carrybee',
-      );
-    }
-
     // Check if already synced
     if (store.is_carrybee_synced && store.carrybee_store_id) {
       throw new BadRequestException(
@@ -238,13 +231,6 @@ export class CarrybeeService {
     if (!store.is_carrybee_synced || !store.carrybee_store_id) {
       this.logger.log(`Auto-syncing store ${store.id} to Carrybee before parcel assignment`);
       
-      // Validate store has required location fields
-      if (!store.district || !store.thana || !store.area) {
-        throw new BadRequestException(
-          'Store must have district, thana, and area before syncing to Carrybee',
-        );
-      }
-
       // Validate store has Carrybee location IDs
       if (!store.carrybee_city_id || !store.carrybee_zone_id || !store.carrybee_area_id) {
         throw new BadRequestException(
