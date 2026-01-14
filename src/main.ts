@@ -20,6 +20,7 @@ async function bootstrap() {
   
   // Normalize URLs by removing double slashes (fixes production routing issues)
   // This handles cases where baseUrl has trailing slash and route starts with slash
+  // Note: Only modify req.url, not req.path (which is read-only)
   app.use((req: any, res: any, next: any) => {
     if (req.url) {
       // Split URL and query string
@@ -29,14 +30,8 @@ async function bootstrap() {
       // Ensure path starts with single slash
       const finalPath = normalizedPath.startsWith('/') ? normalizedPath : '/' + normalizedPath;
       // Reconstruct URL with query string if present
+      // Express will automatically update req.path based on req.url
       req.url = query ? `${finalPath}?${query}` : finalPath;
-    }
-    // Also normalize req.path which NestJS uses for route matching
-    if (req.path) {
-      req.path = req.path.replace(/\/+/g, '/');
-      if (!req.path.startsWith('/')) {
-        req.path = '/' + req.path;
-      }
     }
     next();
   });
