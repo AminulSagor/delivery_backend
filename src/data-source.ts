@@ -46,7 +46,7 @@ const baseConfig = {
     : [path.join(__dirname, '**/*.entity.js')],
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
-    : ['dist/migrations/*.js'],
+    : [path.join(__dirname, 'migrations/*.js')],
   // IMPORTANT: Set to false for production
   // Use migrations or fix scripts for schema changes
   synchronize: false,

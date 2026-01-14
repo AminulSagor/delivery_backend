@@ -33,6 +33,7 @@ import { MerchantFinanceModule } from './merchant-finance/merchant-finance.modul
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
+      migrationsRun: true,  // Automatically run pending migrations on app startup
       retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000,  // 2s between retries
     }),
