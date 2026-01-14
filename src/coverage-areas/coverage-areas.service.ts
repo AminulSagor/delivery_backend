@@ -381,34 +381,6 @@ export class CoverageAreasService {
   }
 
   /**
-   * Get location names (district/city, thana/zone, area) by Carrybee IDs
-   * Returns null if location not found
-   */
-  async getLocationNamesByIds(
-    cityId: number,
-    zoneId: number,
-    areaId: number,
-  ): Promise<{ district: string; thana: string; area: string } | null> {
-    const location = await this.coverageAreaRepository.findOne({
-      where: {
-        city_id: cityId,
-        zone_id: zoneId,
-        area_id: areaId,
-      },
-    });
-
-    if (!location) {
-      return null;
-    }
-
-    return {
-      district: location.city,  // city maps to district
-      thana: location.zone,     // zone maps to thana
-      area: location.area,
-    };
-  }
-
-  /**
    * Autocomplete/Suggest coverage areas by searching across all fields
    * Searches in division, city, zone, and area fields
    */

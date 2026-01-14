@@ -129,27 +129,14 @@ export class StoresService {
     // Generate unique store code
     const storeCode = await this.generateStoreCode(dto.business_name);
 
-    // Get location names from coverage_areas table
-    const locationNames = await this.coverageAreasService.getLocationNamesByIds(
-      dto.carrybee_city_id,
-      dto.carrybee_zone_id,
-      dto.carrybee_area_id,
-    );
-
-    if (!locationNames) {
-      throw new BadRequestException(
-        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
-      );
-    }
-
     const store = new Store();
     store.merchant_id = merchant.id;
     store.store_code = storeCode; // Auto-generated
     store.business_name = dto.business_name;
     store.business_address = dto.business_address;
-    store.district = locationNames.district;  // Auto-populated from coverage_areas
-    store.thana = locationNames.thana;        // Auto-populated from coverage_areas
-    store.area = locationNames.area;          // Auto-populated from coverage_areas
+    store.district = dto.district ?? null;
+    store.thana = dto.thana ?? null;
+    store.area = dto.area ?? null;
     store.phone_number = dto.phone_number;
     store.email = dto.email ?? null;
     store.facebook_page = dto.facebook_page ?? null;
@@ -157,6 +144,19 @@ export class StoresService {
     store.carrybee_city_id = dto.carrybee_city_id;
     store.carrybee_zone_id = dto.carrybee_zone_id;
     store.carrybee_area_id = dto.carrybee_area_id;
+
+    // Validate location IDs against coverage_areas table
+    const isValidLocation = await this.coverageAreasService.validateLocationIds(
+      dto.carrybee_city_id,
+      dto.carrybee_zone_id,
+      dto.carrybee_area_id,
+    );
+
+    if (!isValidLocation) {
+      throw new BadRequestException(
+        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
+      );
+    }
 
     // Save store first
     await this.storesRepository.save(store);
@@ -264,23 +264,23 @@ export class StoresService {
       .select('parcel.store_id', 'store_id')
       .addSelect('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .where('parcel.merchant_id = :merchantId', { merchantId: merchant.id })
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -339,23 +339,23 @@ export class StoresService {
       .createQueryBuilder(Parcel, 'parcel')
       .select('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       // FIXED: Use 'defaultStore.id' instead of undefined 'id'
       .where('parcel.store_id = :storeId', { storeId: defaultStore.id })
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -409,22 +409,22 @@ export class StoresService {
       .createQueryBuilder(Parcel, 'parcel')
       .select('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .where('parcel.store_id = :storeId', { storeId: id })
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -456,47 +456,19 @@ export class StoresService {
       store.business_name = dto.business_name;
     if (dto.business_address !== undefined)
       store.business_address = dto.business_address;
+    if (dto.district !== undefined) store.district = dto.district;
+    if (dto.thana !== undefined) store.thana = dto.thana;
+    if (dto.area !== undefined) store.area = dto.area;
     if (dto.phone_number !== undefined) store.phone_number = dto.phone_number;
     if (dto.email !== undefined) store.email = dto.email;
     if (dto.facebook_page !== undefined)
       store.facebook_page = dto.facebook_page;
-
-    // If location IDs are being updated, auto-populate district/thana/area
-    if (
-      dto.carrybee_city_id !== undefined ||
-      dto.carrybee_zone_id !== undefined ||
-      dto.carrybee_area_id !== undefined
-    ) {
-      const cityId = dto.carrybee_city_id ?? store.carrybee_city_id;
-      const zoneId = dto.carrybee_zone_id ?? store.carrybee_zone_id;
-      const areaId = dto.carrybee_area_id ?? store.carrybee_area_id;
-
-      // Ensure all location IDs are provided
-      if (!cityId || !zoneId || !areaId) {
-        throw new BadRequestException(
-          'All location IDs (city_id, zone_id, area_id) must be provided.',
-        );
-      }
-
-      const locationNames = await this.coverageAreasService.getLocationNamesByIds(
-        cityId,
-        zoneId,
-        areaId,
-      );
-
-      if (!locationNames) {
-        throw new BadRequestException(
-          'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
-        );
-      }
-
-      store.carrybee_city_id = cityId;
-      store.carrybee_zone_id = zoneId;
-      store.carrybee_area_id = areaId;
-      store.district = locationNames.district;
-      store.thana = locationNames.thana;
-      store.area = locationNames.area;
-    }
+    if (dto.carrybee_city_id !== undefined)
+      store.carrybee_city_id = dto.carrybee_city_id;
+    if (dto.carrybee_zone_id !== undefined)
+      store.carrybee_zone_id = dto.carrybee_zone_id;
+    if (dto.carrybee_area_id !== undefined)
+      store.carrybee_area_id = dto.carrybee_area_id;
 
     await this.storesRepository.save(store);
 
@@ -614,22 +586,22 @@ export class StoresService {
       .select('parcel.store_id', 'store_id')
       .addSelect('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,

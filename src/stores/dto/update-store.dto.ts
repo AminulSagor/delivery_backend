@@ -21,6 +21,20 @@ export class UpdateStoreDto {
 
   @IsString()
   @IsOptional()
+  @MinLength(2)
+  district?: string;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(2)
+  thana?: string;
+
+  @IsString()
+  @IsOptional()
+  area?: string;
+
+  @IsString()
+  @IsOptional()
   @Matches(/^01[0-9]{9}$/, {
     message: 'Phone number must be valid BD format (01XXXXXXXXX)',
   })

@@ -108,6 +108,22 @@ export class PickupRequestsController {
   }
 
   /**
+   * Link orphaned parcels to pickup requests (Hub Manager)
+   * Use this to fix parcels that were created without being linked to pickup requests
+   */
+  @Post('hub/link-orphaned-parcels')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async linkOrphanedParcels(@CurrentUser('hubId') hubId: string) {
+    const result = await this.pickupRequestsService.linkOrphanedParcels(hubId);
+    return {
+      success: true,
+      data: result,
+      message: `Successfully linked ${result.linked} orphaned parcels to pickup requests`,
+    };
+  }
+
+  /**
    * Get single pickup request (Merchant only)
    */
   @Get(':id')

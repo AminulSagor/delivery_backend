@@ -96,18 +96,50 @@ export class ParcelsService {
     private pickupRequestsService: PickupRequestsService,
   ) {}
 
-  private async generateTrackingNumber(): Promise<string> {
+  /**
+   * Generate unique tracking number with retry logic for race conditions
+   * Format: TRK-YYYYMMDD-XXXXX (with random suffix on collision)
+   */
+  private async generateTrackingNumber(retryCount = 0): Promise<string> {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
+    
     const count = await this.parcelRepository.count({
       where: { created_at: Between(startOfDay, endOfDay) as any },
     });
-    const sequenceNumber = (count + 1).toString().padStart(5, '0');
-    return `TRK-${dateStr}-${sequenceNumber}`;
+    
+    // Base sequence number
+    let sequenceNumber = (count + 1).toString().padStart(5, '0');
+    
+    // On retry, add random suffix to avoid collision
+    if (retryCount > 0) {
+      const randomSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+      sequenceNumber = `${sequenceNumber}-${randomSuffix}`;
+    }
+    
+    const trackingNumber = `TRK-${dateStr}-${sequenceNumber}`;
+    
+    // Check if tracking number already exists
+    const existing = await this.parcelRepository.findOne({
+      where: { tracking_number: trackingNumber },
+      select: ['id'],
+    });
+    
+    if (existing) {
+      if (retryCount >= 5) {
+        // Fallback to UUID-based tracking after 5 retries
+        const uuid = uuidv4().substring(0, 8).toUpperCase();
+        return `TRK-${dateStr}-${uuid}`;
+      }
+      // Retry with incremented counter
+      return this.generateTrackingNumber(retryCount + 1);
+    }
+    
+    return trackingNumber;
   }
 
   private determinePricingZone(coverageArea: CoverageArea | null): PricingZone {
@@ -918,9 +950,13 @@ export class ParcelsService {
               merchantId,
               createParcelDto.store_id,
             );
+          this.logger.log(
+            `[PICKUP REQUEST] Linked parcel to pickup request: ${pickupRequest.id}`,
+          );
         } catch (error) {
-          this.logger.warn(
-            `[PICKUP REQUEST] Could not create/find pickup request: ${error.message}`,
+          this.logger.error(
+            `[PICKUP REQUEST ERROR] Could not create/find pickup request for store ${createParcelDto.store_id}, merchant ${merchantId}: ${error.message}`,
+            error.stack,
           );
           // Continue without pickup request if it fails
         }
@@ -953,7 +989,9 @@ export class ParcelsService {
           {
             customer_name: createParcelDto.customer_name,
             customer_phone: createParcelDto.customer_phone,
-            delivery_address: createParcelDto.customer_address,
+            customer_address: createParcelDto.customer_address,
+            customer_secondary_phone: createParcelDto.customer_secondary_phone,
+            delivery_coverage_area_id: createParcelDto.delivery_coverage_area_id,
           },
         );
         customer = result.customer;
