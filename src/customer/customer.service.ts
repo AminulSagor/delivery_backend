@@ -10,8 +10,12 @@ import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { CustomerResponseDto } from './dto/check-customer-phone.dto';
+import {
+  CustomerResponseDto,
+  DeliveryAddressDto,
+} from './dto/check-customer-phone.dto';
 import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
+import { CoverageArea } from 'src/coverage-areas/entities/coverage-area.entity';
 
 @Injectable()
 export class CustomerService {
@@ -22,6 +26,8 @@ export class CustomerService {
     private readonly customersRepository: Repository<Customer>,
     @InjectRepository(Parcel)
     private parcelsRepository: Repository<Parcel>,
+    @InjectRepository(CoverageArea)
+    private coverageAreaRepository: Repository<CoverageArea>,
   ) {}
 
   // Standard create (if you call it directly)
@@ -36,20 +42,61 @@ export class CustomerService {
       );
     }
 
-    const customer = this.customersRepository.create({
-      customer_name: dto.customer_name,
-      phone_number: dto.phone_number,
-      secondary_number: dto.secondary_number,
-      delivery_address: dto.delivery_address,
-    });
+    // Validate coverage area if provided
+    if (dto.delivery_coverage_area_id) {
+      const coverageArea = await this.coverageAreaRepository.findOne({
+        where: { id: dto.delivery_coverage_area_id },
+      });
+      if (!coverageArea) {
+        throw new BadRequestException('Invalid delivery coverage area');
+      }
+    }
 
-    await this.customersRepository.save(customer);
+    // Check if secondary_number is already in use (if provided)
+    if (dto.secondary_number) {
+      const existingSecondary = await this.customersRepository.findOne({
+        where: { secondary_number: dto.secondary_number },
+      });
+      if (existingSecondary) {
+        throw new BadRequestException(
+          'Secondary phone number is already in use by another customer',
+        );
+      }
+    }
 
-    this.logger.log(
-      `Customer created: ${customer.customer_name} (${customer.phone_number})`,
-    );
+    try {
+      const customer = this.customersRepository.create({
+        customer_name: dto.customer_name,
+        phone_number: dto.phone_number,
+        secondary_number: dto.secondary_number || null,
+        customer_address: dto.customer_address,
+        delivery_coverage_area_id: dto.delivery_coverage_area_id || null,
+      });
 
-    return customer;
+      await this.customersRepository.save(customer);
+
+      this.logger.log(
+        `Customer created: ${customer.customer_name} (${customer.phone_number})`,
+      );
+
+      return customer;
+    } catch (error: any) {
+      // Handle unique constraint violations
+      if (error?.code === '23505') {
+        if (error.detail?.includes('phone_number')) {
+          throw new BadRequestException(
+            'Customer with this phone number already exists',
+          );
+        }
+        if (error.detail?.includes('secondary_number')) {
+          throw new BadRequestException(
+            'Secondary phone number is already in use',
+          );
+        }
+        throw new BadRequestException('Duplicate value detected');
+      }
+      throw error;
+    }
   }
 
   // customer.service.ts
@@ -78,7 +125,9 @@ export class CustomerService {
   async findOrCreateFromParcelPayload(payload: {
     customer_name: string;
     customer_phone: string;
-    delivery_address: string;
+    customer_address: string;
+    customer_secondary_phone?: string;
+    delivery_coverage_area_id?: string;
   }): Promise<{ customer: Customer; isNew: boolean }> {
     // 1) Quick check – most requests will hit this path in prod
     const existing = await this.customersRepository.findOne({
@@ -86,6 +135,38 @@ export class CustomerService {
     });
 
     if (existing) {
+      // Update customer with new delivery info if provided
+      let updated = false;
+
+      if (payload.delivery_coverage_area_id && existing.delivery_coverage_area_id !== payload.delivery_coverage_area_id) {
+        existing.delivery_coverage_area_id = payload.delivery_coverage_area_id;
+        updated = true;
+      }
+
+      if (payload.customer_secondary_phone && existing.secondary_number !== payload.customer_secondary_phone) {
+        existing.secondary_number = payload.customer_secondary_phone;
+        updated = true;
+      }
+
+      // Update address if different
+      if (payload.customer_address && existing.customer_address !== payload.customer_address) {
+        existing.customer_address = payload.customer_address;
+        updated = true;
+      }
+
+      // Update name if different
+      if (payload.customer_name && existing.customer_name !== payload.customer_name) {
+        existing.customer_name = payload.customer_name;
+        updated = true;
+      }
+
+      if (updated) {
+        await this.customersRepository.save(existing);
+        this.logger.log(
+          `Customer updated from parcel: ${existing.customer_name} (${existing.phone_number})`,
+        );
+      }
+
       return { customer: existing, isNew: false };
     }
 
@@ -95,7 +176,9 @@ export class CustomerService {
       const customer = this.customersRepository.create({
         customer_name: payload.customer_name,
         phone_number: payload.customer_phone,
-        delivery_address: payload.delivery_address,
+        customer_address: payload.customer_address,
+        secondary_number: payload.customer_secondary_phone || null,
+        delivery_coverage_area_id: payload.delivery_coverage_area_id || null,
       });
 
       await this.customersRepository.save(customer);
@@ -158,6 +241,7 @@ export class CustomerService {
   ): Promise<CustomerResponseDto> {
     const customer = await this.customersRepository.findOne({
       where: { phone_number: phone },
+      relations: ['deliveryCoverageArea'],
     });
 
     if (!customer) {
@@ -167,7 +251,8 @@ export class CustomerService {
         customer_name: '',
         phone_number: phone,
         secondary_number: '',
-        delivery_address: '',
+        delivery_address: null,
+        customer_address: '',
         history: {
           delivered_count: 0,
           cancelled_count: 0,
@@ -186,11 +271,7 @@ export class CustomerService {
 
     // Failure statuses (Returned/Rejected)
     const cancelStatuses = [
-      // ParcelStatus.RETURNED,
-      // ParcelStatus.RETURNED_TO_HUB,
-      // ParcelStatus.RETURN_TO_MERCHANT,
       ParcelStatus.CANCELLED,
-      // ParcelStatus.FAILED_DELIVERY,
     ];
 
     // 3. Aggregate Stats for THIS Merchant only
@@ -216,12 +297,54 @@ export class CustomerService {
     const deliveredCount = parseInt(history.delivered_count || '0', 10);
     const cancelledCount = parseInt(history.cancelled_count || '0', 10);
 
+    // 5. Get delivery address from customer's coverage area
+    let deliveryAddress: DeliveryAddressDto | null = null;
+    const customerAddress = customer.customer_address || '';
+
+    // First, check if customer has delivery_coverage_area_id
+    if (customer.deliveryCoverageArea) {
+      const coverageArea = customer.deliveryCoverageArea;
+      deliveryAddress = {
+        city: coverageArea.city,
+        city_id: coverageArea.city_id,
+        zone: coverageArea.zone,
+        zone_id: coverageArea.zone_id,
+        area: coverageArea.area,
+        area_id: coverageArea.area_id,
+        coverage_area_id: coverageArea.id,
+      };
+    } else {
+      // Fall back to latest parcel's coverage area
+      const latestParcel = await this.parcelsRepository.findOne({
+        where: {
+          customer_id: customer.id,
+          merchant_id: merchantId,
+        },
+        relations: ['delivery_coverage_area'],
+        order: { created_at: 'DESC' },
+      });
+
+      if (latestParcel?.delivery_coverage_area) {
+        const coverageArea = latestParcel.delivery_coverage_area;
+        deliveryAddress = {
+          city: coverageArea.city,
+          city_id: coverageArea.city_id,
+          zone: coverageArea.zone,
+          zone_id: coverageArea.zone_id,
+          area: coverageArea.area,
+          area_id: coverageArea.area_id,
+          coverage_area_id: coverageArea.id,
+        };
+      }
+    }
+
     return {
       id: customer.id,
       customer_name: customer.customer_name,
       phone_number: customer.phone_number,
       secondary_number: customer.secondary_number || '',
-      delivery_address: customer.delivery_address,
+      delivery_address: deliveryAddress,
+      customer_address: customerAddress,
       history: {
         delivered_count: deliveredCount,
         cancelled_count: cancelledCount,
@@ -254,8 +377,21 @@ export class CustomerService {
       customer.secondary_number = dto.secondary_number;
     }
 
-    if (dto.delivery_address !== undefined) {
-      customer.delivery_address = dto.delivery_address;
+    if (dto.customer_address !== undefined) {
+      customer.customer_address = dto.customer_address;
+    }
+
+    // Update delivery coverage area
+    if (dto.delivery_coverage_area_id !== undefined) {
+      if (dto.delivery_coverage_area_id) {
+        const coverageArea = await this.coverageAreaRepository.findOne({
+          where: { id: dto.delivery_coverage_area_id },
+        });
+        if (!coverageArea) {
+          throw new BadRequestException('Invalid delivery coverage area');
+        }
+      }
+      customer.delivery_coverage_area_id = dto.delivery_coverage_area_id || null;
     }
 
     await this.customersRepository.save(customer);

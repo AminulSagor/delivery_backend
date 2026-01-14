@@ -264,23 +264,23 @@ export class StoresService {
       .select('parcel.store_id', 'store_id')
       .addSelect('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .where('parcel.merchant_id = :merchantId', { merchantId: merchant.id })
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -339,23 +339,23 @@ export class StoresService {
       .createQueryBuilder(Parcel, 'parcel')
       .select('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       // FIXED: Use 'defaultStore.id' instead of undefined 'id'
       .where('parcel.store_id = :storeId', { storeId: defaultStore.id })
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -409,22 +409,22 @@ export class StoresService {
       .createQueryBuilder(Parcel, 'parcel')
       .select('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .where('parcel.store_id = :storeId', { storeId: id })
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
@@ -586,22 +586,22 @@ export class StoresService {
       .select('parcel.store_id', 'store_id')
       .addSelect('COUNT(parcel.id)', 'total_handled')
       .addSelect(
-        `SUM(CASE WHEN parcel.status = :delivered THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
         'delivered_count',
       )
       .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returns) THEN 1 ELSE 0 END)`,
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
         'return_count',
       )
       .groupBy('parcel.store_id')
       .setParameters({
-        delivered: [
+        deliveredStatuses: [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
           ParcelStatus.EXCHANGE,
           ParcelStatus.PAID_RETURN,
         ],
-        returns: [
+        returnStatuses: [
           ParcelStatus.RETURNED,
           ParcelStatus.RETURNED_TO_HUB,
           ParcelStatus.RETURN_TO_MERCHANT,
