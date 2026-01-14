@@ -18,6 +18,29 @@ async function bootstrap() {
     abortOnError: false, // Don't crash on startup errors
   });
   
+  // Normalize URLs by removing double slashes (fixes production routing issues)
+  // This handles cases where baseUrl has trailing slash and route starts with slash
+  app.use((req: any, res: any, next: any) => {
+    if (req.url) {
+      // Split URL and query string
+      const [path, query] = req.url.split('?');
+      // Replace multiple consecutive slashes with a single slash in path
+      const normalizedPath = path.replace(/\/+/g, '/');
+      // Ensure path starts with single slash
+      const finalPath = normalizedPath.startsWith('/') ? normalizedPath : '/' + normalizedPath;
+      // Reconstruct URL with query string if present
+      req.url = query ? `${finalPath}?${query}` : finalPath;
+    }
+    // Also normalize req.path which NestJS uses for route matching
+    if (req.path) {
+      req.path = req.path.replace(/\/+/g, '/');
+      if (!req.path.startsWith('/')) {
+        req.path = '/' + req.path;
+      }
+    }
+    next();
+  });
+
   // Enable CORS for all origins (configure as needed for production)
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',
