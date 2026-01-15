@@ -269,10 +269,10 @@ export class RidersController {
   }
 
   /**
-   * Activate rider
+   * Activate rider (Admin only)
    */
   @Patch(':id/activate')
-  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  @Roles(UserRole.ADMIN)
   async activate(@Param('id') id: string) {
     const rider = await this.ridersService.activate(id);
 
