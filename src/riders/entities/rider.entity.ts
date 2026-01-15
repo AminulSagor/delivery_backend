@@ -79,6 +79,16 @@ export class Rider {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   commission_per_delivery: number;
 
+  // Bank Information
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_name: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  bank_account_number: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_branch: string | null;
+
   // Documents
   @Column({ type: 'varchar', length: 500 })
   nid_front_photo: string;
