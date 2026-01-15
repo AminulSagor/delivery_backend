@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { RidersService } from './riders.service';
 import { ParcelsService } from '../parcels/parcels.service';
@@ -51,6 +52,13 @@ export class RidersController {
     @Body() createRiderDto: CreateRiderDto,
     @CurrentUser() user: any,
   ) {
+    // Validate Hub Manager has a hub assigned
+    if (!user.hubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin to link your account to a hub.',
+      );
+    }
+
     const rider = await this.ridersService.createByHubManager(
       createRiderDto,
       user.hubId,

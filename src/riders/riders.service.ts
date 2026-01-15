@@ -37,6 +37,13 @@ export class RidersService {
     createRiderDto: CreateRiderDto,
     hubManagerHubId: string,
   ): Promise<Rider> {
+    // Validate hub_id is provided
+    if (!hubManagerHubId) {
+      throw new BadRequestException(
+        'Hub Manager is not assigned to any hub. Please contact admin to link your account to a hub.',
+      );
+    }
+
     // Check if phone already exists
     const existingUser = await this.userRepository.findOne({
       where: { phone: createRiderDto.phone },
