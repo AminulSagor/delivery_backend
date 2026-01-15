@@ -140,10 +140,12 @@ export class RidersService {
       await queryRunner.commitTransaction();
 
       // Load rider with user relation for response
-      return await this.riderRepository.findOne({
+      const riderWithRelations = await this.riderRepository.findOne({
         where: { id: savedRider.id },
         relations: ['user', 'hub'],
       });
+
+      return riderWithRelations!;
     } catch (error) {
       // Rollback transaction on any error
       await queryRunner.rollbackTransaction();
@@ -254,10 +256,12 @@ export class RidersService {
       await queryRunner.commitTransaction();
 
       // Load rider with relations for response
-      return await this.riderRepository.findOne({
+      const riderWithRelations = await this.riderRepository.findOne({
         where: { id: savedRider.id },
         relations: ['user', 'hub'],
       });
+
+      return riderWithRelations!;
     } catch (error) {
       // Rollback transaction on any error
       await queryRunner.rollbackTransaction();
