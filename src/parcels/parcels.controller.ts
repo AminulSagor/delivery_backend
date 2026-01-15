@@ -319,6 +319,7 @@ export class ParcelsController {
   @Roles(UserRole.MERCHANT)
   async bulkCreateConfirmedBatch(
     @Body() bulkConfirmedDto: BulkSuggestDto, // Expects the confirmed batch data
+    @CurrentUser('userId') userId: string,
     @CurrentUser('merchantId') merchantId: string,
   ): Promise<{
     message: string;
@@ -331,6 +332,7 @@ export class ParcelsController {
     const confirmationResult =
       await this.parcelsService.bulkCreateConfirmedBatch(
         bulkConfirmedDto.items,
+        userId,
         merchantId,
       );
 
