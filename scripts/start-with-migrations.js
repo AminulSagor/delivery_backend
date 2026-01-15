@@ -1,8 +1,9 @@
 /**
  * Railway startup script with CSV import
  * 1. Validates DATABASE_URL
- * 2. Imports coverage areas from CSV
- * 3. Starts the NestJS application (migrations run automatically via TypeORM)
+ * 2. Checks FORCE_SYNC mode
+ * 3. Imports coverage areas from CSV
+ * 4. Starts the NestJS application (migrations or sync run automatically)
  */
 
 const { spawn } = require('child_process');
@@ -16,6 +17,7 @@ async function startDeployment() {
   console.log('');
   
   const databaseUrl = process.env.DATABASE_URL;
+  const forceSync = process.env.FORCE_SYNC === 'true';
   
   // Check for unresolved template syntax
   if (databaseUrl && databaseUrl.includes('${{')) {
@@ -36,6 +38,7 @@ async function startDeployment() {
   console.log('DATABASE_URL:', databaseUrl ? 'SET ✅' : 'NOT SET ❌');
   console.log('PORT:', process.env.PORT || '3000');
   console.log('NODE_ENV:', process.env.NODE_ENV || 'production');
+  console.log('FORCE_SYNC:', forceSync ? '⚠️  ENABLED' : 'disabled');
   
   // Show connection target
   if (databaseUrl) {
@@ -50,8 +53,18 @@ async function startDeployment() {
   }
   
   console.log('');
-  console.log('TypeORM will handle DB connections automatically');
-  console.log('Migrations will run on first successful connection');
+  
+  if (forceSync) {
+    console.log('🔄 FORCE_SYNC MODE ACTIVE');
+    console.log('   TypeORM will AUTO-CREATE all missing tables from entities');
+    console.log('   Migrations are SKIPPED in this mode');
+    console.log('');
+    console.log('⚠️  IMPORTANT: Remove FORCE_SYNC env var after deployment!');
+    console.log('');
+  } else {
+    console.log('TypeORM will handle DB connections automatically');
+    console.log('Migrations will run on first successful connection');
+  }
   console.log('');
 
   // Import coverage areas from CSV before starting the app
