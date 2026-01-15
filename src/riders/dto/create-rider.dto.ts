@@ -7,7 +7,6 @@ import {
   Matches,
   IsNumber,
   Min,
-  Max,
   MinLength,
 } from 'class-validator';
 import { BikeType } from '../entities/rider.entity';
@@ -66,10 +65,14 @@ export class CreateRiderDto {
   @Min(0, { message: 'Fixed salary cannot be negative' })
   fixed_salary: number;
 
+  /**
+   * Commission per delivered parcel (flat rate in BDT)
+   * This is NOT a percentage - it's a fixed amount per delivery
+   * e.g., 20 means rider gets 20 BDT for each delivered parcel
+   */
   @IsNumber()
-  @Min(0, { message: 'Commission percentage cannot be negative' })
-  @Max(100, { message: 'Commission percentage cannot exceed 100' })
-  commission_percentage: number;
+  @Min(0, { message: 'Commission per delivery cannot be negative' })
+  commission_per_delivery: number;
 
   // Documents
   @IsString()
