@@ -5,11 +5,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Rider } from './entities/rider.entity';
 import { User } from '../users/entities/user.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { PickupRequest } from '../pickup-requests/entities/pickup-request.entity';
+import { Hub } from '../hubs/entities/hub.entity';
 import { CreateRiderDto } from './dto/create-rider.dto';
 import { UpdateRiderDto } from './dto/update-rider.dto';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -28,6 +29,9 @@ export class RidersService {
     private readonly parcelRepository: Repository<Parcel>,
     @InjectRepository(PickupRequest)
     private readonly pickupRequestRepository: Repository<PickupRequest>,
+    @InjectRepository(Hub)
+    private readonly hubRepository: Repository<Hub>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -41,6 +45,17 @@ export class RidersService {
     if (!hubManagerHubId) {
       throw new BadRequestException(
         'Hub Manager is not assigned to any hub. Please contact admin to link your account to a hub.',
+      );
+    }
+
+    // Validate hub exists in database
+    const hub = await this.hubRepository.findOne({
+      where: { id: hubManagerHubId },
+    });
+
+    if (!hub) {
+      throw new BadRequestException(
+        `Hub with ID "${hubManagerHubId}" does not exist. Please contact admin to fix your hub assignment.`,
       );
     }
 
@@ -73,47 +88,70 @@ export class RidersService {
       throw new ConflictException('NID number already registered');
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(createRiderDto.password, 10);
+    // Use transaction to ensure atomicity - rollback user if rider creation fails
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Create user
-    const user = this.userRepository.create({
-      full_name: createRiderDto.full_name,
-      phone: createRiderDto.phone,
-      email: createRiderDto.email,
-      password_hash: hashedPassword,
-      role: UserRole.RIDER,
-      is_active: true,
-    });
+    try {
+      // Hash password
+      const hashedPassword = await bcrypt.hash(createRiderDto.password, 10);
 
-    const savedUser = await this.userRepository.save(user);
+      // Create user
+      const user = queryRunner.manager.create(User, {
+        full_name: createRiderDto.full_name,
+        phone: createRiderDto.phone,
+        email: createRiderDto.email,
+        password_hash: hashedPassword,
+        role: UserRole.RIDER,
+        is_active: true,
+      });
 
-    // Create rider with hub auto-assigned
-    const rider = this.riderRepository.create({
-      user_id: savedUser.id,
-      hub_id: hubManagerHubId, // Auto-assign hub manager's hub
-      photo: createRiderDto.photo,
-      guardian_mobile_no: createRiderDto.guardian_mobile_no,
-      bike_type: createRiderDto.bike_type,
-      nid_number: createRiderDto.nid_number,
-      license_no: createRiderDto.license_no,
-      present_address: createRiderDto.present_address,
-      permanent_address: createRiderDto.permanent_address,
-      fixed_salary: createRiderDto.fixed_salary,
-      commission_per_delivery: createRiderDto.commission_per_delivery,
-      bank_name: createRiderDto.bank_name,
-      bank_account_number: createRiderDto.bank_account_number,
-      bank_branch: createRiderDto.bank_branch,
-      nid_front_photo: createRiderDto.nid_front_photo,
-      nid_back_photo: createRiderDto.nid_back_photo,
-      license_front_photo: createRiderDto.license_front_photo,
-      license_back_photo: createRiderDto.license_back_photo,
-      parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
-      parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
-      is_active: true,
-    });
+      const savedUser = await queryRunner.manager.save(User, user);
 
-    return await this.riderRepository.save(rider);
+      // Create rider with hub auto-assigned
+      const rider = queryRunner.manager.create(Rider, {
+        user_id: savedUser.id,
+        hub_id: hubManagerHubId,
+        photo: createRiderDto.photo,
+        guardian_mobile_no: createRiderDto.guardian_mobile_no,
+        bike_type: createRiderDto.bike_type,
+        nid_number: createRiderDto.nid_number,
+        license_no: createRiderDto.license_no,
+        present_address: createRiderDto.present_address,
+        permanent_address: createRiderDto.permanent_address,
+        fixed_salary: createRiderDto.fixed_salary,
+        commission_per_delivery: createRiderDto.commission_per_delivery,
+        bank_name: createRiderDto.bank_name,
+        bank_account_number: createRiderDto.bank_account_number,
+        bank_branch: createRiderDto.bank_branch,
+        nid_front_photo: createRiderDto.nid_front_photo,
+        nid_back_photo: createRiderDto.nid_back_photo,
+        license_front_photo: createRiderDto.license_front_photo,
+        license_back_photo: createRiderDto.license_back_photo,
+        parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
+        parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
+        is_active: true,
+      });
+
+      const savedRider = await queryRunner.manager.save(Rider, rider);
+
+      // Commit transaction
+      await queryRunner.commitTransaction();
+
+      // Load rider with user relation for response
+      return await this.riderRepository.findOne({
+        where: { id: savedRider.id },
+        relations: ['user', 'hub'],
+      });
+    } catch (error) {
+      // Rollback transaction on any error
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      // Release query runner
+      await queryRunner.release();
+    }
   }
 
   /**
@@ -122,6 +160,17 @@ export class RidersService {
   async createByAdmin(createRiderDto: CreateRiderDto): Promise<Rider> {
     if (!createRiderDto.hub_id) {
       throw new BadRequestException('hub_id is required when creating rider as admin');
+    }
+
+    // Validate hub exists in database
+    const hub = await this.hubRepository.findOne({
+      where: { id: createRiderDto.hub_id },
+    });
+
+    if (!hub) {
+      throw new BadRequestException(
+        `Hub with ID "${createRiderDto.hub_id}" does not exist. Please provide a valid hub_id.`,
+      );
     }
 
     // Check if phone already exists
@@ -153,47 +202,70 @@ export class RidersService {
       throw new ConflictException('NID number already registered');
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(createRiderDto.password, 10);
+    // Use transaction to ensure atomicity
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Create user
-    const user = this.userRepository.create({
-      full_name: createRiderDto.full_name,
-      phone: createRiderDto.phone,
-      email: createRiderDto.email,
-      password_hash: hashedPassword,
-      role: UserRole.RIDER,
-      is_active: true,
-    });
+    try {
+      // Hash password
+      const hashedPassword = await bcrypt.hash(createRiderDto.password, 10);
 
-    const savedUser = await this.userRepository.save(user);
+      // Create user
+      const user = queryRunner.manager.create(User, {
+        full_name: createRiderDto.full_name,
+        phone: createRiderDto.phone,
+        email: createRiderDto.email,
+        password_hash: hashedPassword,
+        role: UserRole.RIDER,
+        is_active: true,
+      });
 
-    // Create rider with specified hub
-    const rider = this.riderRepository.create({
-      user_id: savedUser.id,
-      hub_id: createRiderDto.hub_id,
-      photo: createRiderDto.photo,
-      guardian_mobile_no: createRiderDto.guardian_mobile_no,
-      bike_type: createRiderDto.bike_type,
-      nid_number: createRiderDto.nid_number,
-      license_no: createRiderDto.license_no,
-      present_address: createRiderDto.present_address,
-      permanent_address: createRiderDto.permanent_address,
-      fixed_salary: createRiderDto.fixed_salary,
-      commission_per_delivery: createRiderDto.commission_per_delivery,
-      bank_name: createRiderDto.bank_name,
-      bank_account_number: createRiderDto.bank_account_number,
-      bank_branch: createRiderDto.bank_branch,
-      nid_front_photo: createRiderDto.nid_front_photo,
-      nid_back_photo: createRiderDto.nid_back_photo,
-      license_front_photo: createRiderDto.license_front_photo,
-      license_back_photo: createRiderDto.license_back_photo,
-      parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
-      parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
-      is_active: true,
-    });
+      const savedUser = await queryRunner.manager.save(User, user);
 
-    return await this.riderRepository.save(rider);
+      // Create rider with specified hub
+      const rider = queryRunner.manager.create(Rider, {
+        user_id: savedUser.id,
+        hub_id: createRiderDto.hub_id,
+        photo: createRiderDto.photo,
+        guardian_mobile_no: createRiderDto.guardian_mobile_no,
+        bike_type: createRiderDto.bike_type,
+        nid_number: createRiderDto.nid_number,
+        license_no: createRiderDto.license_no,
+        present_address: createRiderDto.present_address,
+        permanent_address: createRiderDto.permanent_address,
+        fixed_salary: createRiderDto.fixed_salary,
+        commission_per_delivery: createRiderDto.commission_per_delivery,
+        bank_name: createRiderDto.bank_name,
+        bank_account_number: createRiderDto.bank_account_number,
+        bank_branch: createRiderDto.bank_branch,
+        nid_front_photo: createRiderDto.nid_front_photo,
+        nid_back_photo: createRiderDto.nid_back_photo,
+        license_front_photo: createRiderDto.license_front_photo,
+        license_back_photo: createRiderDto.license_back_photo,
+        parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
+        parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
+        is_active: true,
+      });
+
+      const savedRider = await queryRunner.manager.save(Rider, rider);
+
+      // Commit transaction
+      await queryRunner.commitTransaction();
+
+      // Load rider with relations for response
+      return await this.riderRepository.findOne({
+        where: { id: savedRider.id },
+        relations: ['user', 'hub'],
+      });
+    } catch (error) {
+      // Rollback transaction on any error
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      // Release query runner
+      await queryRunner.release();
+    }
   }
 
   /**
