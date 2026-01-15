@@ -7,12 +7,13 @@ import { User } from '../users/entities/user.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { PickupRequest } from '../pickup-requests/entities/pickup-request.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { Hub } from '../hubs/entities/hub.entity';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Rider, User, Parcel, PickupRequest, HubManager]),
+    TypeOrmModule.forFeature([Rider, User, Parcel, PickupRequest, HubManager, Hub]),
     forwardRef(() => ParcelsModule),
     forwardRef(() => PickupRequestsModule),
   ],
