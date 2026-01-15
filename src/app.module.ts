@@ -23,6 +23,9 @@ import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations
 import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 
+// When FORCE_SYNC is enabled, synchronize creates all tables from entities
+// When disabled, migrationsRun handles schema changes
+const forceSync = process.env.FORCE_SYNC === 'true';
 
 @Module({
   imports: [
@@ -33,7 +36,9 @@ import { MerchantFinanceModule } from './merchant-finance/merchant-finance.modul
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      migrationsRun: true,  // Automatically run pending migrations on app startup
+      // When FORCE_SYNC is enabled, synchronize handles everything
+      // When disabled, run migrations automatically on startup
+      migrationsRun: !forceSync,
       retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000,  // 2s between retries
     }),
