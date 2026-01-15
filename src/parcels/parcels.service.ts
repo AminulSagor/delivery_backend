@@ -1117,7 +1117,7 @@ export class ParcelsService {
   }
 
   async findAllForMerchant(
-    userId: string,
+    merchantId: string,
     page: number = 1,
     limit: number = 20,
     status?: ParcelStatus,
@@ -1126,9 +1126,10 @@ export class ParcelsService {
     order: 'ASC' | 'DESC' = 'DESC',
   ): Promise<PaginatedResponse<Parcel>> {
     try {
-      if (!userId) throw new ForbiddenException('User ID (userId) is required');
+      if (!merchantId) throw new ForbiddenException('Merchant ID is required');
 
-      const where: FindOptionsWhere<Parcel> = { merchant_id: userId };
+      // merchant_id references merchants table, so use merchantId
+      const where: FindOptionsWhere<Parcel> = { merchant_id: merchantId };
 
       if (status) {
         where.status = status;
@@ -1158,7 +1159,7 @@ export class ParcelsService {
       };
 
       this.logger.log(
-        `Retrieved ${items.length} parcels for merchant ${userId}`,
+        `Retrieved ${items.length} parcels for merchant ${merchantId}`,
       );
 
       return { items, pagination };
