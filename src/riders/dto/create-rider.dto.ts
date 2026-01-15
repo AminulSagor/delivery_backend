@@ -74,6 +74,19 @@ export class CreateRiderDto {
   @Min(0, { message: 'Commission per delivery cannot be negative' })
   commission_per_delivery: number;
 
+  // Bank Information
+  @IsString()
+  @IsOptional()
+  bank_name?: string;
+
+  @IsString()
+  @IsOptional()
+  bank_account_number?: string;
+
+  @IsString()
+  @IsOptional()
+  bank_branch?: string;
+
   // Documents
   @IsString()
   @IsNotEmpty()

@@ -22,6 +22,7 @@ import { CarrybeeModule } from './carrybee/carrybee.module';
 import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations.module';
 import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
+import { BanksModule } from './banks/banks.module';
 
 // When FORCE_SYNC is enabled, synchronize creates all tables from entities
 // When disabled, migrationsRun handles schema changes
@@ -60,6 +61,7 @@ const forceSync = process.env.FORCE_SYNC === 'true';
     CarrybeeLocationsModule,
     UploadModule,
     MerchantFinanceModule,
+    BanksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
