@@ -69,8 +69,15 @@ export class Rider {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   fixed_salary: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  commission_percentage: number;
+  /**
+   * Commission per delivered parcel (flat rate in BDT)
+   * This is NOT a percentage - it's a fixed amount per delivery
+   * e.g., 20 means rider gets 20 BDT for each delivered parcel
+   * 
+   * "Delivered" includes: DELIVERED, PARTIAL_DELIVERY, EXCHANGE
+   */
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  commission_per_delivery: number;
 
   // Documents
   @Column({ type: 'varchar', length: 500 })

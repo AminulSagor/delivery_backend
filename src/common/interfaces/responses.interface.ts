@@ -91,7 +91,12 @@ export interface RiderDetail extends RiderListItem {
   present_address: string;
   permanent_address: string;
   fixed_salary: number;
-  commission_percentage: number;
+  /**
+   * Commission per delivered parcel (flat rate in BDT)
+   * This is NOT a percentage - it's a fixed amount per delivery
+   * e.g., 20 means rider gets 20 BDT for each delivered parcel
+   */
+  commission_per_delivery: number;
   created_at: Date;
 }
 
@@ -303,7 +308,7 @@ export function toRiderDetail(rider: any): RiderDetail {
     present_address: rider.present_address,
     permanent_address: rider.permanent_address,
     fixed_salary: rider.fixed_salary,
-    commission_percentage: rider.commission_percentage,
+    commission_per_delivery: rider.commission_per_delivery,
     created_at: rider.created_at,
   };
 }
