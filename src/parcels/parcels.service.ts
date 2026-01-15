@@ -1045,7 +1045,7 @@ export class ParcelsService {
 
       const parcel = this.parcelRepository.create({
         ...createParcelDto,
-        merchant_id: userId, // FIXED: merchant_id references users table, not merchants table
+        merchant_id: merchantId, // merchant_id references merchants table (FK constraint)
         merchant_order_id: createParcelDto.merchant_order_id, // From frontend
         customer_id: customer.id,
         tracking_number: trackingNumber,
@@ -1173,7 +1173,7 @@ export class ParcelsService {
 
   async findOne(
     id: string,
-    userId: string | null,
+    merchantId: string | null,
     isAdmin: boolean = false,
   ): Promise<Parcel> {
     try {
@@ -1186,7 +1186,8 @@ export class ParcelsService {
         relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
       });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
-      if (!isAdmin && userId && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && merchantId && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to view this parcel',
         );
@@ -1729,7 +1730,7 @@ export class ParcelsService {
   async update(
     id: string,
     updateParcelDto: UpdateParcelDto,
-    userId: string,
+    merchantId: string,
     isAdmin: boolean = false,
   ): Promise<Parcel> {
     try {
@@ -1740,7 +1741,8 @@ export class ParcelsService {
       const parcel = await this.parcelRepository.findOne({ where: { id } });
       if (!parcel)
         throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to update this parcel',
         );
@@ -1758,15 +1760,9 @@ export class ParcelsService {
       )
         throw new BadRequestException('Product weight cannot be negative.');
       if (updateParcelDto.store_id) {
-        const merchant = await this.merchantRepository.findOne({
-          where: { user_id: userId },
-        });
-        if (!merchant)
-          throw new NotFoundException(
-            'Merchant profile not found for this user.',
-          );
+        // merchantId is the merchant entity ID, use it directly for store lookup
         const store = await this.storeRepository.findOne({
-          where: { id: updateParcelDto.store_id, merchant_id: merchant.id },
+          where: { id: updateParcelDto.store_id, merchant_id: merchantId },
         });
         if (!store)
           throw new NotFoundException(
@@ -1806,7 +1802,7 @@ export class ParcelsService {
           'Failed to update parcel. Please try again or contact support.',
         );
       }
-      this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${userId}`);
+      this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${merchantId}`);
       return updatedParcel;
     } catch (error) {
       if (
@@ -1825,7 +1821,7 @@ export class ParcelsService {
 
   async remove(
     id: string,
-    userId: string,
+    merchantId: string,
     isAdmin: boolean = false,
   ): Promise<{ message: string }> {
     try {
@@ -1836,7 +1832,8 @@ export class ParcelsService {
       const parcel = await this.parcelRepository.findOne({ where: { id } });
       if (!parcel)
         throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to delete this parcel',
         );
@@ -1859,7 +1856,7 @@ export class ParcelsService {
         );
       }
       this.logger.log(
-        `[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${userId}`,
+        `[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${merchantId}`,
       );
       return {
         message: `Parcel ${parcel.tracking_number} has been successfully deleted`,

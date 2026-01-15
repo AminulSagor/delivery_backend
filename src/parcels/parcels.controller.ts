@@ -225,15 +225,15 @@ export class ParcelsController {
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.findOne(id, userId, isAdmin);
+    const parcel = await this.parcelsService.findOne(id, merchantId, isAdmin);
     return {
       parcel,
       message: 'Parcel retrieved successfully',
@@ -247,18 +247,18 @@ export class ParcelsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateParcelDto: UpdateParcelDto,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
     const parcel = await this.parcelsService.update(
       id,
       updateParcelDto,
-      userId,
+      merchantId,
       isAdmin,
     );
     return {
@@ -274,15 +274,15 @@ export class ParcelsController {
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const result = await this.parcelsService.remove(id, userId, isAdmin);
+    const result = await this.parcelsService.remove(id, merchantId, isAdmin);
     return result;
   }
 
