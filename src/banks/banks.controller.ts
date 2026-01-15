@@ -12,11 +12,11 @@ import {
 import { BanksService } from './banks.service';
 import { CreateBankDto } from './dto/create-bank.dto';
 import { UpdateBankDto } from './dto/update-bank.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
-import { Public } from '../auth/decorators/public.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @Controller('banks')
 @UseGuards(JwtAuthGuard, RolesGuard)
