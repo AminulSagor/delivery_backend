@@ -1045,7 +1045,7 @@ export class ParcelsService {
 
       const parcel = this.parcelRepository.create({
         ...createParcelDto,
-        merchant_id: merchantId,
+        merchant_id: userId, // FIXED: merchant_id references users table, not merchants table
         merchant_order_id: createParcelDto.merchant_order_id, // From frontend
         customer_id: customer.id,
         tracking_number: trackingNumber,
@@ -2952,6 +2952,7 @@ export class ParcelsService {
    */
   async bulkCreateConfirmedBatch(
     items: BulkOrderItemDto[],
+    userId: string,
     merchantId: string,
   ): Promise<{
     summary: { total: number; success: number; failed: number };
@@ -3002,7 +3003,8 @@ export class ParcelsService {
         } as CreateParcelDto;
 
         // 3. Create the parcel using the existing core logic
-        const newParcel = await this.create(createDto, merchantId, merchantId);
+        // userId is the user ID from users table, merchantId is the merchant entity ID
+        const newParcel = await this.create(createDto, userId, merchantId);
         successCount++;
 
         creationResults.push({
