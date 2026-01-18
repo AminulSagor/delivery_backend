@@ -28,6 +28,7 @@ import { CalculateTotalPricingDto } from './dto/calculate-total-pricing.dto';
 import { PickupRequestsService } from '../pickup-requests/pickup-requests.service';
 import { Rider } from '../riders/entities/rider.entity';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
+import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
@@ -1991,6 +1992,173 @@ export class ParcelsService {
     );
 
     return updatedParcel;
+  }
+
+  /**
+   * Assign parcels to rider (Hub Manager only)
+   * Supports both single parcel and bulk assignment
+   * 
+   * Usage:
+   * - Single: { rider_id: "...", parcel_id: "..." }
+   * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
+   */
+  async bulkAssignToRider(
+    bulkAssignDto: BulkAssignParcelsToRiderDto,
+    hubId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const { rider_id, parcel_id, parcel_ids: parcelIdsArray } = bulkAssignDto;
+
+    // Normalize: support both single parcel_id and parcel_ids array
+    let parcel_ids: string[];
+    if (parcelIdsArray && parcelIdsArray.length > 0) {
+      parcel_ids = parcelIdsArray;
+    } else if (parcel_id) {
+      parcel_ids = [parcel_id];
+    } else {
+      throw new BadRequestException('Either parcel_id or parcel_ids must be provided');
+    }
+
+    // Verify rider exists and is active
+    const rider = await this.riderRepository.findOne({
+      where: { id: rider_id },
+      relations: ['hub', 'user'],
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider not found');
+    }
+
+    if (!rider.is_active) {
+      throw new BadRequestException('Rider is not active');
+    }
+
+    // Verify rider belongs to the same hub
+    if (rider.hub_id !== hubId) {
+      throw new BadRequestException('Rider must belong to your hub');
+    }
+
+    const results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Process each parcel
+    for (const parcelId of parcel_ids) {
+      try {
+        // Find parcel
+        const parcel = await this.parcelRepository.findOne({
+          where: { id: parcelId },
+          relations: ['merchant', 'customer', 'store'],
+        });
+
+        if (!parcel) {
+          results.push({
+            parcel_id: parcelId,
+            success: false,
+            error: 'Parcel not found',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel has merchant_id (required field)
+        if (!parcel.merchant_id) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel has invalid merchant data',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel is in the hub manager's hub (check current_hub_id)
+        if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel is not in your hub',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel status is IN_HUB
+        if (parcel.status !== ParcelStatus.IN_HUB) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: `Parcel must be in IN_HUB status. Current status: ${parcel.status}`,
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel is not already assigned
+        if (parcel.assigned_rider_id) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel is already assigned to a rider',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Assign parcel to rider
+        await this.parcelRepository.update(parcelId, {
+          assigned_rider_id: rider.id,
+          assigned_at: new Date(),
+          status: ParcelStatus.ASSIGNED_TO_RIDER,
+        });
+
+        results.push({
+          parcel_id: parcelId,
+          tracking_number: parcel.tracking_number,
+          success: true,
+        });
+        successCount++;
+
+        this.logger.log(
+          `[BULK ASSIGN] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}`,
+        );
+      } catch (error) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: error.message || 'Unknown error',
+        });
+        failedCount++;
+      }
+    }
+
+    this.logger.log(
+      `[BULK ASSIGN COMPLETE] Rider: ${rider.user.full_name}, Success: ${successCount}, Failed: ${failedCount}, Hub: ${hubId}`,
+    );
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
+    };
   }
 
   /**
