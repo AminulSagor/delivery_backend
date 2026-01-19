@@ -152,22 +152,55 @@ export class RidersController {
 
   /**
    * PICKUP SECTION - Pending & Completed tabs
-   * Pending: CONFIRMED (assigned, needs to pickup from merchant)
-   * Completed: PICKED_UP
+   * 
+   * Groups by store+date - same store on same day shows combined pickup_count
+   * 
+   * ?tab=pending   → CONFIRMED (assigned to rider, needs to pickup from merchant)
+   * ?tab=completed → PICKED_UP (completed by this rider)
+   * ?tab=confirmed → alias for completed
    */
   @Get('pickups')
   @Roles(UserRole.RIDER)
   async getPickups(
     @CurrentUser() user: any,
-    @Query('tab') tab: 'pending' | 'completed' = 'pending',
+    @Query('tab') tab: 'pending' | 'completed' | 'confirmed' = 'pending',
   ) {
-    const filter = tab === 'pending' ? 'pending' : 'completed';
-    const pickups = await this.pickupRequestsService.getRiderPickups(user.riderId, undefined, filter);
+    // Map tab to filter: 'confirmed' is alias for 'completed'
+    let filter: string;
+    if (tab === 'pending') {
+      filter = 'pending';
+    } else if (tab === 'completed' || tab === 'confirmed') {
+      filter = 'completed';
+    } else {
+      filter = 'pending';
+    }
+    
+    // Returns grouped pickups (same store+date combined)
+    const groupedPickups = await this.pickupRequestsService.getRiderPickups(user.riderId, undefined, filter);
+
+    // Format response
+    const data = groupedPickups.map((pickup: any) => ({
+      id: pickup.id,
+      request_code: pickup.request_code,
+      request_codes: pickup.request_codes,  // All request codes in this group
+      pickup_count: pickup.pickup_count,
+      status: pickup.status,
+      comment: pickup.comment,
+      created_at: pickup.created_at,
+      completed_at: pickup.completed_at,
+      store: pickup.store ? {
+        id: pickup.store.id,
+        business_name: pickup.store.business_name,
+        phone_number: pickup.store.phone_number,
+        business_address: pickup.store.business_address,
+      } : null,
+    }));
 
     return {
       success: true,
-      data: pickups.map(toPickupRequestListItem),
-      count: pickups.length,
+      data,
+      count: data.length,
+      tab: filter === 'pending' ? 'pending' : 'completed',
     };
   }
 
