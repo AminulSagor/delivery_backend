@@ -6,12 +6,10 @@ export class InitialSchema1699999999999 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Enable UUID extension (required for uuid_generate_v4)
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-
     // Create users table
     await queryRunner.query(`
       CREATE TYPE "user_role_enum" AS ENUM('ADMIN', 'HUB_MANAGER', 'RIDER', 'MERCHANT')
     `);
-
     await queryRunner.query(`
       CREATE TABLE "users" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -29,15 +27,12 @@ export class InitialSchema1699999999999 implements MigrationInterface {
         CONSTRAINT "UQ_users_email" UNIQUE ("email")
       )
     `);
-
     await queryRunner.query(`
       CREATE INDEX "IDX_users_phone" ON "users" ("phone")
     `);
-
     await queryRunner.query(`
       CREATE INDEX "IDX_users_email" ON "users" ("email")
     `);
-
     // Create hubs table
     await queryRunner.query(`
       CREATE TABLE "hubs" (
@@ -56,11 +51,9 @@ export class InitialSchema1699999999999 implements MigrationInterface {
         CONSTRAINT "FK_hubs_manager_user_id" FOREIGN KEY ("manager_user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE
       )
     `);
-
     await queryRunner.query(`
       CREATE INDEX "IDX_hubs_hub_code" ON "hubs" ("hub_code")
     `);
-
     // Create hub_managers table
     await queryRunner.query(`
       CREATE TABLE "hub_managers" (
@@ -75,7 +68,6 @@ export class InitialSchema1699999999999 implements MigrationInterface {
         CONSTRAINT "FK_hub_managers_hub_id" FOREIGN KEY ("hub_id") REFERENCES "hubs"("id") ON DELETE CASCADE ON UPDATE CASCADE
       )
     `);
-
     // Create riders table
     await queryRunner.query(`
       CREATE TABLE "riders" (
@@ -91,12 +83,10 @@ export class InitialSchema1699999999999 implements MigrationInterface {
         CONSTRAINT "FK_riders_hub_id" FOREIGN KEY ("hub_id") REFERENCES "hubs"("id") ON DELETE RESTRICT ON UPDATE CASCADE
       )
     `);
-
     // Create merchants table
     await queryRunner.query(`
       CREATE TYPE "merchant_status_enum" AS ENUM('PENDING', 'APPROVED', 'REJECTED')
     `);
-
     await queryRunner.query(`
       CREATE TABLE "merchants" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),

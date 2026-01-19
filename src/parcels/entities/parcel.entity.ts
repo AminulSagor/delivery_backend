@@ -43,6 +43,14 @@ export enum ParcelStatus {
   DELIVERY_RESCHEDULED = 'DELIVERY_RESCHEDULED',
 }
 
+export enum ParcelIssueType {
+  INCORRECT_ADDRESS = 'INCORRECT_ADDRESS',
+  INCORRECT_PHONE = 'INCORRECT_PHONE',
+  COD_AMOUNT_MISMATCH = 'COD_AMOUNT_MISMATCH',
+  PARCEL_DAMAGED = 'PARCEL_DAMAGED',
+  CUSTOMER_REFUSED_TO_PAY = 'CUSTOMER_REFUSED_TO_PAY',
+  OTHER = 'OTHER',
+}
 /**
  * Rider-selectable delivery outcome statuses
  * These are the statuses a rider can select when completing a delivery
@@ -323,6 +331,26 @@ export class Parcel {
   @ManyToOne(() => ThirdPartyProvider, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'third_party_provider_id' })
   thirdPartyProvider: ThirdPartyProvider | null;
+
+  // ===== ISSUE REPORTING =====
+  @Column({
+    type: 'enum',
+    enum: ParcelIssueType,
+    nullable: true,
+  })
+  issue_type: ParcelIssueType | null;
+
+  @Column({ type: 'text', nullable: true })
+  issue_description: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  issue_reported_by_id: string | null; // ID of Rider or User who reported it
+
+  @Column({ type: 'timestamp', nullable: true })
+  issue_reported_at: Date | null;
+
+  @Column({ type: 'boolean', default: false })
+  is_issue_resolved: boolean;
 
   // ===== CARRYBEE SPECIFIC =====
   @Column({ type: 'varchar', length: 100, nullable: true })

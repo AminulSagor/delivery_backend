@@ -13,7 +13,7 @@ export class S3Service {
   constructor(private readonly configService: ConfigService) {
     this.bucketName = this.configService.get<string>('AWS_S3_BUCKET')!;
     this.region = this.configService.get<string>('AWS_S3_REGION')!;
-    this.expirySeconds = 300; // 5 minutes
+    this.expirySeconds = 600; // 10 minutes
 
     this.s3Client = new S3Client({
       region: this.region,
