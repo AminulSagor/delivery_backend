@@ -110,11 +110,10 @@ export interface RiderActionResponse {
 
 export interface PickupRequestListItem {
   id: string;
-  estimated_parcels: number;
-  actual_parcels: number;
+  request_code: string | null; // Unique code: REQ-2001
+  pickup_count: number;        // Main field: number of parcels to pick up
   status: string;
   comment: string | null;
-  pickup_date: Date | null;
   created_at: Date;
   store?: {
     id: string;
@@ -131,7 +130,9 @@ export interface PickupRequestListItem {
 
 export interface PickupRequestActionResponse {
   id: string;
+  request_code: string | null;
   status: string;
+  pickup_count: number;
   assigned_rider_id: string | null;
 }
 
@@ -324,11 +325,10 @@ export function toRiderActionResponse(rider: any): RiderActionResponse {
 export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
   return {
     id: pickup.id,
-    estimated_parcels: pickup.estimated_parcels,
-    actual_parcels: pickup.actual_parcels || 0,
+    request_code: pickup.request_code || null,  // Unique code: REQ-2001
+    pickup_count: pickup.estimated_parcels || 0,  // pickup_count = estimated_parcels
     status: pickup.status,
     comment: pickup.comment,
-    pickup_date: pickup.pickup_date,
     created_at: pickup.created_at,
     store: pickup.store
       ? {
@@ -355,7 +355,9 @@ export function toPickupRequestActionResponse(
 ): PickupRequestActionResponse {
   return {
     id: pickup.id,
+    request_code: pickup.request_code || null,
     status: pickup.status,
+    pickup_count: pickup.estimated_parcels || 0,
     assigned_rider_id: pickup.assigned_rider_id,
   };
 }

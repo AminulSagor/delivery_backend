@@ -13,7 +13,8 @@ import {
 } from '@nestjs/common';
 import { PickupRequestsService } from './pickup-requests.service';
 import { CreatePickupRequestDto } from './dto/create-pickup-request.dto';
-import { UpdatePickupRequestDto } from './dto/update-pickup-request.dto';
+import { CompletePickupDto } from './dto/complete-pickup.dto';
+import { BulkAssignPickupToRiderDto } from './dto/bulk-assign-pickup.dto';
 import { AssignPickupToRiderDto } from '../riders/dto/assign-pickup.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -33,8 +34,13 @@ export class PickupRequestsController {
     private readonly pickupRequestsService: PickupRequestsService,
   ) {}
 
+  // ===== MERCHANT ENDPOINTS =====
+
   /**
-   * Create pickup request manually (Merchant)
+   * Create pickup request (Merchant)
+   * 
+   * - If same store + same day PENDING exists → increments pickup count
+   * - Otherwise creates new pickup request
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -48,14 +54,18 @@ export class PickupRequestsController {
       createDto,
     );
     return {
-      id: pickupRequest.id,
-      estimated_parcels: pickupRequest.estimated_parcels,
+      success: true,
+      data: {
+        id: pickupRequest.id,
+        request_code: pickupRequest.request_code,
+        pickup_count: pickupRequest.estimated_parcels,
+      },
       message: 'Pickup request created successfully',
     };
   }
 
   /**
-   * Get all pickup requests for merchant (with pagination)
+   * Get all pickup requests (Merchant)
    */
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -74,15 +84,21 @@ export class PickupRequestsController {
       order,
     );
     return {
-      pickupRequests: result.items,
-      pagination: result.pagination,
+      success: true,
+      data: {
+        pickupRequests: result.items,
+        pagination: result.pagination,
+      },
       message: 'Pickup requests retrieved successfully',
     };
   }
 
+  // ===== HUB MANAGER ENDPOINTS =====
+
   /**
-   * Get all pickup requests for hub manager's hub (with pagination)
-   * READ-ONLY: Hub managers can only view pickup requests, not manage them
+   * Get PENDING pickup requests for hub (Hub Manager)
+   * 
+   * Shows only PENDING status pickups (ready for assignment to rider)
    */
   @Get('hub/my-requests')
   @HttpCode(HttpStatus.OK)
@@ -101,105 +117,49 @@ export class PickupRequestsController {
       order,
     );
     return {
-      pickupRequests: result.items,
-      pagination: result.pagination,
+      success: true,
+      data: {
+        pickupRequests: result.items,
+        pagination: result.pagination,
+      },
       message: 'Pickup requests retrieved successfully',
     };
   }
 
   /**
-   * Link orphaned parcels to pickup requests (Hub Manager)
-   * Use this to fix parcels that were created without being linked to pickup requests
+   * Get confirmed pickups assigned to riders (Hub Manager)
+   * 
+   * Shows pickups with status CONFIRMED (rider assigned, in progress)
+   * Includes rider info (name, phone)
    */
-  @Post('hub/link-orphaned-parcels')
+  @Get('hub/confirmed-pickups')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.HUB_MANAGER)
-  async linkOrphanedParcels(@CurrentUser('hubId') hubId: string) {
-    const result = await this.pickupRequestsService.linkOrphanedParcels(hubId);
-    return {
-      success: true,
-      data: result,
-      message: `Successfully linked ${result.linked} orphaned parcels to pickup requests`,
-    };
-  }
-
-  /**
-   * Get single pickup request (Merchant only)
-   */
-  @Get(':id')
-  @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('userId') userId: string,
-    @CurrentUser('role') role: UserRole,
+  async getConfirmedPickups(
+    @CurrentUser('hubId') hubId: string,
+    @Query() query: PickupQueryDto,
   ) {
-    const pickupRequest = await this.pickupRequestsService.findOne(id, userId, role);
-    return {
-      pickupRequest,
-      message: 'Pickup request retrieved successfully',
-    };
-  }
-
-  /**
-   * Update pickup request (Merchant only)
-   */
-  @Patch(':id')
-  @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.MERCHANT)
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('merchantId') merchantId: string,
-    @Body() updateDto: UpdatePickupRequestDto,
-  ) {
-    const pickupRequest = await this.pickupRequestsService.update(
-      id,
-      merchantId,
-      updateDto,
-    );
-    return {
-      id: pickupRequest.id,
-      estimated_parcels: pickupRequest.estimated_parcels,
-      message: 'Pickup request updated successfully',
-    };
-  }
-
-  /**
-   * Get pickup requests for rider assignment (Hub Manager)
-   */
-  @Get('hub/for-assignment')
-  @Roles(UserRole.HUB_MANAGER)
-  async getPickupsForAssignment(
-    @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '20',
-  ) {
-    const hubId = user.hubId;
-
-    if (!hubId) {
-      return {
-        success: false,
-        message: 'Hub ID not found in user context',
-      };
-    }
-
-    const result = await this.pickupRequestsService.getPickupsForAssignment(
+    const { page, limit } = query;
+    const result = await this.pickupRequestsService.getConfirmedPickupsForHub(
       hubId,
-      parseInt(page),
-      parseInt(limit),
+      page,
+      limit,
     );
-
     return {
       success: true,
-      data: result,
-      message: 'Pickups for assignment retrieved successfully',
+      data: {
+        pickupRequests: result.items,
+        pagination: result.pagination,
+      },
+      message: 'Confirmed pickups retrieved successfully',
     };
   }
 
   /**
-   * Assign pickup request to rider (Hub Manager)
+   * Assign pickup to rider - Single (Hub Manager)
    */
   @Patch(':id/assign-rider')
+  @HttpCode(HttpStatus.OK)
   @Roles(UserRole.HUB_MANAGER)
   async assignToRider(
     @Param('id', ParseUUIDPipe) id: string,
@@ -223,15 +183,69 @@ export class PickupRequestsController {
 
     return {
       success: true,
-      data: toPickupRequestActionResponse(pickup),
+      data: {
+        id: pickup.id,
+        request_code: pickup.request_code,
+        status: pickup.status,
+        pickup_count: pickup.estimated_parcels,
+        assigned_rider_id: pickup.assigned_rider_id,
+      },
       message: 'Pickup assigned to rider successfully',
     };
   }
 
   /**
-   * Get rider's assigned pickups (Rider)
+   * Assign pickups to rider - Bulk (Hub Manager)
+   */
+  @Post('hub/bulk-assign-rider')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async bulkAssignToRider(
+    @Body() assignDto: BulkAssignPickupToRiderDto,
+    @CurrentUser() user: any,
+  ) {
+    const hubId = user.hubId;
+
+    if (!hubId) {
+      return {
+        success: false,
+        message: 'Hub ID not found in user context',
+      };
+    }
+
+    const result = await this.pickupRequestsService.bulkAssignPickupsToRider(
+      assignDto.pickup_ids,
+      assignDto.rider_id,
+      hubId,
+      assignDto.notes,
+    );
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: assignDto.pickup_ids.length,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: result.success === assignDto.pickup_ids.length
+        ? 'All pickups assigned to rider successfully'
+        : `${result.success} pickup(s) assigned, ${result.failed} failed`,
+    };
+  }
+
+  // ===== RIDER ENDPOINTS =====
+
+  /**
+   * Get assigned pickups (Rider)
+   * 
+   * ?filter=pending  → CONFIRMED (need to pick up)
+   * ?filter=completed → PICKED_UP (done)
    */
   @Get('rider/my-pickups')
+  @HttpCode(HttpStatus.OK)
   @Roles(UserRole.RIDER)
   async getMyPickups(
     @CurrentUser() user: any,
@@ -260,12 +274,20 @@ export class PickupRequestsController {
   }
 
   /**
-   * Rider completes pickup (Rider)
+   * Complete pickup with count (Rider)
+   * 
+   * Flow:
+   * - Rider specifies how many parcels picked up
+   * - Pickup count decrements automatically
+   * - If count = 0 → PICKED_UP (completed)
+   * - If count > 0 → PENDING (Hub Manager can reassign)
    */
   @Patch(':id/rider/complete')
+  @HttpCode(HttpStatus.OK)
   @Roles(UserRole.RIDER)
   async riderCompletePickup(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() completeDto: CompletePickupDto,
     @CurrentUser() user: any,
   ) {
     const riderId = user.riderId;
@@ -277,15 +299,26 @@ export class PickupRequestsController {
       };
     }
 
-    const pickup = await this.pickupRequestsService.riderCompletePickup(
+    const { pickup, remaining, pickedUp } = await this.pickupRequestsService.riderCompletePickup(
       id,
       riderId,
+      completeDto.picked_up_count,
+      completeDto.notes,
     );
 
     return {
       success: true,
-      data: toPickupRequestActionResponse(pickup),
-      message: 'Pickup completed successfully',
+      data: {
+        id: pickup.id,
+        request_code: pickup.request_code,
+        status: pickup.status,
+        picked_up: pickedUp,
+        remaining_count: remaining,
+        pickup_count: pickup.estimated_parcels,
+      },
+      message: remaining > 0 
+        ? `Picked ${pickedUp} parcel(s). ${remaining} remaining.`
+        : `Pickup completed. All ${pickedUp} parcel(s) picked up.`,
     };
   }
 }
