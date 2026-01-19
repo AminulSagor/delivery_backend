@@ -68,3 +68,33 @@ export class InvoiceDetailsQueryDto {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

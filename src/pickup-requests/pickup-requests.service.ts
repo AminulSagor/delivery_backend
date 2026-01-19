@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, Between } from 'typeorm';
+import { Repository, FindOptionsWhere, Between, IsNull } from 'typeorm';
 import { PickupRequest } from './entities/pickup-request.entity';
 import { CreatePickupRequestDto } from './dto/create-pickup-request.dto';
 import { UpdatePickupRequestDto } from './dto/update-pickup-request.dto';
@@ -15,6 +15,7 @@ import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum'
 import { Store } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Rider } from '../riders/entities/rider.entity';
+import { Parcel } from '../parcels/entities/parcel.entity';
 import { PaginatedResponse, PaginationMeta } from '../common/dto/pagination.dto';
 
 @Injectable()
@@ -30,10 +31,13 @@ export class PickupRequestsService {
     private readonly merchantRepository: Repository<Merchant>,
     @InjectRepository(Rider)
     private readonly riderRepository: Repository<Rider>,
+    @InjectRepository(Parcel)
+    private readonly parcelRepository: Repository<Parcel>,
   ) {}
 
   /**
-   * Create a new pickup request manually (by merchant)
+   * Create or update pickup request manually (by merchant)
+   * If a PENDING pickup request exists for today, update it instead of creating a new one
    */
   async create(
     merchantId: string,
@@ -57,11 +61,11 @@ export class PickupRequestsService {
       );
     }
 
-    // Check if there's already a pickup request for this store TODAY
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Check if there's already a pickup request for this store TODAY (using UTC for consistency)
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     const existingToday = await this.pickupRequestRepository.findOne({
       where: {
@@ -71,13 +75,27 @@ export class PickupRequestsService {
       },
     });
 
+    // If existing pickup request found, UPDATE it instead of creating new one
     if (existingToday) {
-      throw new ConflictException(
-        'A pickup request for today already exists for this store. Please update the existing one or wait until tomorrow.',
+      this.logger.log(`[create] Found existing pickup request ${existingToday.id} for store ${createDto.store_id}, updating instead of creating new`);
+      
+      // Update estimated_parcels (take the max of existing and new)
+      existingToday.estimated_parcels = Math.max(
+        existingToday.estimated_parcels,
+        createDto.estimated_parcels,
       );
+      
+      // Update comment if provided
+      if (createDto.comment) {
+        existingToday.comment = existingToday.comment 
+          ? `${existingToday.comment}\n${createDto.comment}` 
+          : createDto.comment;
+      }
+      
+      return await this.pickupRequestRepository.save(existingToday);
     }
 
-    // Create pickup request
+    // Create new pickup request
     const pickupRequest = this.pickupRequestRepository.create({
       merchant_id: merchantId,
       store_id: createDto.store_id,
@@ -99,11 +117,13 @@ export class PickupRequestsService {
     merchantId: string,
     storeId: string,
   ): Promise<PickupRequest> {
-    // Check for existing pickup request TODAY
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    this.logger.log(`[findOrCreateActiveForStore] Starting for store: ${storeId}, merchant: ${merchantId}`);
+    
+    // Check for existing pickup request TODAY (using UTC for consistency)
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     const existingToday = await this.pickupRequestRepository.findOne({
       where: {
@@ -114,6 +134,7 @@ export class PickupRequestsService {
     });
 
     if (existingToday) {
+      this.logger.log(`[findOrCreateActiveForStore] Found existing pickup request: ${existingToday.id}`);
       return existingToday;
     }
 
@@ -122,9 +143,17 @@ export class PickupRequestsService {
       where: { id: storeId, merchant_id: merchantId },
     });
 
-    if (!store || !store.hub_id) {
+    this.logger.log(`[findOrCreateActiveForStore] Store lookup result: ${store ? `found (hub_id: ${store.hub_id})` : 'NOT FOUND'}`);
+
+    if (!store) {
       throw new BadRequestException(
-        'Store must be assigned to a hub before creating pickup request',
+        `Store not found for id: ${storeId} and merchant: ${merchantId}`,
+      );
+    }
+
+    if (!store.hub_id) {
+      throw new BadRequestException(
+        `Store ${store.business_name} is not assigned to a hub`,
       );
     }
 
@@ -138,7 +167,107 @@ export class PickupRequestsService {
       requested_at: new Date(),
     });
 
-    return await this.pickupRequestRepository.save(pickupRequest);
+    const saved = await this.pickupRequestRepository.save(pickupRequest);
+    this.logger.log(`[findOrCreateActiveForStore] Created new pickup request: ${saved.id} for hub: ${store.hub_id}`);
+    
+    return saved;
+  }
+
+  /**
+   * Link orphaned parcels (parcels without pickup_request_id) to pickup requests
+   * This fixes parcels that were created when the pickup request creation failed silently
+   */
+  async linkOrphanedParcels(hubId: string): Promise<{ linked: number; errors: string[] }> {
+    this.logger.log(`[linkOrphanedParcels] Starting for hub: ${hubId}`);
+    
+    const errors: string[] = [];
+    let linkedCount = 0;
+
+    // Get all stores for this hub
+    const stores = await this.storeRepository.find({
+      where: { hub_id: hubId },
+    });
+
+    for (const store of stores) {
+      // Skip stores without hub_id
+      if (!store.hub_id) {
+        this.logger.warn(`[linkOrphanedParcels] Store ${store.business_name} has no hub_id, skipping`);
+        continue;
+      }
+
+      // Find orphaned parcels for this store (parcels without pickup_request_id)
+      const orphanedParcels = await this.parcelRepository.find({
+        where: {
+          store_id: store.id,
+          pickup_request_id: IsNull(),
+        },
+      });
+
+      if (orphanedParcels.length === 0) continue;
+
+      this.logger.log(`[linkOrphanedParcels] Found ${orphanedParcels.length} orphaned parcels for store ${store.business_name}`);
+
+      // Group parcels by date
+      const parcelsByDate = new Map<string, typeof orphanedParcels>();
+      for (const parcel of orphanedParcels) {
+        const dateKey = parcel.created_at.toISOString().split('T')[0];
+        if (!parcelsByDate.has(dateKey)) {
+          parcelsByDate.set(dateKey, []);
+        }
+        parcelsByDate.get(dateKey)!.push(parcel);
+      }
+
+      // Create/find pickup request for each date and link parcels
+      for (const [dateKey, parcels] of parcelsByDate) {
+        try {
+          // Find or create pickup request for this date
+          const date = new Date(dateKey);
+          const nextDay = new Date(date);
+          nextDay.setDate(nextDay.getDate() + 1);
+
+          let pickupRequest = await this.pickupRequestRepository.findOne({
+            where: {
+              store_id: store.id,
+              created_at: Between(date, nextDay),
+            },
+          });
+
+          if (!pickupRequest) {
+            // Create new pickup request for this date
+            // Note: hub_id is guaranteed to be non-null here due to the check at the start of the loop
+            pickupRequest = this.pickupRequestRepository.create({
+              merchant_id: store.merchant_id,
+              store_id: store.id,
+              hub_id: store.hub_id!, // Non-null assertion - verified at start of loop
+              estimated_parcels: parcels.length,
+              actual_parcels: parcels.length,
+              status: PickupRequestStatus.PENDING,
+              requested_at: date,
+            });
+            pickupRequest = await this.pickupRequestRepository.save(pickupRequest);
+            this.logger.log(`[linkOrphanedParcels] Created pickup request ${pickupRequest.id} for date ${dateKey}`);
+          }
+
+          // Link parcels to pickup request
+          for (const parcel of parcels) {
+            parcel.pickup_request_id = pickupRequest.id;
+            await this.parcelRepository.save(parcel);
+            linkedCount++;
+          }
+
+          // Update actual parcels count
+          await this.updateActualParcelsCount(pickupRequest.id);
+
+        } catch (error) {
+          const errorMsg = `Failed to link parcels for store ${store.business_name} on ${dateKey}: ${error.message}`;
+          this.logger.error(errorMsg);
+          errors.push(errorMsg);
+        }
+      }
+    }
+
+    this.logger.log(`[linkOrphanedParcels] Completed. Linked ${linkedCount} parcels`);
+    return { linked: linkedCount, errors };
   }
 
   /**
@@ -225,19 +354,15 @@ export class PickupRequestsService {
         hasPrev: page > 1,
       };
 
-      // Return minimal data for hub managers
+      // Return only essential data for hub managers
       const items = pickupRequests.map(pr => ({
         id: pr.id,
-        store_name: pr.store?.business_name || 'Unknown Store',
         pickup_location: pr.store?.business_address || 'N/A',
+        store_name: pr.store?.business_name || 'Unknown Store',
         store_phone: pr.store?.phone_number || 'N/A',
-        estimated_parcels: pr.estimated_parcels,
-        actual_parcels: pr.actual_parcels,
-        status: pr.status,
         comment: pr.comment,
-        confirmed_at: pr.confirmed_at,
-        picked_up_at: pr.picked_up_at,
-        created_at: pr.created_at,
+        parcel_quantity: pr.actual_parcels || pr.estimated_parcels,
+        status: pr.status,
       }));
 
       this.logger.log(`Retrieved ${items.length} pickup requests for hub ${hubId}`);
@@ -472,7 +597,7 @@ export class PickupRequestsService {
       .leftJoinAndSelect('pickup.store', 'store')
       .leftJoinAndSelect('pickup.merchant', 'merchant')
       .where('pickup.hub_id = :hubId', { hubId })
-      .andWhere('pickup.status = :status', { status: PickupRequestStatus.CONFIRMED })
+      .andWhere('pickup.status = :status', { status: PickupRequestStatus.PENDING })
       .andWhere('pickup.assigned_rider_id IS NULL')
       .orderBy('pickup.requested_at', 'ASC')
       .skip(skip)
@@ -512,9 +637,9 @@ export class PickupRequestsService {
       throw new ForbiddenException('You can only assign pickups from your hub');
     }
 
-    // Verify pickup is confirmed and not assigned
-    if (pickup.status !== PickupRequestStatus.CONFIRMED) {
-      throw new BadRequestException('Pickup must be in CONFIRMED status to assign');
+    // Verify pickup is pending and not assigned
+    if (pickup.status !== PickupRequestStatus.PENDING) {
+      throw new BadRequestException('Pickup must be in PENDING status to assign');
     }
 
     if (pickup.assigned_rider_id) {
@@ -539,9 +664,11 @@ export class PickupRequestsService {
       throw new ForbiddenException('Rider does not belong to your hub');
     }
 
-    // Assign rider
+    // Assign rider and update status to CONFIRMED
     pickup.assigned_rider_id = riderId;
     pickup.rider_assigned_at = new Date();
+    pickup.status = PickupRequestStatus.CONFIRMED;
+    pickup.confirmed_at = new Date();
 
     this.logger.log(
       `Pickup ${pickupId} assigned to rider ${riderId} by hub ${hubId}`,

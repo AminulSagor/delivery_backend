@@ -28,6 +28,7 @@ import { CalculateTotalPricingDto } from './dto/calculate-total-pricing.dto';
 import { PickupRequestsService } from '../pickup-requests/pickup-requests.service';
 import { Rider } from '../riders/entities/rider.entity';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
+import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
@@ -101,18 +102,50 @@ export class ParcelsService {
     private pickupRequestsService: PickupRequestsService,
   ) {}
 
-  private async generateTrackingNumber(): Promise<string> {
+  /**
+   * Generate unique tracking number with retry logic for race conditions
+   * Format: TRK-YYYYMMDD-XXXXX (with random suffix on collision)
+   */
+  private async generateTrackingNumber(retryCount = 0): Promise<string> {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
+    
     const count = await this.parcelRepository.count({
       where: { created_at: Between(startOfDay, endOfDay) as any },
     });
-    const sequenceNumber = (count + 1).toString().padStart(5, '0');
-    return `TRK-${dateStr}-${sequenceNumber}`;
+    
+    // Base sequence number
+    let sequenceNumber = (count + 1).toString().padStart(5, '0');
+    
+    // On retry, add random suffix to avoid collision
+    if (retryCount > 0) {
+      const randomSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+      sequenceNumber = `${sequenceNumber}-${randomSuffix}`;
+    }
+    
+    const trackingNumber = `TRK-${dateStr}-${sequenceNumber}`;
+    
+    // Check if tracking number already exists
+    const existing = await this.parcelRepository.findOne({
+      where: { tracking_number: trackingNumber },
+      select: ['id'],
+    });
+    
+    if (existing) {
+      if (retryCount >= 5) {
+        // Fallback to UUID-based tracking after 5 retries
+        const uuid = uuidv4().substring(0, 8).toUpperCase();
+        return `TRK-${dateStr}-${uuid}`;
+      }
+      // Retry with incremented counter
+      return this.generateTrackingNumber(retryCount + 1);
+    }
+    
+    return trackingNumber;
   }
 
   private determinePricingZone(coverageArea: CoverageArea | null): PricingZone {
@@ -933,9 +966,13 @@ export class ParcelsService {
               merchantId,
               createParcelDto.store_id,
             );
+          this.logger.log(
+            `[PICKUP REQUEST] Linked parcel to pickup request: ${pickupRequest.id}`,
+          );
         } catch (error) {
-          this.logger.warn(
-            `[PICKUP REQUEST] Could not create/find pickup request: ${error.message}`,
+          this.logger.error(
+            `[PICKUP REQUEST ERROR] Could not create/find pickup request for store ${createParcelDto.store_id}, merchant ${merchantId}: ${error.message}`,
+            error.stack,
           );
           // Continue without pickup request if it fails
         }
@@ -968,7 +1005,9 @@ export class ParcelsService {
           {
             customer_name: createParcelDto.customer_name,
             customer_phone: createParcelDto.customer_phone,
-            delivery_address: createParcelDto.customer_address,
+            customer_address: createParcelDto.customer_address,
+            customer_secondary_phone: createParcelDto.customer_secondary_phone,
+            delivery_coverage_area_id: createParcelDto.delivery_coverage_area_id,
           },
         );
         customer = result.customer;
@@ -1022,7 +1061,7 @@ export class ParcelsService {
 
       const parcel = this.parcelRepository.create({
         ...createParcelDto,
-        merchant_id: merchantId,
+        merchant_id: merchantId, // merchant_id references merchants table (FK constraint)
         merchant_order_id: createParcelDto.merchant_order_id, // From frontend
         customer_id: customer.id,
         tracking_number: trackingNumber,
@@ -1094,7 +1133,7 @@ export class ParcelsService {
   }
 
   async findAllForMerchant(
-    userId: string,
+    merchantId: string,
     page: number = 1,
     limit: number = 20,
     status?: ParcelStatus,
@@ -1103,9 +1142,10 @@ export class ParcelsService {
     order: 'ASC' | 'DESC' = 'DESC',
   ): Promise<PaginatedResponse<Parcel>> {
     try {
-      if (!userId) throw new ForbiddenException('User ID (userId) is required');
+      if (!merchantId) throw new ForbiddenException('Merchant ID is required');
 
-      const where: FindOptionsWhere<Parcel> = { merchant_id: userId };
+      // merchant_id references merchants table, so use merchantId
+      const where: FindOptionsWhere<Parcel> = { merchant_id: merchantId };
 
       if (status) {
         where.status = status;
@@ -1135,7 +1175,7 @@ export class ParcelsService {
       };
 
       this.logger.log(
-        `Retrieved ${items.length} parcels for merchant ${userId}`,
+        `Retrieved ${items.length} parcels for merchant ${merchantId}`,
       );
 
       return { items, pagination };
@@ -1150,7 +1190,7 @@ export class ParcelsService {
 
   async findOne(
     id: string,
-    userId: string | null,
+    merchantId: string | null,
     isAdmin: boolean = false,
   ): Promise<Parcel> {
     try {
@@ -1163,7 +1203,8 @@ export class ParcelsService {
         relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
       });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
-      if (!isAdmin && userId && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && merchantId && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to view this parcel',
         );
@@ -1716,7 +1757,7 @@ export class ParcelsService {
   async update(
     id: string,
     updateParcelDto: UpdateParcelDto,
-    userId: string,
+    merchantId: string,
     isAdmin: boolean = false,
   ): Promise<Parcel> {
     try {
@@ -1727,7 +1768,8 @@ export class ParcelsService {
       const parcel = await this.parcelRepository.findOne({ where: { id } });
       if (!parcel)
         throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to update this parcel',
         );
@@ -1745,15 +1787,9 @@ export class ParcelsService {
       )
         throw new BadRequestException('Product weight cannot be negative.');
       if (updateParcelDto.store_id) {
-        const merchant = await this.merchantRepository.findOne({
-          where: { user_id: userId },
-        });
-        if (!merchant)
-          throw new NotFoundException(
-            'Merchant profile not found for this user.',
-          );
+        // merchantId is the merchant entity ID, use it directly for store lookup
         const store = await this.storeRepository.findOne({
-          where: { id: updateParcelDto.store_id, merchant_id: merchant.id },
+          where: { id: updateParcelDto.store_id, merchant_id: merchantId },
         });
         if (!store)
           throw new NotFoundException(
@@ -1793,7 +1829,7 @@ export class ParcelsService {
           'Failed to update parcel. Please try again or contact support.',
         );
       }
-      this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${userId}`);
+      this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${merchantId}`);
       return updatedParcel;
     } catch (error) {
       if (
@@ -1812,7 +1848,7 @@ export class ParcelsService {
 
   async remove(
     id: string,
-    userId: string,
+    merchantId: string,
     isAdmin: boolean = false,
   ): Promise<{ message: string }> {
     try {
@@ -1823,7 +1859,8 @@ export class ParcelsService {
       const parcel = await this.parcelRepository.findOne({ where: { id } });
       if (!parcel)
         throw new NotFoundException(`Parcel with ID ${id} not found`);
-      if (!isAdmin && parcel.merchant_id !== userId)
+      // merchant_id references merchants table, so compare with merchantId from JWT
+      if (!isAdmin && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
           'You do not have permission to delete this parcel',
         );
@@ -1846,7 +1883,7 @@ export class ParcelsService {
         );
       }
       this.logger.log(
-        `[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${userId}`,
+        `[PARCEL DELETED] ID: ${id}, Tracking: ${parcel.tracking_number}, Merchant: ${merchantId}`,
       );
       return {
         message: `Parcel ${parcel.tracking_number} has been successfully deleted`,
@@ -1980,6 +2017,173 @@ export class ParcelsService {
     );
 
     return updatedParcel;
+  }
+
+  /**
+   * Assign parcels to rider (Hub Manager only)
+   * Supports both single parcel and bulk assignment
+   * 
+   * Usage:
+   * - Single: { rider_id: "...", parcel_id: "..." }
+   * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
+   */
+  async bulkAssignToRider(
+    bulkAssignDto: BulkAssignParcelsToRiderDto,
+    hubId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const { rider_id, parcel_id, parcel_ids: parcelIdsArray } = bulkAssignDto;
+
+    // Normalize: support both single parcel_id and parcel_ids array
+    let parcel_ids: string[];
+    if (parcelIdsArray && parcelIdsArray.length > 0) {
+      parcel_ids = parcelIdsArray;
+    } else if (parcel_id) {
+      parcel_ids = [parcel_id];
+    } else {
+      throw new BadRequestException('Either parcel_id or parcel_ids must be provided');
+    }
+
+    // Verify rider exists and is active
+    const rider = await this.riderRepository.findOne({
+      where: { id: rider_id },
+      relations: ['hub', 'user'],
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider not found');
+    }
+
+    if (!rider.is_active) {
+      throw new BadRequestException('Rider is not active');
+    }
+
+    // Verify rider belongs to the same hub
+    if (rider.hub_id !== hubId) {
+      throw new BadRequestException('Rider must belong to your hub');
+    }
+
+    const results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Process each parcel
+    for (const parcelId of parcel_ids) {
+      try {
+        // Find parcel
+        const parcel = await this.parcelRepository.findOne({
+          where: { id: parcelId },
+          relations: ['merchant', 'customer', 'store'],
+        });
+
+        if (!parcel) {
+          results.push({
+            parcel_id: parcelId,
+            success: false,
+            error: 'Parcel not found',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel has merchant_id (required field)
+        if (!parcel.merchant_id) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel has invalid merchant data',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel is in the hub manager's hub (check current_hub_id)
+        if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel is not in your hub',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel status is IN_HUB
+        if (parcel.status !== ParcelStatus.IN_HUB) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: `Parcel must be in IN_HUB status. Current status: ${parcel.status}`,
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel is not already assigned
+        if (parcel.assigned_rider_id) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel is already assigned to a rider',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Assign parcel to rider
+        await this.parcelRepository.update(parcelId, {
+          assigned_rider_id: rider.id,
+          assigned_at: new Date(),
+          status: ParcelStatus.ASSIGNED_TO_RIDER,
+        });
+
+        results.push({
+          parcel_id: parcelId,
+          tracking_number: parcel.tracking_number,
+          success: true,
+        });
+        successCount++;
+
+        this.logger.log(
+          `[BULK ASSIGN] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}`,
+        );
+      } catch (error) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: error.message || 'Unknown error',
+        });
+        failedCount++;
+      }
+    }
+
+    this.logger.log(
+      `[BULK ASSIGN COMPLETE] Rider: ${rider.user.full_name}, Success: ${successCount}, Failed: ${failedCount}, Hub: ${hubId}`,
+    );
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
+    };
   }
 
   /**
@@ -2939,6 +3143,7 @@ export class ParcelsService {
    */
   async bulkCreateConfirmedBatch(
     items: BulkOrderItemDto[],
+    userId: string,
     merchantId: string,
   ): Promise<{
     summary: { total: number; success: number; failed: number };
@@ -2989,7 +3194,8 @@ export class ParcelsService {
         } as CreateParcelDto;
 
         // 3. Create the parcel using the existing core logic
-        const newParcel = await this.create(createDto, merchantId, merchantId);
+        // userId is the user ID from users table, merchantId is the merchant entity ID
+        const newParcel = await this.create(createDto, userId, merchantId);
         successCount++;
 
         creationResults.push({

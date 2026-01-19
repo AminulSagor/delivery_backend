@@ -55,6 +55,7 @@ export enum ParcelIssueType {
  * Rider-selectable delivery outcome statuses
  * These are the statuses a rider can select when completing a delivery
  */
+
 export const RIDER_DELIVERY_STATUSES = [
   ParcelStatus.DELIVERED,
   ParcelStatus.PARTIAL_DELIVERY,

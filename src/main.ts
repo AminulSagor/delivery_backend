@@ -17,7 +17,7 @@ async function bootstrap() {
     logger: isProduction ? ['error', 'warn', 'log'] : ['log', 'error', 'warn', 'debug'],
     abortOnError: false, // Don't crash on startup errors
   });
-  
+
   // Enable CORS for all origins (configure as needed for production)
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',

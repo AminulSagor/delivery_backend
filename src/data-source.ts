@@ -1,4 +1,4 @@
-import { DataSource, DataSourceOptions } from 'typeorm';
+import { DataSource, DataSourceOptions, LoggerOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -38,6 +38,12 @@ const isProduction = !!(
   databaseUrl
 );
 
+// FORCE_SYNC: Set to 'true' to enable TypeORM synchronize
+// This will auto-create ALL missing tables based on entities
+// USE ONLY for first deployment or when you need to sync schema
+// After sync, REMOVE this env var to use migrations-only mode
+const forceSync = process.env.FORCE_SYNC === 'true';
+
 // Base configuration shared across environments
 const baseConfig = {
   type: 'postgres' as const,
@@ -46,11 +52,12 @@ const baseConfig = {
     : [path.join(__dirname, '**/*.entity.js')],
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
-    : ['dist/migrations/*.js'],
-  // IMPORTANT: Set to false for production
-  // Use migrations or fix scripts for schema changes
-  synchronize: false,
-  logging: false, // Disable TypeORM query logging to reduce log spam
+    : [path.join(__dirname, 'migrations/*.js')],
+  // synchronize: When true, TypeORM auto-creates/updates tables based on entities
+  // FORCE_SYNC env var enables this for first deployment or schema fixes
+  // Default: false (use migrations for schema changes)
+  synchronize: forceSync,
+  logging: (forceSync ? ['schema', 'error', 'warn'] : false) as LoggerOptions,
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
@@ -111,7 +118,18 @@ console.log('='.repeat(60));
 console.log(`Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
 console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
+console.log(`FORCE_SYNC: ${forceSync ? '⚠️  ENABLED (will auto-create tables!)' : '❌ DISABLED'}`);
 console.log(`Synchronize: ${baseConfig.synchronize ? '✅ ENABLED' : '❌ DISABLED'}`);
+
+if (forceSync) {
+  console.log('');
+  console.log('🔄 FORCE_SYNC is ENABLED - TypeORM will auto-create/update ALL tables!');
+  console.log('   This should only be used for:');
+  console.log('   - First deployment to create all tables');
+  console.log('   - Fixing missing tables after migration issues');
+  console.log('   ⚠️  Remove FORCE_SYNC env var after tables are created!');
+  console.log('');
+}
 
 // Show paths being used
 console.log(`Migration Path: ${JSON.stringify(dataSourceOptions.migrations)}`);

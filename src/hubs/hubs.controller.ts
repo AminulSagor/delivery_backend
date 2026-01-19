@@ -25,6 +25,7 @@ import { ParcelsService } from '../parcels/parcels.service';
 import { CreateHubDto } from './dto/create-hub.dto';
 import { UpdateHubDto } from './dto/update-hub.dto';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
+import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { TransferParcelDto } from '../parcels/dto/transfer-parcel.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { CalculateSettlementDto } from './dto/calculate-settlement.dto';
@@ -369,7 +370,8 @@ export class HubsController {
   }
 
   /**
-   * Assign parcel to rider
+   * Assign parcel to rider (Legacy - single parcel)
+   * @deprecated Use POST /hubs/parcels/assign-rider instead
    */
   @Patch('parcels/:id/assign-rider')
   @Roles(UserRole.HUB_MANAGER)
@@ -388,6 +390,41 @@ export class HubsController {
       success: true,
       data: toParcelActionResponse(parcel),
       message: 'Parcel assigned to rider successfully',
+    };
+  }
+
+  /**
+   * Assign parcels to rider (Unified endpoint)
+   * 
+   * Supports both single and bulk parcel assignment:
+   * - Single: { rider_id: "...", parcel_id: "..." }
+   * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
+   */
+  @Post('parcels/assign-rider')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async assignParcelsToRider(
+    @Body() assignDto: BulkAssignParcelsToRiderDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.bulkAssignToRider(assignDto, user.hubId);
+    
+    // Calculate total from what was actually processed
+    const total = result.success + result.failed;
+    
+    return {
+      success: true,
+      data: {
+        summary: {
+          total,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: total === 1 
+        ? (result.success === 1 ? 'Parcel assigned to rider successfully' : 'Failed to assign parcel')
+        : `${result.success} parcel${result.success !== 1 ? 's' : ''} assigned to rider successfully${result.failed > 0 ? `, ${result.failed} failed` : ''}`,
     };
   }
 

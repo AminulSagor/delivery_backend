@@ -114,11 +114,11 @@ export class ParcelsController {
     const { status, storeId, merchantId, page, limit, sortBy, order } = query;
     // Merchant view - only their parcels
     if (user.role === UserRole.MERCHANT) {
-      if (!user.userId) {
-        throw new ForbiddenException('userId missing in auth token');
+      if (!user.merchantId) {
+        throw new ForbiddenException('merchantId missing in auth token');
       }
       const result = await this.parcelsService.findAllForMerchant(
-        user.userId,
+        user.merchantId,
         page,
         limit,
         status,
@@ -178,15 +178,15 @@ export class ParcelsController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT)
   async getTodaySummary(
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
     @Query() query: TodaySummaryQueryDto,
   ) {
-    if (!userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
     const summary = await this.parcelsService.getTodaySummary(
-      userId,
+      merchantId,
       query.date,
     );
 
@@ -205,12 +205,12 @@ export class ParcelsController {
   @Get('lifetime-summary')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT)
-  async getLifetimeSummary(@CurrentUser('userId') userId: string) {
-    if (!userId) {
-      throw new ForbiddenException('userId missing in auth token');
+  async getLifetimeSummary(@CurrentUser('merchantId') merchantId: string) {
+    if (!merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const summary = await this.parcelsService.getLifetimeSummary(userId);
+    const summary = await this.parcelsService.getLifetimeSummary(merchantId);
 
     return {
       success: true,
@@ -225,15 +225,15 @@ export class ParcelsController {
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.findOne(id, userId, isAdmin);
+    const parcel = await this.parcelsService.findOne(id, merchantId, isAdmin);
     return {
       parcel,
       message: 'Parcel retrieved successfully',
@@ -247,18 +247,18 @@ export class ParcelsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateParcelDto: UpdateParcelDto,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
     const parcel = await this.parcelsService.update(
       id,
       updateParcelDto,
-      userId,
+      merchantId,
       isAdmin,
     );
     return {
@@ -274,15 +274,15 @@ export class ParcelsController {
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
 
-    if (!isAdmin && !userId) {
-      throw new ForbiddenException('userId missing in auth token');
+    if (!isAdmin && !merchantId) {
+      throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const result = await this.parcelsService.remove(id, userId, isAdmin);
+    const result = await this.parcelsService.remove(id, merchantId, isAdmin);
     return result;
   }
 
@@ -319,6 +319,7 @@ export class ParcelsController {
   @Roles(UserRole.MERCHANT)
   async bulkCreateConfirmedBatch(
     @Body() bulkConfirmedDto: BulkSuggestDto, // Expects the confirmed batch data
+    @CurrentUser('userId') userId: string,
     @CurrentUser('merchantId') merchantId: string,
   ): Promise<{
     message: string;
@@ -331,6 +332,7 @@ export class ParcelsController {
     const confirmationResult =
       await this.parcelsService.bulkCreateConfirmedBatch(
         bulkConfirmedDto.items,
+        userId,
         merchantId,
       );
 

@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateCustomerDto {
   @IsString()
@@ -18,5 +24,9 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsNotEmpty()
-  delivery_address: string;
+  customer_address: string;
+
+  @IsUUID()
+  @IsOptional()
+  delivery_coverage_area_id?: string;
 }
