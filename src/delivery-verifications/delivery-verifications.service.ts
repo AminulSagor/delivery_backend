@@ -62,10 +62,10 @@ export class DeliveryVerificationsService {
       throw new NotFoundException('Parcel not found or not assigned to you');
     }
 
-    // Check if parcel is in correct status
-    if (parcel.status !== ParcelStatus.OUT_FOR_DELIVERY) {
+    // Check if parcel is in correct status (ASSIGNED_TO_RIDER - ready for delivery)
+    if (parcel.status !== ParcelStatus.ASSIGNED_TO_RIDER) {
       throw new BadRequestException(
-        `Parcel must be OUT_FOR_DELIVERY to update status. Current status: ${parcel.status}`,
+        `Parcel must be ASSIGNED_TO_RIDER to initiate delivery. Current status: ${parcel.status}`,
       );
     }
 

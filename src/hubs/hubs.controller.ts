@@ -27,6 +27,7 @@ import { UpdateHubDto } from './dto/update-hub.dto';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { TransferParcelDto } from '../parcels/dto/transfer-parcel.dto';
+import { BulkReceiveParcelsDto } from './dto/bulk-receive-parcels.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { CalculateSettlementDto } from './dto/calculate-settlement.dto';
 import { SettlementQueryDto } from './dto/settlement-query.dto';
@@ -306,20 +307,33 @@ export class HubsController {
   }
 
   /**
-   * Mark parcel as received (PENDING/PICKED_UP → IN_HUB)
+   * Bulk mark parcels as received (PENDING/PICKED_UP → IN_HUB)
+   * 
+   * Accepts array of parcel IDs and returns result for each.
+   * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
-  @Patch('parcels/:id/receive')
+  @Post('parcels/receive')
   @Roles(UserRole.HUB_MANAGER)
   @HttpCode(HttpStatus.OK)
-  async markParcelReceived(
-    @Param('id', ParseUUIDPipe) id: string,
+  async bulkReceiveParcels(
+    @Body() dto: BulkReceiveParcelsDto,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.markAsReceived(id, user.hubId);
+    const result = await this.parcelsService.bulkMarkAsReceived(dto.parcel_ids, user.hubId);
+    
     return {
       success: true,
-      data: toParcelActionResponse(parcel),
-      message: 'Parcel marked as received successfully',
+      data: {
+        summary: {
+          total: dto.parcel_ids.length,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: result.failed === 0
+        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked as received successfully`
+        : `${result.success} parcel${result.success !== 1 ? 's' : ''} received, ${result.failed} failed`,
     };
   }
 

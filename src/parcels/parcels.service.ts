@@ -1641,7 +1641,15 @@ export class ParcelsService {
         customer_name: parcel.customer_name,
         customer_phone: parcel.customer_phone,
         customer_address: parcel.customer_address,
-        zone: parcel.delivery_coverage_area?.area || 'N/A',
+        delivery_area: parcel.delivery_coverage_area
+          ? {
+              id: parcel.delivery_coverage_area.id,
+              area: parcel.delivery_coverage_area.area,
+              zone: parcel.delivery_coverage_area.zone,
+              city: parcel.delivery_coverage_area.city,
+              division: parcel.delivery_coverage_area.division,
+            }
+          : null,
         delivery_charge: parcel.delivery_charge,
         weight_charge: parcel.weight_charge,
         cod_charge: parcel.cod_charge,
@@ -1727,6 +1735,121 @@ export class ParcelsService {
         'Failed to mark parcel as received',
       );
     }
+  }
+
+  /**
+   * Bulk mark parcels as received in hub
+   * Returns success/failure for each parcel
+   */
+  async bulkMarkAsReceived(
+    parcelIds: string[],
+    hubId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const results: Array<{
+      parcel_id: string;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const parcelId of parcelIds) {
+      try {
+        const parcel = await this.parcelRepository.findOne({
+          where: { id: parcelId },
+          relations: ['store'],
+        });
+
+        if (!parcel) {
+          results.push({
+            parcel_id: parcelId,
+            success: false,
+            error: 'Parcel not found',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Verify parcel belongs to a store assigned to this hub
+        if (!parcel.store || parcel.store.hub_id !== hubId) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: 'Parcel does not belong to your hub',
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Only allow marking as received if status is PENDING or PICKED_UP
+        if (
+          parcel.status !== ParcelStatus.PENDING &&
+          parcel.status !== ParcelStatus.PICKED_UP
+        ) {
+          results.push({
+            parcel_id: parcelId,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: `Invalid status: ${parcel.status}. Must be PENDING or PICKED_UP`,
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Mark as received
+        parcel.status = ParcelStatus.IN_HUB;
+        parcel.current_hub_id = hubId;
+
+        // Set origin hub if not already set (first time receiving)
+        if (!parcel.origin_hub_id) {
+          parcel.origin_hub_id = hubId;
+        }
+
+        await this.parcelRepository.save(parcel);
+
+        results.push({
+          parcel_id: parcelId,
+          tracking_number: parcel.tracking_number,
+          success: true,
+        });
+        successCount++;
+
+        this.logger.log(
+          `[PARCEL RECEIVED] Parcel ${parcel.tracking_number} marked as received by hub ${hubId}`,
+        );
+      } catch (error) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: error.message || 'Failed to mark as received',
+        });
+        failedCount++;
+        this.logger.error(
+          `[BULK RECEIVE ERROR] Parcel ${parcelId}: ${error.message}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[BULK RECEIVE COMPLETED] Hub ${hubId}: ${successCount} success, ${failedCount} failed`,
+    );
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
+    };
   }
 
   async update(
@@ -1896,6 +2019,7 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.pickupRequest', 'pickupRequest')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'delivery_coverage_area')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
       .andWhere('parcel.assigned_rider_id IS NULL')
       .andWhere('(pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)', {
@@ -2233,42 +2357,43 @@ export class ParcelsService {
 
   /**
    * Get rider's deliveries - organized by tab
-   * Pending: OUT_FOR_DELIVERY
-   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED
+   * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
+   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
    */
   async getRiderDeliveries(riderId: string, tab: 'pending' | 'completed') {
     const where: any = { assigned_rider_id: riderId };
 
     if (tab === 'pending') {
-      where.status = ParcelStatus.OUT_FOR_DELIVERY;
+      // Parcels assigned to rider, ready to deliver
+      where.status = ParcelStatus.ASSIGNED_TO_RIDER;
     } else {
-      // Completed includes all delivery outcomes
+      // Completed includes successful delivery outcomes
       where.status = In([
         ParcelStatus.DELIVERED,
         ParcelStatus.PARTIAL_DELIVERY,
         ParcelStatus.EXCHANGE,
-        ParcelStatus.DELIVERY_RESCHEDULED,
+        ParcelStatus.PAID_RETURN,
       ]);
     }
 
     return this.parcelRepository.find({
       where,
-      relations: ['merchant', 'customer', 'store'],
+      relations: ['merchant', 'customer', 'store', 'assignedRider', 'assignedRider.user', 'delivery_coverage_area'],
       order: { updated_at: 'DESC' },
     });
   }
 
   /**
    * Get rider's returns - organized by tab
-   * Pending: RETURNED, PAID_RETURN (verified via OTP, need to return to hub)
+   * Pending: RETURNED, DELIVERY_RESCHEDULED (need to return to hub or reattempt)
    * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   async getRiderReturns(riderId: string, tab: 'pending' | 'completed') {
     const where: any = { assigned_rider_id: riderId };
 
     if (tab === 'pending') {
-      // Parcels marked as return via OTP verification, not yet returned to hub
-      where.status = In([ParcelStatus.RETURNED, ParcelStatus.PAID_RETURN]);
+      // Parcels that need to be returned to hub or rescheduled
+      where.status = In([ParcelStatus.RETURNED, ParcelStatus.DELIVERY_RESCHEDULED]);
     } else {
       // Parcels returned to hub or merchant
       where.status = In([
@@ -2279,13 +2404,14 @@ export class ParcelsService {
 
     return this.parcelRepository.find({
       where,
-      relations: ['merchant', 'customer', 'store'],
+      relations: ['merchant', 'customer', 'store', 'assignedRider', 'assignedRider.user', 'delivery_coverage_area'],
       order: { updated_at: 'DESC' },
     });
   }
 
   /**
-   * Rider accepts parcel assignment
+   * Rider accepts parcel assignment (optional - for tracking when rider picks up from hub)
+   * Note: This is optional. Rider can directly initiate delivery without accepting first.
    */
   async riderAcceptParcel(parcelId: string, riderId: string) {
     const parcel = await this.parcelRepository.findOne({
@@ -2303,12 +2429,11 @@ export class ParcelsService {
     }
 
     if (parcel.rider_accepted_at) {
-      throw new ConflictException('Parcel already accepted');
+      throw new BadRequestException('Parcel already accepted');
     }
 
+    // Just mark when rider picked up from hub (no status change)
     parcel.rider_accepted_at = new Date();
-    parcel.status = ParcelStatus.OUT_FOR_DELIVERY;
-    parcel.out_for_delivery_at = new Date();
 
     await this.parcelRepository.save(parcel);
 

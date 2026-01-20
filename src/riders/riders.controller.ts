@@ -206,8 +206,10 @@ export class RidersController {
 
   /**
    * DELIVERY SECTION - Pending & Completed tabs
-   * Pending: OUT_FOR_DELIVERY
-   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED
+   * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
+   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
+   * 
+   * Flow: Hub assigns parcel → Rider initiates delivery → OTP verification → Done
    */
   @Get('deliveries')
   @Roles(UserRole.RIDER)
@@ -221,12 +223,13 @@ export class RidersController {
       success: true,
       data: parcels.map(toParcelListItem),
       count: parcels.length,
+      tab,
     };
   }
 
   /**
    * RETURN SECTION - Pending & Completed tabs
-   * Pending: RETURNED, PAID_RETURN (need to return to hub)
+   * Pending: RETURNED, DELIVERY_RESCHEDULED (need to return to hub or reattempt)
    * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   @Get('returns')
@@ -327,7 +330,8 @@ export class RidersController {
   // ===== RIDER PARCEL ACTIONS =====
 
   /**
-   * Rider accepts parcel (picks up from hub)
+   * Rider accepts parcel (optional - marks when rider picks up from hub)
+   * Note: This is optional. Rider can directly initiate delivery without accepting first.
    */
   @Patch('parcels/:id/accept')
   @Roles(UserRole.RIDER)
