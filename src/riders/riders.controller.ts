@@ -32,6 +32,9 @@ import {
   toParcelActionResponse,
   toPickupRequestListItem,
 } from '../common/interfaces/responses.interface';
+// import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
+import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
+import { CreateEmergencyDto } from './dto/create-emergency.dto';
 
 @Controller('riders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -162,7 +165,11 @@ export class RidersController {
     @Query('tab') tab: 'pending' | 'completed' = 'pending',
   ) {
     const filter = tab === 'pending' ? 'pending' : 'completed';
-    const pickups = await this.pickupRequestsService.getRiderPickups(user.riderId, undefined, filter);
+    const pickups = await this.pickupRequestsService.getRiderPickups(
+      user.riderId,
+      undefined,
+      filter,
+    );
 
     return {
       success: true,
@@ -182,7 +189,10 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query('tab') tab: 'pending' | 'completed' = 'pending',
   ) {
-    const parcels = await this.parcelsService.getRiderDeliveries(user.riderId, tab);
+    const parcels = await this.parcelsService.getRiderDeliveries(
+      user.riderId,
+      tab,
+    );
 
     return {
       success: true,
@@ -202,7 +212,10 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query('tab') tab: 'pending' | 'completed' = 'pending',
   ) {
-    const parcels = await this.parcelsService.getRiderReturns(user.riderId, tab);
+    const parcels = await this.parcelsService.getRiderReturns(
+      user.riderId,
+      tab,
+    );
 
     return {
       success: true,
@@ -220,7 +233,11 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query() query: RiderParcelQueryDto,
   ) {
-    const parcels = await this.parcelsService.getRiderParcels(user.riderId, query.status, query.filter);
+    const parcels = await this.parcelsService.getRiderParcels(
+      user.riderId,
+      query.status,
+      query.filter,
+    );
 
     return {
       success: true,
@@ -251,7 +268,10 @@ export class RidersController {
    */
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async update(@Param('id') id: string, @Body() updateRiderDto: UpdateRiderDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateRiderDto: UpdateRiderDto,
+  ) {
     const rider = await this.ridersService.update(id, updateRiderDto);
 
     return {
@@ -302,7 +322,10 @@ export class RidersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.riderAcceptParcel(id, user.riderId);
+    const parcel = await this.parcelsService.riderAcceptParcel(
+      id,
+      user.riderId,
+    );
 
     return {
       success: true,
@@ -321,7 +344,10 @@ export class RidersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.getParcelForDelivery(id, user.riderId);
+    const parcel = await this.parcelsService.getParcelForDelivery(
+      id,
+      user.riderId,
+    );
 
     return {
       success: true,
@@ -335,7 +361,8 @@ export class RidersController {
         cod_amount: parcel.cod_amount,
         total_charge: parcel.total_charge,
       },
-      message: 'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
+      message:
+        'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
     };
   }
 
@@ -360,6 +387,23 @@ export class RidersController {
       success: true,
       data: toParcelActionResponse(parcel),
       message: 'Parcel returned to hub successfully',
+    };
+  }
+
+  // ===== RIDER SUPPORT ENDPOINTS =====
+
+  @Post('rider-support/emergency')
+  @Roles(UserRole.RIDER)
+  @HttpCode(HttpStatus.CREATED)
+  async triggerEmergency(
+    @Body() dto: CreateEmergencyDto,
+    @CurrentUser() user: any,
+  ) {
+    const alert = await this.ridersService.createAlert(user.riderId, dto);
+    return {
+      success: true,
+      data: alert,
+      message: 'Emergency alert sent! Support team has been notified.',
     };
   }
 }

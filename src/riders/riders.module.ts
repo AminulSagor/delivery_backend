@@ -10,10 +10,19 @@ import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
+import { EmergencyAlert } from './entities/emergency-alert.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Rider, User, Parcel, PickupRequest, HubManager, Hub]),
+    TypeOrmModule.forFeature([
+      Rider,
+      User,
+      Parcel,
+      PickupRequest,
+      HubManager,
+      Hub,
+      EmergencyAlert,
+    ]),
     forwardRef(() => ParcelsModule),
     forwardRef(() => PickupRequestsModule),
   ],
