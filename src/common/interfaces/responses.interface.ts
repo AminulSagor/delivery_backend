@@ -28,6 +28,14 @@ export interface ParcelListItem {
     id: string;
     business_name: string;
   };
+  // Delivery area info
+  delivery_area?: {
+    id: string;
+    area: string;
+    zone: string;
+    city: string;
+    division: string;
+  } | null;
   // Minimal rider info (if assigned)
   assigned_rider?: {
     id: string;
@@ -37,7 +45,6 @@ export interface ParcelListItem {
 }
 
 export interface ParcelDetail extends ParcelListItem {
-  delivery_area: string;
   product_price: number;
   delivery_charge: number;
   weight_charge: number;
@@ -47,14 +54,6 @@ export interface ParcelDetail extends ParcelListItem {
   assigned_at: Date | null;
   picked_up_at: Date | null;
   delivered_at: Date | null;
-  // Coverage area info
-  delivery_coverage_area?: {
-    id: string;
-    area: string;
-    zone: string;
-    city: string;
-    division: string;
-  } | null;
   // Hub info
   current_hub?: {
     id: string;
@@ -231,6 +230,15 @@ export function toParcelListItem(parcel: any): ParcelListItem {
           business_name: parcel.store.business_name,
         }
       : undefined,
+    delivery_area: parcel.delivery_coverage_area
+      ? {
+          id: parcel.delivery_coverage_area.id,
+          area: parcel.delivery_coverage_area.area,
+          zone: parcel.delivery_coverage_area.zone,
+          city: parcel.delivery_coverage_area.city,
+          division: parcel.delivery_coverage_area.division,
+        }
+      : null,
     assigned_rider: parcel.assignedRider
       ? {
           id: parcel.assignedRider.id,
@@ -246,7 +254,6 @@ export function toParcelListItem(parcel: any): ParcelListItem {
 export function toParcelDetail(parcel: any): ParcelDetail {
   return {
     ...toParcelListItem(parcel),
-    delivery_area: parcel.delivery_area,
     product_price: parcel.product_price,
     delivery_charge: parcel.delivery_charge,
     weight_charge: parcel.weight_charge,
@@ -256,15 +263,6 @@ export function toParcelDetail(parcel: any): ParcelDetail {
     assigned_at: parcel.assigned_at,
     picked_up_at: parcel.picked_up_at,
     delivered_at: parcel.delivered_at,
-    delivery_coverage_area: parcel.delivery_coverage_area
-      ? {
-          id: parcel.delivery_coverage_area.id,
-          area: parcel.delivery_coverage_area.area,
-          zone: parcel.delivery_coverage_area.zone,
-          city: parcel.delivery_coverage_area.city,
-          division: parcel.delivery_coverage_area.division,
-        }
-      : null,
     current_hub: parcel.currentHub
       ? {
           id: parcel.currentHub.id,

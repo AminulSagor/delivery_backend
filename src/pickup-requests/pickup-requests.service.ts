@@ -963,9 +963,9 @@ export class PickupRequestsService {
       // Default: show pending pickups
       pickups = await this.pickupRequestRepository.find({
         where: { assigned_rider_id: riderId, status: PickupRequestStatus.CONFIRMED },
-        relations: ['store', 'merchant'],
-        order: { requested_at: 'ASC' },
-      });
+      relations: ['store', 'merchant'],
+      order: { requested_at: 'ASC' },
+    });
     }
 
     // Group by store+date and aggregate pickup_count
@@ -1084,8 +1084,8 @@ export class PickupRequestsService {
       
     } else {
       // FULL PICKUP: Mark original as completed
-      pickup.status = PickupRequestStatus.PICKED_UP;
-      pickup.picked_up_at = new Date();
+    pickup.status = PickupRequestStatus.PICKED_UP;
+    pickup.picked_up_at = new Date();
       pickup.picked_up_count = actualPickedCount;
       pickup.completed_by_rider_id = riderId;  // Track who completed it
       pickup.assigned_rider_id = null;
