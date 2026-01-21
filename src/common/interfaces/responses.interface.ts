@@ -9,6 +9,7 @@ import { StoreStatus } from 'src/stores/entities/store.entity';
 
 export interface ParcelListItem {
   id: string;
+  parcel_tx_id: string | null; // Display ID like #139679
   tracking_number: string;
   merchant_order_id: string | null;
   customer_name: string;
@@ -63,6 +64,7 @@ export interface ParcelDetail extends ParcelListItem {
 
 export interface ParcelActionResponse {
   id: string;
+  parcel_tx_id: string | null; // Display ID like #139679
   tracking_number: string;
   status: string;
 }
@@ -210,6 +212,7 @@ export interface HubDetail extends HubListItem {
 export function toParcelListItem(parcel: any): ParcelListItem {
   return {
     id: parcel.id,
+    parcel_tx_id: parcel.parcel_tx_id || null,
     tracking_number: parcel.tracking_number,
     merchant_order_id: parcel.merchant_order_id,
     customer_name: parcel.customer_name,
@@ -275,6 +278,7 @@ export function toParcelDetail(parcel: any): ParcelDetail {
 export function toParcelActionResponse(parcel: any): ParcelActionResponse {
   return {
     id: parcel.id,
+    parcel_tx_id: parcel.parcel_tx_id || null,
     tracking_number: parcel.tracking_number,
     status: parcel.status,
   };

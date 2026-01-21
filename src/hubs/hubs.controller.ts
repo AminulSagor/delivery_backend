@@ -28,6 +28,8 @@ import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { TransferParcelDto } from '../parcels/dto/transfer-parcel.dto';
 import { BulkReceiveParcelsDto } from './dto/bulk-receive-parcels.dto';
+import { BulkReturnToMerchantDto } from './dto/bulk-return-to-merchant.dto';
+import { BulkRescheduleDeliveryDto } from './dto/bulk-reschedule-delivery.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { CalculateSettlementDto } from './dto/calculate-settlement.dto';
 import { SettlementQueryDto } from './dto/settlement-query.dto';
@@ -192,6 +194,33 @@ export class HubsController {
   }
 
   /**
+   * Get return to merchant parcels (Hub Manager)
+   * 
+   * PURPOSE: View parcels with RETURN_TO_MERCHANT status
+   * These are original parcels that have been marked for return
+   */
+  @Get('parcels/return-to-merchant')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getReturnToMerchantParcels(
+    @CurrentUser() user: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    const result = await this.parcelsService.getReturnToMerchantParcels(
+      user.hubId,
+      parseInt(page),
+      parseInt(limit),
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Return to merchant parcels retrieved successfully',
+    };
+  }
+
+  /**
    * Mark parcel as RETURN_TO_MERCHANT (Hub Manager)
    * 
    * Creates a NEW return parcel to track the return journey to merchant.
@@ -212,11 +241,13 @@ export class HubsController {
       data: {
         original_parcel: {
           id: result.original_parcel.id,
+          parcel_tx_id: result.original_parcel.parcel_tx_id,
           tracking_number: result.original_parcel.tracking_number,
           status: result.original_parcel.status,
         },
         return_parcel: {
           id: result.return_parcel.id,
+          parcel_tx_id: result.return_parcel.parcel_tx_id,
           tracking_number: result.return_parcel.tracking_number,
           original_parcel_id: result.return_parcel.original_parcel_id,
           status: result.return_parcel.status,
@@ -224,6 +255,95 @@ export class HubsController {
         },
       },
       message: 'Return parcel created. Assign to rider for delivery back to merchant.',
+    };
+  }
+
+  /**
+   * Bulk mark parcels as RETURN_TO_MERCHANT (Hub Manager)
+   * 
+   * Creates return parcels for each original parcel.
+   * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
+   */
+  @Post('parcels/bulk-return-to-merchant')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkReturnToMerchant(
+    @Body() dto: BulkReturnToMerchantDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.bulkMarkReturnToMerchant(
+      dto.parcel_ids,
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: dto.parcel_ids.length,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: result.failed === 0
+        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return to merchant`
+        : `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return, ${result.failed} failed`,
+    };
+  }
+
+  /**
+   * Mark parcel as DELIVERY_RESCHEDULED (Hub Manager)
+   * 
+   * Used to reschedule delivery from delivery outcomes list.
+   * Parcel will appear in /hubs/parcels/rescheduled endpoint.
+   */
+  @Patch('parcels/:id/reschedule-delivery')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async rescheduleDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const parcel = await this.parcelsService.markAsRescheduled(id, user.hubId);
+
+    return {
+      success: true,
+      data: toParcelActionResponse(parcel),
+      message: 'Parcel marked for redelivery. It will appear in rescheduled list.',
+    };
+  }
+
+  /**
+   * Bulk mark parcels as DELIVERY_RESCHEDULED (Hub Manager)
+   * 
+   * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
+   */
+  @Post('parcels/bulk-reschedule-delivery')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkRescheduleDelivery(
+    @Body() dto: BulkRescheduleDeliveryDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.bulkMarkAsRescheduled(
+      dto.parcel_ids,
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: dto.parcel_ids.length,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: result.failed === 0
+        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for rescheduled delivery`
+        : `${result.success} parcel${result.success !== 1 ? 's' : ''} rescheduled, ${result.failed} failed`,
     };
   }
 

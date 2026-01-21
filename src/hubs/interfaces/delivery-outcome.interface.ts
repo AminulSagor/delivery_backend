@@ -7,6 +7,7 @@
 
 export interface DeliveryOutcomeItem {
   parcel_id: string;
+  parcel_tx_id: string | null;
   tracking_number: string;
   status: string;
   reason: string | null;

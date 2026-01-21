@@ -3,6 +3,7 @@ import { Parcel } from '../../parcels/entities/parcel.entity';
 
 export interface ParcelFinancialBreakdown {
   parcel_id: string;
+  parcel_tx_id: string | null;
   tracking_number: string;
   status: string;
   cod_amount: number;
@@ -55,6 +56,7 @@ export class InvoiceCalculationService {
   calculateParcelBreakdown(parcel: Parcel): ParcelFinancialBreakdown {
     return {
       parcel_id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id || null,
       tracking_number: parcel.tracking_number,
       status: parcel.status,
       cod_amount: Number(parcel.cod_amount) || 0,

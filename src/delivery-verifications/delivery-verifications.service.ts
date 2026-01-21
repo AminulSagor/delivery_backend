@@ -441,6 +441,7 @@ export class DeliveryVerificationsService {
     // Return different data based on role
     const baseData = {
       id: verification.id,
+      parcel_tx_id: verification.parcel.parcel_tx_id,
       tracking_number: verification.parcel.tracking_number,
       status: verification.selected_status,
       verification_status: verification.verification_status,
@@ -499,6 +500,7 @@ export class DeliveryVerificationsService {
       data: {
         id: verification.id,
         parcel_id: verification.parcel.id,
+        parcel_tx_id: verification.parcel.parcel_tx_id,
         tracking_number: verification.parcel.tracking_number,
         rider_id: verification.rider_id,
         status: verification.selected_status,
@@ -536,6 +538,11 @@ export class DeliveryVerificationsService {
     // Update parcel status
     parcel.status = selectedStatus;
     parcel.delivered_at = new Date();
+    
+    // ✅ Copy delivery reason from verification to parcel
+    if (verification.difference_reason) {
+      parcel.return_reason = verification.difference_reason;
+    }
     
     // ✅ FLAG: Mark parcel as UNPAID to merchant (will appear in clearance list)
     parcel.paid_to_merchant = false;
@@ -589,6 +596,7 @@ export class DeliveryVerificationsService {
 
       case ParcelStatus.DELIVERY_RESCHEDULED:
         // Rescheduled - no financial changes yet
+        // Note: reschedule_count is incremented when assigned to rider, not here
         parcel.cod_collected_amount = 0;
         parcel.delivery_charge_applicable = false;
         parcel.return_charge_applicable = false;

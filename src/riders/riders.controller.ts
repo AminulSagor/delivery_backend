@@ -364,6 +364,7 @@ export class RidersController {
       success: true,
       data: {
         parcel_id: parcel.id,
+        parcel_tx_id: parcel.parcel_tx_id,
         tracking_number: parcel.tracking_number,
         customer_name: parcel.customer_name,
         customer_phone: parcel.customer_phone,

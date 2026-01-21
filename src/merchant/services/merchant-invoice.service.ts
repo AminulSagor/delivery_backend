@@ -577,6 +577,7 @@ export class MerchantInvoiceService {
         // Parcel Information
         parcel_info: {
           parcel_id: parcel.id,
+          parcel_tx_id: parcel.parcel_tx_id,
           tracking_number: parcel.tracking_number,
           order_id: parcel.merchant_order_id,
           order_date: parcel.created_at,
@@ -1428,6 +1429,7 @@ export class MerchantInvoiceService {
 
       return {
         parcel_id: parcel.id,
+        parcel_tx_id: parcel.parcel_tx_id,
         tracking_number: parcel.tracking_number,
         merchant: {
           id: parcel.merchant_id,
