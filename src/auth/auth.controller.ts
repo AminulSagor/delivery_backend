@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
@@ -32,6 +32,19 @@ export class AuthController {
   @Post('logout')
   async logout(@Body() logoutDto: AuthLogoutDto) {
     return await this.authService.logout(logoutDto.refreshToken);
+  }
+
+  /**
+   * Get current user profile
+   * Returns user info + role-specific data (merchant_id, hub_id, rider_id, etc.)
+   */
+  @Get('me')
+  async getProfile(@Request() req) {
+    const profile = await this.authService.getProfile(req.user.userId);
+    return {
+      success: true,
+      data: profile,
+    };
   }
 
   @Post('change-password')

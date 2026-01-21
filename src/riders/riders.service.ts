@@ -459,13 +459,13 @@ export class RidersService {
    * Get rider dashboard statistics
    *
    * Rider Workflow:
-   * 1. PICKUPS: Parcels assigned to rider, waiting to be picked from hub
-   *    - Status: ASSIGNED_TO_RIDER
-   * 2. DELIVERIES: Parcels rider has picked up and is delivering to customer
-   *    - Pending: OUT_FOR_DELIVERY
-   *    - Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED
+   * 1. PICKUPS: Pickup requests assigned to rider (from merchants)
+   *    - Status: CONFIRMED pickup requests
+   * 2. DELIVERIES: Parcels assigned to rider for delivery to customer
+   *    - Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
+   *    - Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
    * 3. RETURNS: Parcels that failed delivery and need to be returned to hub
-   *    - Pending: RETURNED, PAID_RETURN
+   *    - Pending: RETURNED, DELIVERY_RESCHEDULED
    *    - Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   async getRiderDashboard(riderId: string) {
@@ -479,19 +479,20 @@ export class RidersService {
       throw new NotFoundException('Rider not found');
     }
 
-    // ===== PICKUPS: Parcels assigned to rider, need to pick from hub =====
-    const pickupsFromHub = await this.parcelRepository.count({
+    // ===== PICKUPS: Pickup requests assigned to this rider (CONFIRMED status) =====
+    const pendingPickups = await this.pickupRequestRepository.count({
       where: {
         assigned_rider_id: riderId,
-        status: ParcelStatus.ASSIGNED_TO_RIDER,
+        status: PickupRequestStatus.CONFIRMED,
       },
     });
 
-    // ===== DELIVERIES: Pending (OUT_FOR_DELIVERY) + Completed (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, RESCHEDULED) =====
+    // ===== DELIVERIES: Pending (ASSIGNED_TO_RIDER) =====
+    // ASSIGNED_TO_RIDER = parcel assigned by hub, ready for rider to deliver
     const pendingDeliveries = await this.parcelRepository.count({
       where: {
         assigned_rider_id: riderId,
-        status: ParcelStatus.OUT_FOR_DELIVERY,
+        status: ParcelStatus.ASSIGNED_TO_RIDER,
       },
     });
 
@@ -500,18 +501,18 @@ export class RidersService {
         { assigned_rider_id: riderId, status: ParcelStatus.DELIVERED },
         { assigned_rider_id: riderId, status: ParcelStatus.PARTIAL_DELIVERY },
         { assigned_rider_id: riderId, status: ParcelStatus.EXCHANGE },
+        { assigned_rider_id: riderId, status: ParcelStatus.PAID_RETURN },
+      ],
+    });
+
+    // ===== RETURNS: Pending (RETURNED, DELIVERY_RESCHEDULED) + Completed (RETURNED_TO_HUB, RETURN_TO_MERCHANT) =====
+    const pendingReturns = await this.parcelRepository.count({
+      where: [
+        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED },
         {
           assigned_rider_id: riderId,
           status: ParcelStatus.DELIVERY_RESCHEDULED,
         },
-      ],
-    });
-
-    // ===== RETURNS: Pending (RETURNED, PAID_RETURN) + Completed (RETURNED_TO_HUB, RETURN_TO_MERCHANT) =====
-    const pendingReturns = await this.parcelRepository.count({
-      where: [
-        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED },
-        { assigned_rider_id: riderId, status: ParcelStatus.PAID_RETURN },
       ],
     });
 
@@ -526,8 +527,9 @@ export class RidersService {
       rider: {
         id: rider.id,
       },
-      total_pickups: pickupsFromHub,
-      // Deliveries section
+      // Pickups section (pickup requests from merchants)
+      pending_pickups: pendingPickups,
+      // Deliveries section (parcels assigned for delivery)
       pending_deliveries: pendingDeliveries,
       completed_deliveries: completedDeliveries,
       total_deliveries: pendingDeliveries + completedDeliveries,

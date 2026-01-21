@@ -155,33 +155,70 @@ export class RidersController {
 
   /**
    * PICKUP SECTION - Pending & Completed tabs
-   * Pending: CONFIRMED (assigned, needs to pickup from merchant)
-   * Completed: PICKED_UP
+   *
+   * Groups by store+date - same store on same day shows combined pickup_count
+   *
+   * ?tab=pending   → CONFIRMED (assigned to rider, needs to pickup from merchant)
+   * ?tab=completed → PICKED_UP (completed by this rider)
+   * ?tab=confirmed → alias for completed
    */
   @Get('pickups')
   @Roles(UserRole.RIDER)
   async getPickups(
     @CurrentUser() user: any,
-    @Query('tab') tab: 'pending' | 'completed' = 'pending',
+    @Query('tab') tab: 'pending' | 'completed' | 'confirmed' = 'pending',
   ) {
-    const filter = tab === 'pending' ? 'pending' : 'completed';
-    const pickups = await this.pickupRequestsService.getRiderPickups(
+    // Map tab to filter: 'confirmed' is alias for 'completed'
+    let filter: string;
+    if (tab === 'pending') {
+      filter = 'pending';
+    } else if (tab === 'completed' || tab === 'confirmed') {
+      filter = 'completed';
+    } else {
+      filter = 'pending';
+    }
+
+    // Returns grouped pickups (same store+date combined)
+    const groupedPickups = await this.pickupRequestsService.getRiderPickups(
       user.riderId,
       undefined,
       filter,
     );
 
+    // Format response
+    const data = groupedPickups.map((pickup: any) => ({
+      id: pickup.id,
+      request_code: pickup.request_code,
+      request_codes: pickup.request_codes, // All request codes in this group
+      pickup_count: pickup.pickup_count,
+      status: pickup.status,
+      comment: pickup.comment,
+      created_at: pickup.created_at,
+      completed_at: pickup.completed_at,
+      store: pickup.store
+        ? {
+            id: pickup.store.id,
+            business_name: pickup.store.business_name,
+            phone_number: pickup.store.phone_number,
+            business_address: pickup.store.business_address,
+          }
+        : null,
+    }));
+
     return {
       success: true,
-      data: pickups.map(toPickupRequestListItem),
-      count: pickups.length,
+      data,
+      count: data.length,
+      tab: filter === 'pending' ? 'pending' : 'completed',
     };
   }
 
   /**
    * DELIVERY SECTION - Pending & Completed tabs
-   * Pending: OUT_FOR_DELIVERY
-   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED
+   * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
+   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
+   *
+   * Flow: Hub assigns parcel → Rider initiates delivery → OTP verification → Done
    */
   @Get('deliveries')
   @Roles(UserRole.RIDER)
@@ -198,12 +235,13 @@ export class RidersController {
       success: true,
       data: parcels.map(toParcelListItem),
       count: parcels.length,
+      tab,
     };
   }
 
   /**
    * RETURN SECTION - Pending & Completed tabs
-   * Pending: RETURNED, PAID_RETURN (need to return to hub)
+   * Pending: RETURNED, DELIVERY_RESCHEDULED (need to return to hub or reattempt)
    * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   @Get('returns')
@@ -314,7 +352,8 @@ export class RidersController {
   // ===== RIDER PARCEL ACTIONS =====
 
   /**
-   * Rider accepts parcel (picks up from hub)
+   * Rider accepts parcel (optional - marks when rider picks up from hub)
+   * Note: This is optional. Rider can directly initiate delivery without accepting first.
    */
   @Patch('parcels/:id/accept')
   @Roles(UserRole.RIDER)

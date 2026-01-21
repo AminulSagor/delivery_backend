@@ -12,7 +12,9 @@ import { SignOptions } from 'jsonwebtoken';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
+import { MerchantProfile } from '../merchant/entities/merchant-profile.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { Hub } from '../hubs/entities/hub.entity';
 import { Rider } from '../riders/entities/rider.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { MerchantStatus } from '../common/enums/merchant-status.enum';
@@ -33,8 +35,12 @@ export class AuthService {
     private usersService: UsersService,
     @InjectRepository(Merchant)
     private merchantRepository: Repository<Merchant>,
+    @InjectRepository(MerchantProfile)
+    private merchantProfileRepository: Repository<MerchantProfile>,
     @InjectRepository(HubManager)
     private hubManagerRepository: Repository<HubManager>,
+    @InjectRepository(Hub)
+    private hubRepository: Repository<Hub>,
     @InjectRepository(Rider)
     private riderRepository: Repository<Rider>,
     private smsService: SmsService,
@@ -323,5 +329,162 @@ export class AuthService {
     await this.usersService.updatePasswordAndClearOtp(user.id, newHash);
 
     return { message: 'Password has been reset successfully. Please login.' };
+  }
+
+  // ==========================================
+  // 4. GET CURRENT USER PROFILE (/me)
+  // ==========================================
+  async getProfile(userId: string): Promise<any> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Base user info (exclude sensitive fields)
+    const baseProfile = {
+      user_id: user.id,
+      full_name: user.full_name,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      is_active: user.is_active,
+      created_at: user.created_at,
+    };
+
+    // Add role-specific data
+    switch (user.role) {
+      case UserRole.MERCHANT:
+        return this.getMerchantProfile(baseProfile);
+
+      case UserRole.HUB_MANAGER:
+        return this.getHubManagerProfile(baseProfile);
+
+      case UserRole.RIDER:
+        return this.getRiderProfile(baseProfile);
+
+      case UserRole.ADMIN:
+        return {
+          ...baseProfile,
+        };
+
+      default:
+        return baseProfile;
+    }
+  }
+
+  private async getMerchantProfile(baseProfile: any): Promise<any> {
+    const merchant = await this.merchantRepository.findOne({
+      where: { user_id: baseProfile.user_id },
+      relations: ['merchant_profile'],
+    });
+
+    if (!merchant) {
+      return {
+        ...baseProfile,
+        merchant_id: null,
+        merchant: null,
+      };
+    }
+
+    return {
+      ...baseProfile,
+      merchant_id: merchant.id,
+      merchant: {
+        id: merchant.id,
+        thana: merchant.thana,
+        district: merchant.district,
+        full_address: merchant.full_address,
+        secondary_number: merchant.secondary_number,
+        status: merchant.status,
+        approved_at: merchant.approved_at,
+        profile: merchant.merchant_profile ? {
+          profile_img_url: merchant.merchant_profile.profile_img_url,
+          nid_number: merchant.merchant_profile.nid_number,
+          nid_front_url: merchant.merchant_profile.nid_front_url,
+          nid_back_url: merchant.merchant_profile.nid_back_url,
+          trade_license_number: merchant.merchant_profile.trade_license_number,
+          trade_license_url: merchant.merchant_profile.trade_license_url,
+          tin_number: merchant.merchant_profile.tin_number,
+          tin_certificate_url: merchant.merchant_profile.tin_certificate_url,
+          bin_number: merchant.merchant_profile.bin_number,
+          bin_certificate_url: merchant.merchant_profile.bin_certificate_url,
+        } : null,
+      },
+    };
+  }
+
+  private async getHubManagerProfile(baseProfile: any): Promise<any> {
+    const hubManager = await this.hubManagerRepository.findOne({
+      where: { user_id: baseProfile.user_id },
+      relations: ['hub'],
+    });
+
+    if (!hubManager) {
+      return {
+        ...baseProfile,
+        hub_manager_id: null,
+        hub_id: null,
+        hub: null,
+      };
+    }
+
+    return {
+      ...baseProfile,
+      hub_manager_id: hubManager.id,
+      hub_id: hubManager.hub_id,
+      hub: hubManager.hub ? {
+        id: hubManager.hub.id,
+        hub_code: hubManager.hub.hub_code,
+        branch_name: hubManager.hub.branch_name,
+        area: hubManager.hub.area,
+        address: hubManager.hub.address,
+      } : null,
+    };
+  }
+
+  private async getRiderProfile(baseProfile: any): Promise<any> {
+    const rider = await this.riderRepository.findOne({
+      where: { user_id: baseProfile.user_id },
+      relations: ['hub'],
+    });
+
+    if (!rider) {
+      return {
+        ...baseProfile,
+        rider_id: null,
+        hub_id: null,
+        rider: null,
+        hub: null,
+      };
+    }
+
+    return {
+      ...baseProfile,
+      rider_id: rider.id,
+      hub_id: rider.hub_id,
+      rider: {
+        id: rider.id,
+        photo: rider.photo,
+        guardian_mobile_no: rider.guardian_mobile_no,
+        bike_type: rider.bike_type,
+        nid_number: rider.nid_number,
+        license_no: rider.license_no,
+        present_address: rider.present_address,
+        permanent_address: rider.permanent_address,
+        fixed_salary: rider.fixed_salary,
+        commission_per_delivery: rider.commission_per_delivery,
+        bank_name: rider.bank_name,
+        bank_account_number: rider.bank_account_number,
+        bank_branch: rider.bank_branch,
+        is_active: rider.is_active,
+      },
+      hub: rider.hub ? {
+        id: rider.hub.id,
+        hub_code: rider.hub.hub_code,
+        branch_name: rider.hub.branch_name,
+        area: rider.hub.area,
+        address: rider.hub.address,
+      } : null,
+    };
   }
 }

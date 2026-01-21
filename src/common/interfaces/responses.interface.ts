@@ -28,6 +28,14 @@ export interface ParcelListItem {
     id: string;
     business_name: string;
   };
+  // Delivery area info
+  delivery_area?: {
+    id: string;
+    area: string;
+    zone: string;
+    city: string;
+    division: string;
+  } | null;
   // Minimal rider info (if assigned)
   assigned_rider?: {
     id: string;
@@ -37,7 +45,6 @@ export interface ParcelListItem {
 }
 
 export interface ParcelDetail extends ParcelListItem {
-  delivery_area: string;
   product_price: number;
   delivery_charge: number;
   weight_charge: number;
@@ -47,14 +54,6 @@ export interface ParcelDetail extends ParcelListItem {
   assigned_at: Date | null;
   picked_up_at: Date | null;
   delivered_at: Date | null;
-  // Coverage area info
-  delivery_coverage_area?: {
-    id: string;
-    area: string;
-    zone: string;
-    city: string;
-    division: string;
-  } | null;
   // Hub info
   current_hub?: {
     id: string;
@@ -110,11 +109,10 @@ export interface RiderActionResponse {
 
 export interface PickupRequestListItem {
   id: string;
-  estimated_parcels: number;
-  actual_parcels: number;
+  request_code: string | null; // Unique code: REQ-2001
+  pickup_count: number;        // Main field: number of parcels to pick up
   status: string;
   comment: string | null;
-  pickup_date: Date | null;
   created_at: Date;
   store?: {
     id: string;
@@ -131,7 +129,9 @@ export interface PickupRequestListItem {
 
 export interface PickupRequestActionResponse {
   id: string;
+  request_code: string | null;
   status: string;
+  pickup_count: number;
   assigned_rider_id: string | null;
 }
 
@@ -230,6 +230,15 @@ export function toParcelListItem(parcel: any): ParcelListItem {
           business_name: parcel.store.business_name,
         }
       : undefined,
+    delivery_area: parcel.delivery_coverage_area
+      ? {
+          id: parcel.delivery_coverage_area.id,
+          area: parcel.delivery_coverage_area.area,
+          zone: parcel.delivery_coverage_area.zone,
+          city: parcel.delivery_coverage_area.city,
+          division: parcel.delivery_coverage_area.division,
+        }
+      : null,
     assigned_rider: parcel.assignedRider
       ? {
           id: parcel.assignedRider.id,
@@ -245,7 +254,6 @@ export function toParcelListItem(parcel: any): ParcelListItem {
 export function toParcelDetail(parcel: any): ParcelDetail {
   return {
     ...toParcelListItem(parcel),
-    delivery_area: parcel.delivery_area,
     product_price: parcel.product_price,
     delivery_charge: parcel.delivery_charge,
     weight_charge: parcel.weight_charge,
@@ -255,15 +263,6 @@ export function toParcelDetail(parcel: any): ParcelDetail {
     assigned_at: parcel.assigned_at,
     picked_up_at: parcel.picked_up_at,
     delivered_at: parcel.delivered_at,
-    delivery_coverage_area: parcel.delivery_coverage_area
-      ? {
-          id: parcel.delivery_coverage_area.id,
-          area: parcel.delivery_coverage_area.area,
-          zone: parcel.delivery_coverage_area.zone,
-          city: parcel.delivery_coverage_area.city,
-          division: parcel.delivery_coverage_area.division,
-        }
-      : null,
     current_hub: parcel.currentHub
       ? {
           id: parcel.currentHub.id,
@@ -324,11 +323,10 @@ export function toRiderActionResponse(rider: any): RiderActionResponse {
 export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
   return {
     id: pickup.id,
-    estimated_parcels: pickup.estimated_parcels,
-    actual_parcels: pickup.actual_parcels || 0,
+    request_code: pickup.request_code || null,  // Unique code: REQ-2001
+    pickup_count: pickup.estimated_parcels || 0,  // pickup_count = estimated_parcels
     status: pickup.status,
     comment: pickup.comment,
-    pickup_date: pickup.pickup_date,
     created_at: pickup.created_at,
     store: pickup.store
       ? {
@@ -355,7 +353,9 @@ export function toPickupRequestActionResponse(
 ): PickupRequestActionResponse {
   return {
     id: pickup.id,
+    request_code: pickup.request_code || null,
     status: pickup.status,
+    pickup_count: pickup.estimated_parcels || 0,
     assigned_rider_id: pickup.assigned_rider_id,
   };
 }

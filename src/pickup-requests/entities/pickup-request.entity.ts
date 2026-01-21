@@ -20,6 +20,10 @@ export class PickupRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // ===== UNIQUE REQUEST CODE =====
+  @Column({ type: 'varchar', length: 20, unique: true, nullable: true })
+  request_code: string | null; // Auto-generated: REQ-2001, REQ-2002, etc.
+
   // ===== RELATIONSHIPS =====
   @Column({ type: 'uuid' })
   merchant_id: string;
@@ -56,12 +60,23 @@ export class PickupRequest {
   @Column({ type: 'timestamp', nullable: true })
   rider_assigned_at: Date | null;
 
+  // ===== COMPLETED BY RIDER (for tracking who completed the pickup) =====
+  @Column({ type: 'uuid', nullable: true })
+  completed_by_rider_id: string | null;
+
+  @ManyToOne(() => Rider, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'completed_by_rider_id' })
+  completedByRider: Rider | null;
+
   // ===== REQUEST DETAILS =====
   @Column({ type: 'int', default: 0 })
   estimated_parcels: number;
 
   @Column({ type: 'int', default: 0 })
   actual_parcels: number;
+
+  @Column({ type: 'int', default: 0 })
+  picked_up_count: number; // How many parcels rider actually picked up
 
   @Column({ type: 'text', nullable: true })
   comment: string | null;

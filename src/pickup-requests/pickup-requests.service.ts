@@ -36,8 +36,53 @@ export class PickupRequestsService {
   ) {}
 
   /**
+   * Generate unique request code in format: REQ-2001, REQ-2002, etc.
+   * Starts from 2001 and increments
+   */
+  private async generateRequestCode(): Promise<string> {
+    const maxRetries = 5;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Get the highest existing request code
+      const lastRequest = await this.pickupRequestRepository
+        .createQueryBuilder('pickup')
+        .where('pickup.request_code IS NOT NULL')
+        .orderBy('pickup.request_code', 'DESC')
+        .getOne();
+
+      let nextNumber = 2001; // Start from 2001
+      
+      if (lastRequest?.request_code) {
+        // Extract number from code like "REQ-2005"
+        const match = lastRequest.request_code.match(/REQ-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      const newCode = `REQ-${nextNumber}`;
+      
+      // Check if this code already exists (race condition protection)
+      const existing = await this.pickupRequestRepository.findOne({
+        where: { request_code: newCode },
+      });
+      
+      if (!existing) {
+        return newCode;
+      }
+      
+      this.logger.warn(`Request code ${newCode} already exists, retrying...`);
+    }
+    
+    // Fallback: use timestamp-based code
+    const timestamp = Date.now().toString().slice(-6);
+    return `REQ-${timestamp}`;
+  }
+
+  /**
    * Create or update pickup request manually (by merchant)
-   * If a PENDING pickup request exists for today, update it instead of creating a new one
+   * - If PENDING pickup request exists for today → INCREMENT pickup_count
+   * - Otherwise create new pickup request
    */
   async create(
     merchantId: string,
@@ -75,15 +120,13 @@ export class PickupRequestsService {
       },
     });
 
-    // If existing pickup request found, UPDATE it instead of creating new one
+    // If existing pickup request found, INCREMENT pickup_count
     if (existingToday) {
-      this.logger.log(`[create] Found existing pickup request ${existingToday.id} for store ${createDto.store_id}, updating instead of creating new`);
+      // INCREMENT pickup_count by the specified amount (default 1)
+      const incrementBy = createDto.estimated_parcels || 1;
+      existingToday.estimated_parcels += incrementBy;
       
-      // Update estimated_parcels (take the max of existing and new)
-      existingToday.estimated_parcels = Math.max(
-        existingToday.estimated_parcels,
-        createDto.estimated_parcels,
-      );
+      this.logger.log(`[create] Incremented pickup_count to ${existingToday.estimated_parcels} for request: ${existingToday.id}`);
       
       // Update comment if provided
       if (createDto.comment) {
@@ -95,23 +138,30 @@ export class PickupRequestsService {
       return await this.pickupRequestRepository.save(existingToday);
     }
 
-    // Create new pickup request
+    // Create new pickup request with auto-generated request_code
+    const requestCode = await this.generateRequestCode();
+    
     const pickupRequest = this.pickupRequestRepository.create({
       merchant_id: merchantId,
       store_id: createDto.store_id,
       hub_id: store.hub_id,
-      estimated_parcels: createDto.estimated_parcels,
+      request_code: requestCode,
+      estimated_parcels: createDto.estimated_parcels || 1,
       comment: createDto.comment || null,
       status: PickupRequestStatus.PENDING,
       requested_at: new Date(),
     });
 
-    return await this.pickupRequestRepository.save(pickupRequest);
+    const saved = await this.pickupRequestRepository.save(pickupRequest);
+    this.logger.log(`Created pickup request ${requestCode} for store ${createDto.store_id}`);
+    
+    return saved;
   }
 
   /**
-   * Find or create active pickup request for a store (for auto-linking)
-   * Creates a new pickup request each day
+   * Find or create active pickup request for a store (for auto-linking parcels)
+   * - If PENDING pickup request exists for today → increment pickup_count by 1
+   * - Otherwise create new pickup request with pickup_count = 1
    */
   async findOrCreateActiveForStore(
     merchantId: string,
@@ -134,8 +184,11 @@ export class PickupRequestsService {
     });
 
     if (existingToday) {
-      this.logger.log(`[findOrCreateActiveForStore] Found existing pickup request: ${existingToday.id}`);
-      return existingToday;
+      // INCREMENT pickup_count (estimated_parcels) by 1
+      existingToday.estimated_parcels += 1;
+      const updated = await this.pickupRequestRepository.save(existingToday);
+      this.logger.log(`[findOrCreateActiveForStore] Incremented pickup_count to ${updated.estimated_parcels} for request: ${existingToday.id}`);
+      return updated;
     }
 
     // Get store to get hub_id
@@ -157,18 +210,21 @@ export class PickupRequestsService {
       );
     }
 
-    // Create new pickup request
+    // Create new pickup request with pickup_count = 1 and auto-generated request_code
+    const requestCode = await this.generateRequestCode();
+    
     const pickupRequest = this.pickupRequestRepository.create({
       merchant_id: merchantId,
       store_id: storeId,
       hub_id: store.hub_id,
-      estimated_parcels: 0, // Will be updated as parcels are added
+      request_code: requestCode,
+      estimated_parcels: 1, // First parcel = pickup_count starts at 1
       status: PickupRequestStatus.PENDING,
       requested_at: new Date(),
     });
 
     const saved = await this.pickupRequestRepository.save(pickupRequest);
-    this.logger.log(`[findOrCreateActiveForStore] Created new pickup request: ${saved.id} for hub: ${store.hub_id}`);
+    this.logger.log(`[findOrCreateActiveForStore] Created pickup request ${requestCode} with pickup_count=1 for hub: ${store.hub_id}`);
     
     return saved;
   }
@@ -233,19 +289,21 @@ export class PickupRequestsService {
           });
 
           if (!pickupRequest) {
-            // Create new pickup request for this date
-            // Note: hub_id is guaranteed to be non-null here due to the check at the start of the loop
+            // Create new pickup request for this date with auto-generated request_code
+            const requestCode = await this.generateRequestCode();
+            
             pickupRequest = this.pickupRequestRepository.create({
               merchant_id: store.merchant_id,
               store_id: store.id,
               hub_id: store.hub_id!, // Non-null assertion - verified at start of loop
+              request_code: requestCode,
               estimated_parcels: parcels.length,
               actual_parcels: parcels.length,
               status: PickupRequestStatus.PENDING,
               requested_at: date,
             });
             pickupRequest = await this.pickupRequestRepository.save(pickupRequest);
-            this.logger.log(`[linkOrphanedParcels] Created pickup request ${pickupRequest.id} for date ${dateKey}`);
+            this.logger.log(`[linkOrphanedParcels] Created pickup request ${requestCode} for date ${dateKey}`);
           }
 
           // Link parcels to pickup request
@@ -272,6 +330,8 @@ export class PickupRequestsService {
 
   /**
    * Get all pickup requests for a merchant (with pagination)
+   * 
+   * pickup_count = number of parcels to pick up
    */
   async findAllForMerchant(
     merchantId: string,
@@ -280,7 +340,7 @@ export class PickupRequestsService {
     status?: PickupRequestStatus,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
-  ): Promise<PaginatedResponse<PickupRequest>> {
+  ): Promise<PaginatedResponse<any>> {
     try {
       const where: FindOptionsWhere<PickupRequest> = { merchant_id: merchantId };
       
@@ -288,9 +348,9 @@ export class PickupRequestsService {
         where.status = status;
       }
 
-      const [items, total] = await this.pickupRequestRepository.findAndCount({
+      const [pickupRequests, total] = await this.pickupRequestRepository.findAndCount({
         where,
-        relations: ['store', 'hub', 'parcels'],
+        relations: ['store', 'hub'],
         order: { [sortBy]: order },
         skip: (page - 1) * limit,
         take: limit,
@@ -306,6 +366,19 @@ export class PickupRequestsService {
         hasNext: page < totalPages,
         hasPrev: page > 1,
       };
+
+      // Return simplified data with pickup_count and request_code
+      const items = pickupRequests.map(pr => ({
+        id: pr.id,
+        request_code: pr.request_code,  // Unique code: REQ-2001
+        store_name: pr.store?.business_name || 'Unknown Store',
+        pickup_location: pr.store?.business_address || 'N/A',
+        hub_name: pr.hub?.branch_name || 'Not Assigned',
+        comment: pr.comment,
+        pickup_count: pr.estimated_parcels,  // Single field: how many to pick up
+        status: pr.status,
+        created_at: pr.created_at,
+      }));
 
       this.logger.log(`Retrieved ${items.length} pickup requests for merchant ${merchantId}`);
 
@@ -317,8 +390,10 @@ export class PickupRequestsService {
   }
 
   /**
-   * Get all pickup requests for a hub (with pagination)
+   * Get PENDING pickup requests for a hub (with pagination)
    * Returns minimal data optimized for hub managers
+   * 
+   * Only shows PENDING status by default (pickups ready for assignment)
    */
   async findAllForHub(
     hubId: string,
@@ -329,15 +404,15 @@ export class PickupRequestsService {
     order: 'ASC' | 'DESC' = 'DESC',
   ): Promise<PaginatedResponse<any>> {
     try {
-      const where: FindOptionsWhere<PickupRequest> = { hub_id: hubId };
-      
-      if (status) {
-        where.status = status;
-      }
+      const where: FindOptionsWhere<PickupRequest> = { 
+        hub_id: hubId,
+        // Default to PENDING status (pickups ready for assignment)
+        status: status || PickupRequestStatus.PENDING,
+      };
 
       const [pickupRequests, total] = await this.pickupRequestRepository.findAndCount({
         where,
-        relations: ['store', 'parcels'],
+        relations: ['store'],
         order: { [sortBy]: order },
         skip: (page - 1) * limit,
         take: limit,
@@ -354,15 +429,17 @@ export class PickupRequestsService {
         hasPrev: page > 1,
       };
 
-      // Return only essential data for hub managers
+      // Return simplified data with pickup_count and request_code
       const items = pickupRequests.map(pr => ({
         id: pr.id,
+        request_code: pr.request_code,  // Unique code: REQ-2001
         pickup_location: pr.store?.business_address || 'N/A',
         store_name: pr.store?.business_name || 'Unknown Store',
         store_phone: pr.store?.phone_number || 'N/A',
         comment: pr.comment,
-        parcel_quantity: pr.actual_parcels || pr.estimated_parcels,
+        pickup_count: pr.estimated_parcels,  // Single field: how many to pick up
         status: pr.status,
+        assigned_rider_id: pr.assigned_rider_id,
       }));
 
       this.logger.log(`Retrieved ${items.length} pickup requests for hub ${hubId}`);
@@ -371,6 +448,109 @@ export class PickupRequestsService {
     } catch (error) {
       this.logger.error(`Failed to retrieve pickup requests for hub: ${error.message}`, error.stack);
       throw new BadRequestException('Failed to retrieve pickup requests');
+    }
+  }
+
+  /**
+   * Get completed pickups for hub (PICKED_UP status)
+   * Groups by store+date - same store on same day shows combined pickup_count
+   * 
+   * Shows pickups that riders have completed with rider info
+   */
+  async getConfirmedPickupsForHub(
+    hubId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      // Get all completed pickups (we'll group them)
+      const pickupRequests = await this.pickupRequestRepository.find({
+        where: { 
+          hub_id: hubId,
+          status: PickupRequestStatus.PICKED_UP,
+        },
+        relations: ['store', 'completedByRider', 'completedByRider.user'],
+        order: { picked_up_at: 'DESC' },
+      });
+
+      // Group by store+date
+      const grouped = new Map<string, any>();
+      
+      for (const pr of pickupRequests) {
+        const dateKey = pr.created_at.toISOString().split('T')[0]; // YYYY-MM-DD
+        const key = `${pr.store_id}-${dateKey}`;
+        
+        if (grouped.has(key)) {
+          // Increment pickup_count for existing entry
+          const existing = grouped.get(key);
+          existing.pickup_count += pr.estimated_parcels;
+          existing.request_codes.push(pr.request_code);
+          // Track all riders who completed pickups for this store+date
+          const completedRider = pr.completedByRider;
+          if (completedRider && !existing.riders.some((r: any) => r.id === completedRider.id)) {
+            existing.riders.push({
+              id: completedRider.id,
+              name: completedRider.user?.full_name || 'Unknown',
+              phone: completedRider.user?.phone || 'N/A',
+            });
+          }
+          // Keep the latest completed_at
+          if (pr.picked_up_at && pr.picked_up_at > existing.completed_at) {
+            existing.completed_at = pr.picked_up_at;
+          }
+        } else {
+          // Create new grouped entry
+          grouped.set(key, {
+            id: pr.id,
+            request_code: pr.request_code,
+            request_codes: [pr.request_code],
+            pickup_location: pr.store?.business_address || 'N/A',
+            store_name: pr.store?.business_name || 'Unknown Store',
+            store_phone: pr.store?.phone_number || 'N/A',
+            comment: pr.comment,
+            pickup_count: pr.estimated_parcels,
+            status: pr.status,
+            rider: pr.completedByRider ? {
+              id: pr.completedByRider.id,
+              name: pr.completedByRider.user?.full_name || 'Unknown',
+              phone: pr.completedByRider.user?.phone || 'N/A',
+            } : null,
+            riders: pr.completedByRider ? [{
+              id: pr.completedByRider.id,
+              name: pr.completedByRider.user?.full_name || 'Unknown',
+              phone: pr.completedByRider.user?.phone || 'N/A',
+            }] : [],
+            completed_at: pr.picked_up_at,
+            date: dateKey,
+          });
+        }
+      }
+
+      // Convert to array and sort by completed_at DESC
+      const allItems = Array.from(grouped.values()).sort((a, b) => 
+        new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+      );
+
+      // Apply pagination
+      const total = allItems.length;
+      const totalPages = Math.ceil(total / limit);
+      const items = allItems.slice((page - 1) * limit, page * limit);
+
+      const pagination: PaginationMeta = {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      };
+
+      this.logger.log(`Retrieved ${items.length} grouped completed pickups for hub ${hubId}`);
+
+      return { items, pagination };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve completed pickups: ${error.message}`, error.stack);
+      throw new BadRequestException('Failed to retrieve completed pickups');
     }
   }
 
@@ -678,62 +858,141 @@ export class PickupRequestsService {
   }
 
   /**
-   * Get rider's assigned pickup requests
+   * Group pickups by store+date and aggregate pickup_count
+   * If same store and same day, combine into single entry
+   */
+  private groupPickupsByStoreAndDate(pickups: PickupRequest[]): any[] {
+    const grouped = new Map<string, any>();
+    
+    for (const pickup of pickups) {
+      const dateKey = pickup.created_at.toISOString().split('T')[0]; // YYYY-MM-DD
+      const key = `${pickup.store_id}-${dateKey}`;
+      
+      if (grouped.has(key)) {
+        // Increment pickup_count for existing entry
+        const existing = grouped.get(key);
+        existing.pickup_count += pickup.estimated_parcels;
+        existing.request_codes.push(pickup.request_code);
+        // Keep the latest timestamp
+        if (pickup.picked_up_at && (!existing.completed_at || pickup.picked_up_at > existing.completed_at)) {
+          existing.completed_at = pickup.picked_up_at;
+        }
+      } else {
+        // Create new grouped entry
+        grouped.set(key, {
+          id: pickup.id,  // Use first pickup's ID
+          request_code: pickup.request_code,
+          request_codes: [pickup.request_code],  // Track all codes
+          store_id: pickup.store_id,
+          store: pickup.store,
+          merchant: pickup.merchant,
+          pickup_count: pickup.estimated_parcels,
+          status: pickup.status,
+          comment: pickup.comment,
+          created_at: pickup.created_at,
+          completed_at: pickup.picked_up_at,
+          assigned_rider_id: pickup.assigned_rider_id,
+          completed_by_rider_id: pickup.completed_by_rider_id,
+        });
+      }
+    }
+    
+    return Array.from(grouped.values());
+  }
+
+  /**
+   * Get rider's pickup requests (grouped by store+date)
    * 
    * Rider Pickup Section:
-   * - pending: CONFIRMED (assigned to rider)
-   * - completed: PICKED_UP
+   * - pending: CONFIRMED (assigned to rider, in progress)
+   * - completed: PICKED_UP (completed by this rider - uses completed_by_rider_id)
    * 
    * @param riderId - Rider ID
    * @param status - Specific status filter (overrides filter)
    * @param filter - Section filter: pending, completed, all
    */
   async getRiderPickups(riderId: string, status?: PickupRequestStatus, filter?: string) {
-    const where: FindOptionsWhere<PickupRequest> = {
-      assigned_rider_id: riderId,
-    };
+    let pickups: PickupRequest[] = [];
 
     // If specific status is provided, use it (takes priority)
     if (status) {
-      where.status = status;
+      pickups = await this.pickupRequestRepository.find({
+        where: { assigned_rider_id: riderId, status },
+        relations: ['store', 'merchant'],
+        order: { requested_at: 'ASC' },
+      });
     } else if (filter) {
       switch (filter) {
         case 'pending':
-          // Pickup section - Pending (assigned but not picked up)
-          where.status = PickupRequestStatus.CONFIRMED;
+          // Pickup section - Pending (assigned, in progress)
+          pickups = await this.pickupRequestRepository.find({
+            where: { assigned_rider_id: riderId, status: PickupRequestStatus.CONFIRMED },
+            relations: ['store', 'merchant'],
+            order: { requested_at: 'ASC' },
+          });
           break;
         case 'completed':
-          // Pickup section - Completed
-          where.status = PickupRequestStatus.PICKED_UP;
+          // Pickup section - Completed BY THIS RIDER
+          pickups = await this.pickupRequestRepository.find({
+            where: { completed_by_rider_id: riderId, status: PickupRequestStatus.PICKED_UP },
+            relations: ['store', 'merchant'],
+            order: { picked_up_at: 'DESC' },
+          });
           break;
         case 'all':
-          // All - no status filter
+          // All - both assigned (in progress) and completed (by this rider)
+          const assigned = await this.pickupRequestRepository.find({
+            where: { assigned_rider_id: riderId },
+            relations: ['store', 'merchant'],
+          });
+          const completed = await this.pickupRequestRepository.find({
+            where: { completed_by_rider_id: riderId, status: PickupRequestStatus.PICKED_UP },
+            relations: ['store', 'merchant'],
+          });
+          pickups = [...assigned, ...completed];
           break;
         default:
           // Default: pending pickups
-          where.status = PickupRequestStatus.CONFIRMED;
+          pickups = await this.pickupRequestRepository.find({
+            where: { assigned_rider_id: riderId, status: PickupRequestStatus.CONFIRMED },
+            relations: ['store', 'merchant'],
+            order: { requested_at: 'ASC' },
+          });
       }
     } else {
       // Default: show pending pickups
-      where.status = PickupRequestStatus.CONFIRMED;
-    }
-
-    const pickups = await this.pickupRequestRepository.find({
-      where,
+      pickups = await this.pickupRequestRepository.find({
+        where: { assigned_rider_id: riderId, status: PickupRequestStatus.CONFIRMED },
       relations: ['store', 'merchant'],
       order: { requested_at: 'ASC' },
     });
+    }
 
-    return pickups;
+    // Group by store+date and aggregate pickup_count
+    return this.groupPickupsByStoreAndDate(pickups);
   }
 
   /**
-   * Rider completes pickup
+   * Rider completes pickup with actual count
+   * 
+   * Flow:
+   * - If rider picks ALL parcels → original request marked as PICKED_UP
+   * - If rider picks SOME parcels:
+   *   - Original request: remaining parcels, status PENDING (can be reassigned)
+   *   - NEW completed request: picked parcels, status PICKED_UP (for tracking)
+   * 
+   * @param pickupId - Pickup request ID
+   * @param riderId - Rider ID
+   * @param pickedUpCount - How many parcels rider actually picked up
+   * @param notes - Optional notes from rider
+   * @returns Completed pickup request with remaining info
    */
   async riderCompletePickup(
     pickupId: string,
     riderId: string,
-  ): Promise<PickupRequest> {
+    pickedUpCount?: number,
+    notes?: string,
+  ): Promise<{ pickup: PickupRequest; remaining: number; pickedUp: number }> {
     // Find pickup request
     const pickup = await this.pickupRequestRepository.findOne({
       where: { id: pickupId },
@@ -756,12 +1015,304 @@ export class PickupRequestsService {
       );
     }
 
-    // Mark as picked up
+    const originalEstimated = pickup.estimated_parcels;
+
+    // Use provided count or default to estimated_parcels (full pickup)
+    const actualPickedCount = pickedUpCount !== undefined 
+      ? pickedUpCount 
+      : originalEstimated;
+
+    // Validate picked count
+    if (actualPickedCount < 0) {
+      throw new BadRequestException('Picked up count cannot be negative');
+    }
+
+    if (actualPickedCount > originalEstimated) {
+      throw new BadRequestException(
+        `Picked up count (${actualPickedCount}) cannot exceed estimated parcels (${originalEstimated})`,
+      );
+    }
+
+    // Calculate remaining
+    const remaining = originalEstimated - actualPickedCount;
+
+    let completedPickup: PickupRequest;
+
+    if (remaining > 0) {
+      // PARTIAL PICKUP: Create completed record + update original for remaining
+      
+      // 1. Create NEW completed pickup request for picked parcels
+      const completedRequestCode = await this.generateRequestCode();
+      
+      completedPickup = this.pickupRequestRepository.create({
+        merchant_id: pickup.merchant_id,
+        store_id: pickup.store_id,
+        hub_id: pickup.hub_id,
+        request_code: completedRequestCode,
+        estimated_parcels: actualPickedCount,
+        picked_up_count: actualPickedCount,
+        status: PickupRequestStatus.PICKED_UP,
+        picked_up_at: new Date(),
+        completed_by_rider_id: riderId,  // Track who completed it
+        comment: notes 
+          ? `Partial pickup from ${pickup.request_code}. Rider notes: ${notes}`
+          : `Partial pickup from ${pickup.request_code}`,
+        requested_at: pickup.requested_at,
+      });
+      
+      await this.pickupRequestRepository.save(completedPickup);
+      
+      // 2. Update original request with remaining parcels
+      pickup.estimated_parcels = remaining;
+      pickup.status = PickupRequestStatus.PENDING;
+      pickup.assigned_rider_id = null;
+      pickup.rider_assigned_at = null;
+      pickup.confirmed_at = null;
+      
+      if (notes) {
+        pickup.comment = pickup.comment 
+          ? `${pickup.comment}\nPartial pickup by rider: ${actualPickedCount} picked, ${remaining} remaining`
+          : `Partial pickup by rider: ${actualPickedCount} picked, ${remaining} remaining`;
+      }
+      
+      await this.pickupRequestRepository.save(pickup);
+      
+      this.logger.log(
+        `Partial pickup: Created ${completedRequestCode} for ${actualPickedCount} parcels. ` +
+        `${pickup.request_code} now has ${remaining} remaining (PENDING).`,
+      );
+      
+    } else {
+      // FULL PICKUP: Mark original as completed
     pickup.status = PickupRequestStatus.PICKED_UP;
     pickup.picked_up_at = new Date();
+      pickup.picked_up_count = actualPickedCount;
+      pickup.completed_by_rider_id = riderId;  // Track who completed it
+      pickup.assigned_rider_id = null;
+      pickup.rider_assigned_at = null;
+      pickup.confirmed_at = null;
+      
+      if (notes) {
+        pickup.comment = pickup.comment 
+          ? `${pickup.comment}\nRider notes: ${notes}` 
+          : `Rider notes: ${notes}`;
+      }
+      
+      await this.pickupRequestRepository.save(pickup);
+      completedPickup = pickup;
+      
+      this.logger.log(
+        `Full pickup: ${pickup.request_code} completed by rider ${riderId}. ` +
+        `Picked: ${actualPickedCount}`,
+      );
+    }
 
-    this.logger.log(`Pickup ${pickupId} completed by rider ${riderId}`);
+    return { pickup: completedPickup, remaining, pickedUp: actualPickedCount };
+  }
 
-    return await this.pickupRequestRepository.save(pickup);
+  /**
+   * Bulk assign pickup requests to rider (Hub Manager)
+   * 
+   * @param pickupIds - Array of pickup request IDs
+   * @param riderId - Rider ID to assign
+   * @param hubId - Hub Manager's hub ID
+   * @returns Summary of assignment results
+   */
+  async bulkAssignPickupsToRider(
+    pickupIds: string[],
+    riderId: string,
+    hubId: string,
+    notes?: string,
+  ): Promise<{ 
+    success: number; 
+    failed: number; 
+    results: { pickupId: string; success: boolean; message: string }[] 
+  }> {
+    // Verify rider exists and is active
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider not found');
+    }
+
+    if (!rider.is_active) {
+      throw new BadRequestException('Cannot assign to inactive rider');
+    }
+
+    // Verify rider belongs to the same hub
+    if (rider.hub_id !== hubId) {
+      throw new ForbiddenException('Rider does not belong to your hub');
+    }
+
+    const results: { pickupId: string; success: boolean; message: string }[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const pickupId of pickupIds) {
+      try {
+        const pickup = await this.pickupRequestRepository.findOne({
+          where: { id: pickupId },
+        });
+
+        if (!pickup) {
+          results.push({ pickupId, success: false, message: 'Pickup request not found' });
+          failedCount++;
+          continue;
+        }
+
+        if (pickup.hub_id !== hubId) {
+          results.push({ pickupId, success: false, message: 'Pickup does not belong to your hub' });
+          failedCount++;
+          continue;
+        }
+
+        if (pickup.status !== PickupRequestStatus.PENDING) {
+          results.push({ pickupId, success: false, message: `Invalid status: ${pickup.status}` });
+          failedCount++;
+          continue;
+        }
+
+        if (pickup.assigned_rider_id) {
+          results.push({ pickupId, success: false, message: 'Already assigned to a rider' });
+          failedCount++;
+          continue;
+        }
+
+        // Assign rider
+        pickup.assigned_rider_id = riderId;
+        pickup.rider_assigned_at = new Date();
+        pickup.status = PickupRequestStatus.CONFIRMED;
+        pickup.confirmed_at = new Date();
+
+        if (notes) {
+          pickup.comment = pickup.comment 
+            ? `${pickup.comment}\nAssignment notes: ${notes}` 
+            : `Assignment notes: ${notes}`;
+        }
+
+        await this.pickupRequestRepository.save(pickup);
+        results.push({ pickupId, success: true, message: 'Assigned successfully' });
+        successCount++;
+
+      } catch (error) {
+        results.push({ pickupId, success: false, message: error.message });
+        failedCount++;
+      }
+    }
+
+    this.logger.log(
+      `Bulk assign pickups to rider ${riderId}: ${successCount} success, ${failedCount} failed`,
+    );
+
+    return { success: successCount, failed: failedCount, results };
+  }
+
+  /**
+   * Get pickup requests with remaining parcels (Hub Manager)
+   * Shows pickups that were partially completed and have remaining parcels to pick up
+   * 
+   * @param hubId - Hub ID
+   * @param page - Page number
+   * @param limit - Items per page
+   */
+  async getPickupsWithRemaining(
+    hubId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const skip = (page - 1) * limit;
+
+    // Find PICKED_UP requests where picked_up_count < estimated_parcels
+    const queryBuilder = this.pickupRequestRepository
+      .createQueryBuilder('pickup')
+      .leftJoinAndSelect('pickup.store', 'store')
+      .leftJoinAndSelect('pickup.merchant', 'merchant')
+      .where('pickup.hub_id = :hubId', { hubId })
+      .andWhere('pickup.status = :status', { status: PickupRequestStatus.PICKED_UP })
+      .andWhere('pickup.picked_up_count < pickup.estimated_parcels')
+      .orderBy('pickup.picked_up_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [pickups, total] = await queryBuilder.getManyAndCount();
+
+    // Map with remaining count
+    const items = pickups.map(p => ({
+      id: p.id,
+      store_name: p.store?.business_name || 'Unknown Store',
+      store_phone: p.store?.phone_number || 'N/A',
+      pickup_location: p.store?.business_address || 'N/A',
+      estimated_parcels: p.estimated_parcels,
+      picked_up_count: p.picked_up_count,
+      remaining_count: p.estimated_parcels - p.picked_up_count,
+      status: p.status,
+      picked_up_at: p.picked_up_at,
+      comment: p.comment,
+    }));
+
+    return {
+      pickups: items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Create new pickup request for remaining parcels (Hub Manager)
+   * Use this to create a new pickup request from an existing one with remaining parcels
+   * 
+   * @param originalPickupId - Original pickup request ID
+   * @param hubId - Hub Manager's hub ID
+   */
+  async createPickupForRemaining(
+    originalPickupId: string,
+    hubId: string,
+  ): Promise<PickupRequest> {
+    const original = await this.pickupRequestRepository.findOne({
+      where: { id: originalPickupId },
+      relations: ['store'],
+    });
+
+    if (!original) {
+      throw new NotFoundException('Original pickup request not found');
+    }
+
+    if (original.hub_id !== hubId) {
+      throw new ForbiddenException('Pickup does not belong to your hub');
+    }
+
+    const remaining = original.estimated_parcels - original.picked_up_count;
+
+    if (remaining <= 0) {
+      throw new BadRequestException('No remaining parcels to create pickup for');
+    }
+
+    // Create new pickup request for remaining parcels with auto-generated request_code
+    const requestCode = await this.generateRequestCode();
+    
+    const newPickup = this.pickupRequestRepository.create({
+      merchant_id: original.merchant_id,
+      store_id: original.store_id,
+      hub_id: original.hub_id,
+      request_code: requestCode,
+      estimated_parcels: remaining,
+      actual_parcels: 0,
+      picked_up_count: 0,
+      comment: `Remaining from pickup ${original.request_code || original.id}`,
+      status: PickupRequestStatus.PENDING,
+      requested_at: new Date(),
+    });
+
+    const saved = await this.pickupRequestRepository.save(newPickup);
+
+    this.logger.log(
+      `Created pickup ${requestCode} for ${remaining} remaining parcels from ${original.request_code || originalPickupId}`,
+    );
+
+    return saved;
   }
 }
