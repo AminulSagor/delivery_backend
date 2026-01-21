@@ -17,6 +17,10 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelStatus } from '../parcels/entities/parcel.entity';
 import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum';
 import * as bcrypt from 'bcrypt';
+import { CreateEmergencyDto } from './dto/create-emergency.dto';
+import { EmergencyAlert } from './entities/emergency-alert.entity';
+import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
+// import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
 
 @Injectable()
 export class RidersService {
@@ -31,6 +35,8 @@ export class RidersService {
     private readonly pickupRequestRepository: Repository<PickupRequest>,
     @InjectRepository(Hub)
     private readonly hubRepository: Repository<Hub>,
+    @InjectRepository(EmergencyAlert)
+    private readonly alertRepository: Repository<EmergencyAlert>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -161,7 +167,9 @@ export class RidersService {
    */
   async createByAdmin(createRiderDto: CreateRiderDto): Promise<Rider> {
     if (!createRiderDto.hub_id) {
-      throw new BadRequestException('hub_id is required when creating rider as admin');
+      throw new BadRequestException(
+        'hub_id is required when creating rider as admin',
+      );
     }
 
     // Validate hub exists in database
@@ -343,7 +351,10 @@ export class RidersService {
     const rider = await this.findOne(id);
 
     // Check NID uniqueness if being updated
-    if (updateRiderDto.nid_number && updateRiderDto.nid_number !== rider.nid_number) {
+    if (
+      updateRiderDto.nid_number &&
+      updateRiderDto.nid_number !== rider.nid_number
+    ) {
       const existingNID = await this.riderRepository.findOne({
         where: { nid_number: updateRiderDto.nid_number },
       });
@@ -354,7 +365,11 @@ export class RidersService {
     }
 
     // Update user fields if provided
-    if (updateRiderDto.full_name || updateRiderDto.phone || updateRiderDto.email) {
+    if (
+      updateRiderDto.full_name ||
+      updateRiderDto.phone ||
+      updateRiderDto.email
+    ) {
       const user = await this.userRepository.findOne({
         where: { id: rider.user_id },
       });
@@ -442,7 +457,7 @@ export class RidersService {
 
   /**
    * Get rider dashboard statistics
-   * 
+   *
    * Rider Workflow:
    * 1. PICKUPS: Pickup requests assigned to rider (from merchants)
    *    - Status: CONFIRMED pickup requests
@@ -466,7 +481,7 @@ export class RidersService {
 
     // ===== PICKUPS: Pickup requests assigned to this rider (CONFIRMED status) =====
     const pendingPickups = await this.pickupRequestRepository.count({
-      where: { 
+      where: {
         assigned_rider_id: riderId,
         status: PickupRequestStatus.CONFIRMED,
       },
@@ -475,8 +490,8 @@ export class RidersService {
     // ===== DELIVERIES: Pending (ASSIGNED_TO_RIDER) =====
     // ASSIGNED_TO_RIDER = parcel assigned by hub, ready for rider to deliver
     const pendingDeliveries = await this.parcelRepository.count({
-      where: { 
-        assigned_rider_id: riderId, 
+      where: {
+        assigned_rider_id: riderId,
         status: ParcelStatus.ASSIGNED_TO_RIDER,
       },
     });
@@ -494,7 +509,10 @@ export class RidersService {
     const pendingReturns = await this.parcelRepository.count({
       where: [
         { assigned_rider_id: riderId, status: ParcelStatus.RETURNED },
-        { assigned_rider_id: riderId, status: ParcelStatus.DELIVERY_RESCHEDULED },
+        {
+          assigned_rider_id: riderId,
+          status: ParcelStatus.DELIVERY_RESCHEDULED,
+        },
       ],
     });
 
@@ -520,5 +538,32 @@ export class RidersService {
       completed_returns: completedReturns,
       total_returns: pendingReturns + completedReturns,
     };
+  }
+
+  /**
+   * Rider triggers an emergency alert
+   */
+
+  async createAlert(
+    riderId: string,
+    dto: CreateEmergencyDto,
+  ): Promise<EmergencyAlert> {
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+    });
+    if (!rider) throw new NotFoundException('Rider not found');
+
+    const alert = this.alertRepository.create({
+      rider_id: riderId,
+      hub_id: rider.hub_id, // Auto-route to rider's current hub
+      type: dto.type,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      location_address: dto.location_address,
+      description: dto.description,
+      status: EmergencyStatus.PENDING,
+    });
+
+    return await this.alertRepository.save(alert);
   }
 }

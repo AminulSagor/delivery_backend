@@ -47,6 +47,11 @@ import {
   toParcelListItem,
   toParcelActionResponse,
 } from '../common/interfaces/responses.interface';
+import {
+  BulkResolveReportDto,
+  ResolveReportDto,
+} from './dto/resolve-report.dto';
+import { ParcelReportQueryDto } from './dto/parcel-report-query.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -131,14 +136,14 @@ export class HubsController {
 
   /**
    * Get delivery outcomes (Hub Manager)
-   * 
+   *
    * PURPOSE: View parcels with delivery outcomes that need attention:
    * - PARTIAL_DELIVERY: Partial items delivered, may need follow-up
    * - EXCHANGE: Items exchanged, need processing
    * - DELIVERY_RESCHEDULED: Customer requested later delivery
    * - PAID_RETURN: Customer refused but paid return fee
    * - RETURNED: Customer refused, parcel coming back
-   * 
+   *
    * Filters: status, zone, merchantId
    * Pagination: page (default 1), limit (default 10, max 100)
    */
@@ -166,7 +171,7 @@ export class HubsController {
 
   /**
    * Get rescheduled deliveries (Hub Manager)
-   * 
+   *
    * PURPOSE: View parcels with DELIVERY_RESCHEDULED status
    * These need to be prepared for redelivery (reset to IN_HUB)
    */
@@ -193,7 +198,7 @@ export class HubsController {
 
   /**
    * Mark parcel as RETURN_TO_MERCHANT (Hub Manager)
-   * 
+   *
    * Creates a NEW return parcel to track the return journey to merchant.
    * Use this for delivery outcomes: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE
    */
@@ -205,7 +210,11 @@ export class HubsController {
     @CurrentUser() user: any,
     @Body('notes') notes?: string,
   ) {
-    const result = await this.parcelsService.markReturnToMerchant(id, user.hubId, notes);
+    const result = await this.parcelsService.markReturnToMerchant(
+      id,
+      user.hubId,
+      notes,
+    );
 
     return {
       success: true,
@@ -223,13 +232,14 @@ export class HubsController {
           customer_address: result.return_parcel.customer_address,
         },
       },
-      message: 'Return parcel created. Assign to rider for delivery back to merchant.',
+      message:
+        'Return parcel created. Assign to rider for delivery back to merchant.',
     };
   }
 
   /**
    * Prepare rescheduled parcel for redelivery (Hub Manager)
-   * 
+   *
    * Resets DELIVERY_RESCHEDULED → IN_HUB so it can be assigned to rider again
    */
   @Patch('parcels/:id/prepare-redelivery')
@@ -239,7 +249,10 @@ export class HubsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.prepareForRedelivery(id, user.hubId);
+    const parcel = await this.parcelsService.prepareForRedelivery(
+      id,
+      user.hubId,
+    );
 
     return {
       success: true,
@@ -348,11 +361,12 @@ export class HubsController {
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
   ) {
-    const { parcels, total } = await this.parcelsService.getParcelsForAssignment(
-      user.hubId,
-      parseInt(page),
-      parseInt(limit),
-    );
+    const { parcels, total } =
+      await this.parcelsService.getParcelsForAssignment(
+        user.hubId,
+        parseInt(page),
+        parseInt(limit),
+      );
 
     return {
       success: true,
@@ -381,7 +395,11 @@ export class HubsController {
     @Body() assignDto: AssignParcelToRiderDto,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.assignToRider(id, assignDto, user.hubId);
+    const parcel = await this.parcelsService.assignToRider(
+      id,
+      assignDto,
+      user.hubId,
+    );
     return {
       success: true,
       data: toParcelActionResponse(parcel),
@@ -450,7 +468,11 @@ export class HubsController {
     @Body() transferDto: TransferParcelDto,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.transferParcelToHub(id, transferDto, user.hubId);
+    const parcel = await this.parcelsService.transferParcelToHub(
+      id,
+      transferDto,
+      user.hubId,
+    );
     return {
       success: true,
       data: toParcelActionResponse(parcel),
@@ -491,7 +513,10 @@ export class HubsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.acceptIncomingParcel(id, user.hubId);
+    const parcel = await this.parcelsService.acceptIncomingParcel(
+      id,
+      user.hubId,
+    );
     return {
       success: true,
       data: toParcelActionResponse(parcel),
@@ -519,6 +544,91 @@ export class HubsController {
       success: true,
       data: result,
       message: 'Outgoing parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * 1, 2, 5. Get List of Parcel Reports (Search, Filter, Pagination)
+   */
+  @Get('parcels/reports')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getParcelReports(
+    @CurrentUser() user: any,
+    @Query() query: ParcelReportQueryDto,
+  ) {
+    const { data, total } = await this.parcelsService.getParcelReports(
+      user.hubId,
+      query,
+    );
+
+    return {
+      success: true,
+      data: data,
+      pagination: {
+        total,
+        page: parseInt(query.page || '1'),
+        limit: parseInt(query.limit || '10'),
+        totalPages: Math.ceil(total / parseInt(query.limit || '10')),
+      },
+      message: 'Parcel reports retrieved successfully',
+    };
+  }
+
+  /**
+   * Get Single Parcel Report Details
+   */
+  @Get('parcels/reports/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getSingleParcelReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const report = await this.parcelsService.getParcelReportById(
+      user.hubId,
+      id,
+    );
+
+    return {
+      success: true,
+      data: report,
+      message: 'Parcel report details retrieved successfully',
+    };
+  }
+
+  /**
+   * 3. Update Status (Resolve Single Report)
+   */
+  @Patch('parcels/reports/:id/resolve')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async resolveParcelReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveReportDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.parcelsService.resolveReport(id, dto, user.hubId);
+    return {
+      success: true,
+      message: 'Parcel report resolved successfully',
+    };
+  }
+
+  /**
+   * 4. Bulk Action (Resolve Multiple)
+   */
+  @Post('parcels/reports/bulk-resolve')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkResolveParcelReports(
+    @Body() dto: BulkResolveReportDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.parcelsService.bulkResolveReports(dto, user.hubId);
+    return {
+      success: true,
+      message: `${dto.parcel_ids.length} parcel reports resolved successfully`,
     };
   }
 
@@ -644,7 +754,7 @@ export class HubsController {
 
   /**
    * Get top merchant and successful parcels count (Hub Manager)
-   * 
+   *
    * Returns the #1 merchant with most successful parcels in this hub
    * along with total successful parcels count for the hub
    */

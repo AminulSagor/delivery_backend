@@ -32,6 +32,9 @@ import {
   toParcelActionResponse,
   toPickupRequestListItem,
 } from '../common/interfaces/responses.interface';
+// import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
+import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
+import { CreateEmergencyDto } from './dto/create-emergency.dto';
 
 @Controller('riders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -152,9 +155,9 @@ export class RidersController {
 
   /**
    * PICKUP SECTION - Pending & Completed tabs
-   * 
+   *
    * Groups by store+date - same store on same day shows combined pickup_count
-   * 
+   *
    * ?tab=pending   → CONFIRMED (assigned to rider, needs to pickup from merchant)
    * ?tab=completed → PICKED_UP (completed by this rider)
    * ?tab=confirmed → alias for completed
@@ -174,26 +177,32 @@ export class RidersController {
     } else {
       filter = 'pending';
     }
-    
+
     // Returns grouped pickups (same store+date combined)
-    const groupedPickups = await this.pickupRequestsService.getRiderPickups(user.riderId, undefined, filter);
+    const groupedPickups = await this.pickupRequestsService.getRiderPickups(
+      user.riderId,
+      undefined,
+      filter,
+    );
 
     // Format response
     const data = groupedPickups.map((pickup: any) => ({
       id: pickup.id,
       request_code: pickup.request_code,
-      request_codes: pickup.request_codes,  // All request codes in this group
+      request_codes: pickup.request_codes, // All request codes in this group
       pickup_count: pickup.pickup_count,
       status: pickup.status,
       comment: pickup.comment,
       created_at: pickup.created_at,
       completed_at: pickup.completed_at,
-      store: pickup.store ? {
-        id: pickup.store.id,
-        business_name: pickup.store.business_name,
-        phone_number: pickup.store.phone_number,
-        business_address: pickup.store.business_address,
-      } : null,
+      store: pickup.store
+        ? {
+            id: pickup.store.id,
+            business_name: pickup.store.business_name,
+            phone_number: pickup.store.phone_number,
+            business_address: pickup.store.business_address,
+          }
+        : null,
     }));
 
     return {
@@ -208,7 +217,7 @@ export class RidersController {
    * DELIVERY SECTION - Pending & Completed tabs
    * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
    * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
-   * 
+   *
    * Flow: Hub assigns parcel → Rider initiates delivery → OTP verification → Done
    */
   @Get('deliveries')
@@ -217,7 +226,10 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query('tab') tab: 'pending' | 'completed' = 'pending',
   ) {
-    const parcels = await this.parcelsService.getRiderDeliveries(user.riderId, tab);
+    const parcels = await this.parcelsService.getRiderDeliveries(
+      user.riderId,
+      tab,
+    );
 
     return {
       success: true,
@@ -238,7 +250,10 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query('tab') tab: 'pending' | 'completed' = 'pending',
   ) {
-    const parcels = await this.parcelsService.getRiderReturns(user.riderId, tab);
+    const parcels = await this.parcelsService.getRiderReturns(
+      user.riderId,
+      tab,
+    );
 
     return {
       success: true,
@@ -256,7 +271,11 @@ export class RidersController {
     @CurrentUser() user: any,
     @Query() query: RiderParcelQueryDto,
   ) {
-    const parcels = await this.parcelsService.getRiderParcels(user.riderId, query.status, query.filter);
+    const parcels = await this.parcelsService.getRiderParcels(
+      user.riderId,
+      query.status,
+      query.filter,
+    );
 
     return {
       success: true,
@@ -287,7 +306,10 @@ export class RidersController {
    */
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async update(@Param('id') id: string, @Body() updateRiderDto: UpdateRiderDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateRiderDto: UpdateRiderDto,
+  ) {
     const rider = await this.ridersService.update(id, updateRiderDto);
 
     return {
@@ -339,7 +361,10 @@ export class RidersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.riderAcceptParcel(id, user.riderId);
+    const parcel = await this.parcelsService.riderAcceptParcel(
+      id,
+      user.riderId,
+    );
 
     return {
       success: true,
@@ -358,7 +383,10 @@ export class RidersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
-    const parcel = await this.parcelsService.getParcelForDelivery(id, user.riderId);
+    const parcel = await this.parcelsService.getParcelForDelivery(
+      id,
+      user.riderId,
+    );
 
     return {
       success: true,
@@ -372,7 +400,8 @@ export class RidersController {
         cod_amount: parcel.cod_amount,
         total_charge: parcel.total_charge,
       },
-      message: 'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
+      message:
+        'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
     };
   }
 
@@ -397,6 +426,23 @@ export class RidersController {
       success: true,
       data: toParcelActionResponse(parcel),
       message: 'Parcel returned to hub successfully',
+    };
+  }
+
+  // ===== RIDER SUPPORT ENDPOINTS =====
+
+  @Post('rider-support/emergency')
+  @Roles(UserRole.RIDER)
+  @HttpCode(HttpStatus.CREATED)
+  async triggerEmergency(
+    @Body() dto: CreateEmergencyDto,
+    @CurrentUser() user: any,
+  ) {
+    const alert = await this.ridersService.createAlert(user.riderId, dto);
+    return {
+      success: true,
+      data: alert,
+      message: 'Emergency alert sent! Support team has been notified.',
     };
   }
 }
