@@ -17,4 +17,3 @@ export class SyncParcelFields1768803889876 implements MigrationInterface {
     // No-op
   }
 }
-
