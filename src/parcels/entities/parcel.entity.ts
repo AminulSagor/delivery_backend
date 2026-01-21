@@ -86,6 +86,7 @@ export enum PaymentStatus {
 
 @Entity('parcels')
 @Index(['store_id', 'status'])
+@Index(['parcel_tx_id'], { unique: true })
 export class Parcel {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -125,6 +126,9 @@ export class Parcel {
   // ===== TRACKING & IDENTIFICATION =====
   @Column({ type: 'varchar', length: 50, unique: true })
   tracking_number: string;
+
+  @Column({ type: 'varchar', length: 20, unique: true, nullable: true })
+  parcel_tx_id: string | null; // Display ID like #139679
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   merchant_order_id: string | null;
@@ -273,6 +277,10 @@ export class Parcel {
 
   @Column({ type: 'timestamp', nullable: true })
   out_for_delivery_at: Date | null;
+
+  // ===== RESCHEDULE TRACKING =====
+  @Column({ type: 'smallint', default: 0 })
+  reschedule_count: number;
 
   // ===== SPECIAL INSTRUCTIONS & NOTES =====
   @Column({ type: 'text', nullable: true })

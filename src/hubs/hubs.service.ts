@@ -440,6 +440,7 @@ export class HubsService {
 
         return {
           parcel_id: dv.parcel_id,
+          parcel_tx_id: dv.parcel?.parcel_tx_id || null,
           tracking_number: dv.parcel?.tracking_number || 'N/A',
           status: dv.selected_status,
           collected_amount: Number(dv.collected_amount || 0),

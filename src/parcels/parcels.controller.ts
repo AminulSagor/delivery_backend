@@ -100,6 +100,7 @@ export class ParcelsController {
     );
     return {
       id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id,
       tracking_number: parcel.tracking_number,
       total_charge: parcel.total_charge,
       receivable_amount: parcel.receivable_amount,
@@ -263,6 +264,7 @@ export class ParcelsController {
     );
     return {
       id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id,
       tracking_number: parcel.tracking_number,
       message: 'Parcel updated successfully',
     };

@@ -148,6 +148,40 @@ export class ParcelsService {
     return trackingNumber;
   }
 
+  /**
+   * Generate unique parcel_tx_id for display purposes
+   * Format: #XXXXXX (e.g., #139679)
+   */
+  private async generateParcelTxId(retryCount = 0): Promise<string> {
+    // Get the highest existing parcel_tx_id number
+    const result = await this.parcelRepository
+      .createQueryBuilder('parcel')
+      .select('MAX(CAST(SUBSTRING(parcel.parcel_tx_id FROM 2) AS INTEGER))', 'maxId')
+      .where('parcel.parcel_tx_id IS NOT NULL')
+      .getRawOne();
+    
+    const maxId = result?.maxId || 100000; // Start from 100001 if no parcels exist
+    const newId = maxId + 1 + retryCount;
+    const txId = `#${newId}`;
+    
+    // Check if tx_id already exists (race condition protection)
+    const existing = await this.parcelRepository.findOne({
+      where: { parcel_tx_id: txId },
+      select: ['id'],
+    });
+    
+    if (existing) {
+      if (retryCount >= 10) {
+        // Fallback to timestamp-based ID after 10 retries
+        const timestamp = Date.now().toString().slice(-6);
+        return `#${timestamp}`;
+      }
+      return this.generateParcelTxId(retryCount + 1);
+    }
+    
+    return txId;
+  }
+
   private determinePricingZone(coverageArea: CoverageArea | null): PricingZone {
     if (!coverageArea) return PricingZone.OUTSIDE_DHAKA;
     if (coverageArea.division === 'Dhaka') {
@@ -1034,11 +1068,13 @@ export class ParcelsService {
         );
       }
       let trackingNumber;
+      let parcelTxId;
       try {
         trackingNumber = await this.generateTrackingNumber();
+        parcelTxId = await this.generateParcelTxId();
       } catch (error) {
         this.logger.error(
-          `[TRACKING NUMBER ERROR] ${error.message}`,
+          `[TRACKING/TX_ID ERROR] ${error.message}`,
           error.stack,
         );
         throw new InternalServerErrorException(
@@ -1065,6 +1101,7 @@ export class ParcelsService {
         merchant_order_id: createParcelDto.merchant_order_id, // From frontend
         customer_id: customer.id,
         tracking_number: trackingNumber,
+        parcel_tx_id: parcelTxId, // Display ID like #139679
         pickup_request_id: pickupRequest?.id || null, // Phase 2: Link to pickup request
         status: ParcelStatus.PENDING,
         payment_status: PaymentStatus.UNPAID,
@@ -1660,6 +1697,7 @@ export class ParcelsService {
       // Return minimal data for hub managers
       const items = parcels.map((parcel) => ({
         id: parcel.id,
+        parcel_tx_id: parcel.parcel_tx_id,
         tracking_number: parcel.tracking_number,
         merchant_order_id: parcel.merchant_order_id,
         store_name: parcel.store?.business_name || 'N/A',
@@ -1774,6 +1812,7 @@ export class ParcelsService {
     failed: number;
     results: Array<{
       parcel_id: string;
+      parcel_tx_id?: string | null;
       tracking_number?: string;
       success: boolean;
       error?: string;
@@ -1781,6 +1820,7 @@ export class ParcelsService {
   }> {
     const results: Array<{
       parcel_id: string;
+      parcel_tx_id?: string | null;
       tracking_number?: string;
       success: boolean;
       error?: string;
@@ -1809,6 +1849,7 @@ export class ParcelsService {
         if (!parcel.store || parcel.store.hub_id !== hubId) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
             error: 'Parcel does not belong to your hub',
@@ -1824,6 +1865,7 @@ export class ParcelsService {
         ) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
             error: `Invalid status: ${parcel.status}. Must be PENDING or PICKED_UP`,
@@ -1845,6 +1887,7 @@ export class ParcelsService {
 
         results.push({
           parcel_id: parcelId,
+          parcel_tx_id: parcel.parcel_tx_id,
           tracking_number: parcel.tracking_number,
           success: true,
         });
@@ -2087,10 +2130,11 @@ export class ParcelsService {
       throw new ForbiddenException('You can only assign parcels from your hub');
     }
 
-    // Verify parcel status is IN_HUB
-    if (parcel.status !== ParcelStatus.IN_HUB) {
+    // Verify parcel status is IN_HUB or DELIVERY_RESCHEDULED
+    const assignableStatuses = [ParcelStatus.IN_HUB, ParcelStatus.DELIVERY_RESCHEDULED];
+    if (!assignableStatuses.includes(parcel.status)) {
       throw new BadRequestException(
-        `Parcel must be in IN_HUB status. Current status: ${parcel.status}`,
+        `Parcel must be in IN_HUB or DELIVERY_RESCHEDULED status. Current status: ${parcel.status}`,
       );
     }
 
@@ -2120,11 +2164,18 @@ export class ParcelsService {
     }
 
     // Assign parcel to rider - use update to avoid relation loading issues
-    await this.parcelRepository.update(parcelId, {
+    // Increment reschedule_count if parcel was in DELIVERY_RESCHEDULED status
+    const updateData: any = {
       assigned_rider_id: rider.id,
       assigned_at: new Date(),
       status: ParcelStatus.ASSIGNED_TO_RIDER,
-    });
+    };
+
+    if (parcel.status === ParcelStatus.DELIVERY_RESCHEDULED) {
+      updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
+    }
+
+    await this.parcelRepository.update(parcelId, updateData);
 
     // Reload parcel with updated data
     const updatedParcel = await this.parcelRepository.findOne({
@@ -2159,6 +2210,7 @@ export class ParcelsService {
     failed: number;
     results: Array<{
       parcel_id: string;
+      parcel_tx_id?: string | null;
       tracking_number?: string;
       success: boolean;
       error?: string;
@@ -2197,6 +2249,7 @@ export class ParcelsService {
 
     const results: Array<{
       parcel_id: string;
+      parcel_tx_id?: string | null;
       tracking_number?: string;
       success: boolean;
       error?: string;
@@ -2228,6 +2281,7 @@ export class ParcelsService {
         if (!parcel.merchant_id) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
             error: 'Parcel has invalid merchant data',
@@ -2240,6 +2294,7 @@ export class ParcelsService {
         if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
             error: 'Parcel is not in your hub',
@@ -2248,13 +2303,15 @@ export class ParcelsService {
           continue;
         }
 
-        // Verify parcel status is IN_HUB
-        if (parcel.status !== ParcelStatus.IN_HUB) {
+        // Verify parcel status is IN_HUB or DELIVERY_RESCHEDULED
+        const assignableStatuses = [ParcelStatus.IN_HUB, ParcelStatus.DELIVERY_RESCHEDULED];
+        if (!assignableStatuses.includes(parcel.status)) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
-            error: `Parcel must be in IN_HUB status. Current status: ${parcel.status}`,
+            error: `Parcel must be in IN_HUB or DELIVERY_RESCHEDULED status. Current status: ${parcel.status}`,
           });
           failedCount++;
           continue;
@@ -2264,6 +2321,7 @@ export class ParcelsService {
         if (parcel.assigned_rider_id) {
           results.push({
             parcel_id: parcelId,
+            parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
             error: 'Parcel is already assigned to a rider',
@@ -2273,14 +2331,22 @@ export class ParcelsService {
         }
 
         // Assign parcel to rider
-        await this.parcelRepository.update(parcelId, {
+        // Increment reschedule_count if parcel was in DELIVERY_RESCHEDULED status
+        const updateData: any = {
           assigned_rider_id: rider.id,
           assigned_at: new Date(),
           status: ParcelStatus.ASSIGNED_TO_RIDER,
-        });
+        };
+
+        if (parcel.status === ParcelStatus.DELIVERY_RESCHEDULED) {
+          updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
+        }
+
+        await this.parcelRepository.update(parcelId, updateData);
 
         results.push({
           parcel_id: parcelId,
+          parcel_tx_id: parcel.parcel_tx_id,
           tracking_number: parcel.tracking_number,
           success: true,
         });
@@ -2930,7 +2996,79 @@ export class ParcelsService {
     queryBuilder.skip(skip).take(limit);
     const parcels = await queryBuilder.getMany();
 
-    const items = parcels.map((parcel) => this.toDeliveryOutcomeItem(parcel));
+    // Add reschedule_count only for rescheduled deliveries endpoint
+    const items = parcels.map((parcel) => ({
+      ...this.toDeliveryOutcomeItem(parcel),
+      reschedule_count: parcel.reschedule_count || 0,
+    }));
+
+    return {
+      parcels: items,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
+   * Get return to merchant parcels for Hub Manager
+   * These are original parcels marked for return to merchant
+   * Also includes the linked return parcel information
+   */
+  async getReturnToMerchantParcels(
+    hubId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.status = :status', {
+        status: ParcelStatus.RETURN_TO_MERCHANT,
+      })
+      .orderBy('parcel.updated_at', 'DESC');
+
+    const total = await queryBuilder.getCount();
+    queryBuilder.skip(skip).take(limit);
+    const parcels = await queryBuilder.getMany();
+
+    // Get the linked return parcels for each original parcel
+    const parcelIds = parcels.map((p) => p.id);
+    const returnParcels = parcelIds.length > 0
+      ? await this.parcelRepository.find({
+          where: {
+            original_parcel_id: In(parcelIds),
+            is_return_parcel: true,
+          },
+          select: ['id', 'parcel_tx_id', 'tracking_number', 'status', 'original_parcel_id'],
+        })
+      : [];
+
+    // Create a map for quick lookup
+    const returnParcelMap = new Map(
+      returnParcels.map((rp) => [rp.original_parcel_id, rp]),
+    );
+
+    // Transform parcels with return parcel info
+    const items = parcels.map((parcel) => {
+      const baseItem = this.toDeliveryOutcomeItem(parcel);
+      const returnParcel = returnParcelMap.get(parcel.id);
+      
+      return {
+        ...baseItem,
+        return_parcel: returnParcel
+          ? {
+              id: returnParcel.id,
+              parcel_tx_id: returnParcel.parcel_tx_id,
+              tracking_number: returnParcel.tracking_number,
+              status: returnParcel.status,
+            }
+          : null,
+      };
+    });
 
     return {
       parcels: items,
@@ -2968,37 +3106,82 @@ export class ParcelsService {
       );
     }
 
-    // Mark original parcel as RETURN_TO_MERCHANT
-    originalParcel.status = ParcelStatus.RETURN_TO_MERCHANT;
-    if (notes) {
-      originalParcel.admin_notes = notes;
+    // Get merchant_id (User ID) - parcel.merchant_id references User, not Merchant entity
+    let merchantId: string | null = originalParcel.merchant_id;
+    
+    // Fallback: Get user_id from store's merchant
+    if (!merchantId && originalParcel.store?.merchant_id) {
+      // Query merchant to get user_id
+      const merchant = await this.merchantRepository.findOne({
+        where: { id: originalParcel.store.merchant_id },
+      });
+      merchantId = merchant?.user_id || null;
     }
-    await this.parcelRepository.save(originalParcel);
+    
+    if (!merchantId) {
+      this.logger.error(
+        `[RETURN TO MERCHANT] No merchant found for parcel ${parcelId}. ` +
+        `parcel.merchant_id: ${originalParcel.merchant_id}, ` +
+        `store.merchant_id: ${originalParcel.store?.merchant_id}`,
+      );
+      throw new BadRequestException(
+        'Cannot create return parcel: No merchant found for this parcel',
+      );
+    }
+    
+    // Update original parcel using QueryBuilder to avoid relationship issues
+    const updateData: any = {
+      status: ParcelStatus.RETURN_TO_MERCHANT,
+    };
+    
+    // Fix merchant_id if it was null
+    if (!originalParcel.merchant_id) {
+      updateData.merchant_id = merchantId;
+    }
+    
+    if (notes) {
+      updateData.admin_notes = notes;
+    }
+    
+    await this.parcelRepository
+      .createQueryBuilder()
+      .update()
+      .set(updateData)
+      .where('id = :id', { id: parcelId })
+      .execute();
+    
+    // Update local object for return
+    originalParcel.status = ParcelStatus.RETURN_TO_MERCHANT;
+    if (!originalParcel.merchant_id) {
+      originalParcel.merchant_id = merchantId;
+    }
 
     // Create a NEW return parcel to track the return journey
     const returnTrackingNumber = await this.generateReturnTrackingNumber(
       originalParcel.tracking_number,
     );
+    const returnParcelTxId = await this.generateParcelTxId();
 
     const returnParcel = this.parcelRepository.create({
       // Tracking
       tracking_number: returnTrackingNumber,
+      parcel_tx_id: returnParcelTxId, // Display ID like #139679
       merchant_order_id: originalParcel.merchant_order_id,
 
       // Link to original
       original_parcel_id: originalParcel.id,
       is_return_parcel: true,
 
-      // Merchant info
-      merchant_id: originalParcel.merchant_id,
+      // Merchant info (use resolved merchantId)
+      merchant_id: merchantId,
       store_id: originalParcel.store_id,
 
       // For return: pickup from customer address, deliver to merchant/store
       delivery_area: originalParcel.customer_address,
       customer_address: originalParcel.delivery_area,
 
-      // Customer info (original merchant becomes recipient)
-      customer_name: originalParcel.store?.business_name || 'Merchant',
+      // Customer info (original merchant/store becomes recipient)
+      customer_name: originalParcel.store?.business_name || originalParcel.merchant?.full_name || 'Merchant',
       customer_phone:
         originalParcel.store?.phone_number ||
         originalParcel.merchant?.phone ||
@@ -3040,6 +3223,187 @@ export class ParcelsService {
     return {
       original_parcel: originalParcel,
       return_parcel: returnParcel,
+    };
+  }
+
+  /**
+   * Bulk mark parcels as RETURN_TO_MERCHANT
+   * Creates return parcels for each original parcel
+   */
+  async bulkMarkReturnToMerchant(
+    parcelIds: string[],
+    hubId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+      return_parcel?: {
+        id: string;
+        parcel_tx_id: string | null;
+        tracking_number: string;
+      };
+    }>;
+  }> {
+    const results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+      return_parcel?: {
+        id: string;
+        parcel_tx_id: string | null;
+        tracking_number: string;
+      };
+    }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const parcelId of parcelIds) {
+      try {
+        const result = await this.markReturnToMerchant(parcelId, hubId);
+        
+        results.push({
+          parcel_id: parcelId,
+          parcel_tx_id: result.original_parcel.parcel_tx_id,
+          tracking_number: result.original_parcel.tracking_number,
+          success: true,
+          return_parcel: {
+            id: result.return_parcel.id,
+            parcel_tx_id: result.return_parcel.parcel_tx_id,
+            tracking_number: result.return_parcel.tracking_number,
+          },
+        });
+        successCount++;
+      } catch (error) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: error.message || 'Unknown error',
+        });
+        failedCount++;
+      }
+    }
+
+    this.logger.log(
+      `[BULK RETURN TO MERCHANT] Hub: ${hubId}, Success: ${successCount}, Failed: ${failedCount}`,
+    );
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
+    };
+  }
+
+  /**
+   * Hub Manager marks parcel as DELIVERY_RESCHEDULED
+   * Used to reschedule delivery from delivery outcomes list
+   * 
+   * Allowed from: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE, RETURNED_TO_HUB, IN_HUB
+   */
+  async markAsRescheduled(parcelId: string, hubId: string) {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, current_hub_id: hubId },
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found in your hub');
+    }
+
+    const allowedStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.IN_HUB,
+    ];
+
+    if (!allowedStatuses.includes(parcel.status)) {
+      throw new BadRequestException(
+        `Cannot reschedule parcel. Current status: ${parcel.status}`,
+      );
+    }
+
+    // Update to DELIVERY_RESCHEDULED and clear rider assignment
+    // Note: reschedule_count is incremented when assigned to rider, not here
+    parcel.status = ParcelStatus.DELIVERY_RESCHEDULED;
+    parcel.assigned_rider_id = null;
+    parcel.assigned_at = null;
+    parcel.rider_accepted_at = null;
+    parcel.out_for_delivery_at = null;
+
+    await this.parcelRepository.save(parcel);
+
+    this.logger.log(
+      `[RESCHEDULE DELIVERY] Parcel: ${parcel.tracking_number}, Hub: ${hubId}`,
+    );
+
+    return parcel;
+  }
+
+  /**
+   * Bulk mark parcels as DELIVERY_RESCHEDULED
+   */
+  async bulkMarkAsRescheduled(
+    parcelIds: string[],
+    hubId: string,
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const parcelId of parcelIds) {
+      try {
+        const parcel = await this.markAsRescheduled(parcelId, hubId);
+        
+        results.push({
+          parcel_id: parcelId,
+          parcel_tx_id: parcel.parcel_tx_id,
+          tracking_number: parcel.tracking_number,
+          success: true,
+        });
+        successCount++;
+      } catch (error) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: error.message || 'Unknown error',
+        });
+        failedCount++;
+      }
+    }
+
+    this.logger.log(
+      `[BULK RESCHEDULE DELIVERY] Hub: ${hubId}, Success: ${successCount}, Failed: ${failedCount}`,
+    );
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
     };
   }
 
@@ -3128,33 +3492,32 @@ export class ParcelsService {
 
     return {
       parcel_id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id || null,
       tracking_number: parcel.tracking_number,
-      original_parcel_id: parcel.original_parcel_id || null,
-      is_return_parcel: parcel.is_return_parcel || false,
       status: parcel.status,
       reason: parcel.return_reason || null,
 
-      destination: {
-        address: parcel.customer_address,
-        zone: zoneInfo,
-      },
+      destination: parcel.customer_address,
+      zone: zoneInfo,
 
-      merchant: {
+      store: {
         name:
           parcel.store?.business_name || parcel.merchant?.full_name || 'N/A',
         phone: parcel.store?.phone_number || parcel.merchant?.phone || 'N/A',
       },
 
-      cod: {
-        total_charge: Number(parcel.total_charge) || 0,
+      cod_breakdown: {
+        cod_amount: Number(parcel.cod_amount) || 0,
+        cod_collected_amount: Number(parcel.cod_collected_amount) || 0,
         delivery_charge: Number(parcel.delivery_charge) || 0,
         cod_charge: Number(parcel.cod_charge) || 0,
         weight_charge: Number(parcel.weight_charge) || 0,
-        cod_amount: Number(parcel.cod_amount) || 0,
+        return_charge: Number(parcel.return_charge) || 0,
+        total_charge: Number(parcel.total_charge) || 0,
       },
 
       age: {
-        display: this.calculateAge(parcel.created_at),
+        total_age: this.calculateAge(parcel.created_at),
         created_at: parcel.created_at,
         updated_at: parcel.updated_at,
       },
