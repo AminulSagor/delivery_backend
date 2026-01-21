@@ -1,6 +1,15 @@
-import { Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 @Injectable()
@@ -14,11 +23,14 @@ export class S3Service implements OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {
     this.bucketName = this.configService.get<string>('AWS_S3_BUCKET') || '';
-    this.region = this.configService.get<string>('AWS_S3_REGION') || 'ap-south-1';
+    this.region =
+      this.configService.get<string>('AWS_S3_REGION') || 'ap-south-1';
     this.expirySeconds = 300; // 5 minutes
 
     const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+    const secretAccessKey = this.configService.get<string>(
+      'AWS_SECRET_ACCESS_KEY',
+    );
 
     if (accessKeyId && secretAccessKey && this.bucketName) {
       this.s3Client = new S3Client({
@@ -31,23 +43,29 @@ export class S3Service implements OnModuleInit {
       this.isConfigured = true;
       this.logger.log('S3 client initialized successfully');
     } else {
-      this.logger.warn('S3 credentials not configured - upload features will be unavailable');
+      this.logger.warn(
+        'S3 credentials not configured - upload features will be unavailable',
+      );
     }
   }
 
   onModuleInit() {
-    this.logger.log(`S3Service initialized. Configured: ${this.isConfigured}, Bucket: ${this.bucketName || 'NOT SET'}`);
+    this.logger.log(
+      `S3Service initialized. Configured: ${this.isConfigured}, Bucket: ${this.bucketName || 'NOT SET'}`,
+    );
   }
 
   private checkConfiguration() {
     if (!this.isConfigured || !this.s3Client) {
-      throw new InternalServerErrorException('S3 is not configured. Please set AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY environment variables.');
+      throw new InternalServerErrorException(
+        'S3 is not configured. Please set AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY environment variables.',
+      );
     }
   }
 
   async generateUploadUrl(key: string, contentType: string) {
     this.checkConfiguration();
-    
+
     try {
       // 1. Create the PutObject command (for upload)
       const putCommand = new PutObjectCommand({
@@ -74,9 +92,9 @@ export class S3Service implements OnModuleInit {
 
       // 4. Also provide the fileKey for reference
       return {
-        signedUrl,        // For uploading (expires in 5 min)
-        fileKey: key,     // File path in S3
-        readUrl,          // For accessing the file (expires in 7 days) - USE THIS IN DATABASE
+        signedUrl, // For uploading (expires in 5 min)
+        fileKey: key, // File path in S3
+        readUrl, // For accessing the file (expires in 7 days) - USE THIS IN DATABASE
       };
     } catch (error) {
       this.logger.error('S3 Presigned URL Error:', error);
@@ -90,7 +108,7 @@ export class S3Service implements OnModuleInit {
    */
   async generateReadUrl(fileKey: string): Promise<string> {
     this.checkConfiguration();
-    
+
     try {
       const getCommand = new GetObjectCommand({
         Bucket: this.bucketName,
