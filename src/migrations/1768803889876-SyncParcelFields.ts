@@ -1,5 +1,9 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+/**
+ * This migration was auto-generated in production.
+ * Made safe with IF NOT EXISTS to prevent failures.
+ */
 export class SyncParcelFields1768803889876 implements MigrationInterface {
   name = 'SyncParcelFields1768803889876';
 
