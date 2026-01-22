@@ -92,6 +92,36 @@ async function fixStaleEnumTypes() {
     console.log('[DB FIX] ========================================');
     console.log('[DB FIX] Enum cleanup block executed successfully');
     console.log('[DB FIX] ========================================');
+
+    // DATA CLEANUP: Fix orphan parcels that prevent foreign key creation
+    // This is the cause of the "violates foreign key constraint" error
+    console.log('[DB FIX] Checking for orphan parcel records...');
+    const cleanupDataSource = new DataSource({
+      ...dataSourceOptions,
+      synchronize: false,
+      migrationsRun: false,
+      logging: false,
+    });
+    
+    await cleanupDataSource.initialize();
+    const orphanCount = await cleanupDataSource.query(`
+      SELECT COUNT(*) as count FROM parcels p 
+      WHERE p.merchant_id IS NOT NULL 
+      AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.merchant_id)
+    `);
+    
+    if (parseInt(orphanCount[0].count) > 0) {
+      console.log(`[DB FIX] Found ${orphanCount[0].count} orphan parcels. Deleting...`);
+      await cleanupDataSource.query(`
+        DELETE FROM parcels 
+        WHERE merchant_id IS NOT NULL 
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = parcels.merchant_id)
+      `);
+      console.log('[DB FIX] Orphan parcels deleted.');
+    } else {
+      console.log('[DB FIX] No orphan parcels found.');
+    }
+    await cleanupDataSource.destroy();
   } catch (error) {
     console.error('[DB FIX] CRITICAL ERROR during enum fix:', error.message);
     try {
