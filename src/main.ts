@@ -16,7 +16,9 @@ async function fixStaleEnumTypes() {
     return;
   }
 
-  console.log('[DB FIX] Checking for stale enum types...');
+  console.log('[DB FIX] ========================================');
+  console.log('[DB FIX] Starting enum type cleanup...');
+  console.log('[DB FIX] ========================================');
   
   const tempDataSource = new DataSource({
     type: 'postgres',
@@ -28,63 +30,89 @@ async function fixStaleEnumTypes() {
 
   try {
     await tempDataSource.initialize();
+    console.log('[DB FIX] Connected to database');
     
-    // Find all _old enum types that need cleanup
-    const oldEnums = await tempDataSource.query(`
+    // DIRECT FIX: Handle the known problematic otp_recipient_type_enum_old
+    // This is causing: "column otp_verified_by of table delivery_verifications depends on type otp_recipient_type_enum_old"
+    console.log('[DB FIX] Checking for otp_recipient_type_enum_old...');
+    
+    const oldEnumExists = await tempDataSource.query(`
+      SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum_old'
+    `);
+    
+    if (oldEnumExists.length > 0) {
+      console.log('[DB FIX] Found otp_recipient_type_enum_old - fixing...');
+      
+      // Step 1: Check if new enum exists
+      const newEnumExists = await tempDataSource.query(`
+        SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum'
+      `);
+      
+      if (newEnumExists.length === 0) {
+        // Create the new enum if it doesn't exist
+        console.log('[DB FIX] Creating new enum otp_recipient_type_enum...');
+        await tempDataSource.query(`
+          CREATE TYPE "otp_recipient_type_enum" AS ENUM ('MERCHANT', 'CUSTOMER')
+        `).catch(e => console.log('[DB FIX] Enum creation:', e.message));
+      }
+      
+      // Step 2: Fix otp_verified_by column
+      console.log('[DB FIX] Altering delivery_verifications.otp_verified_by column...');
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" 
+        ALTER COLUMN "otp_verified_by" TYPE VARCHAR(20)
+      `).catch(e => console.log('[DB FIX] Step 2a:', e.message));
+      
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" 
+        ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" 
+        USING "otp_verified_by"::"otp_recipient_type_enum"
+      `).catch(e => console.log('[DB FIX] Step 2b:', e.message));
+      
+      // Step 3: Fix otp_recipient_type column if needed
+      console.log('[DB FIX] Checking otp_recipient_type column...');
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" 
+        ALTER COLUMN "otp_recipient_type" TYPE VARCHAR(20)
+      `).catch(e => console.log('[DB FIX] Step 3a:', e.message));
+      
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" 
+        ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" 
+        USING "otp_recipient_type"::"otp_recipient_type_enum"
+      `).catch(e => console.log('[DB FIX] Step 3b:', e.message));
+      
+      // Step 4: Drop the old enum with CASCADE
+      console.log('[DB FIX] Dropping old enum with CASCADE...');
+      await tempDataSource.query(`
+        DROP TYPE IF EXISTS "otp_recipient_type_enum_old" CASCADE
+      `).catch(e => console.log('[DB FIX] Drop old enum:', e.message));
+      
+      console.log('[DB FIX] otp_recipient_type_enum_old cleanup complete!');
+    } else {
+      console.log('[DB FIX] No otp_recipient_type_enum_old found');
+    }
+
+    // Generic cleanup for any other _old enums
+    const otherOldEnums = await tempDataSource.query(`
       SELECT typname FROM pg_type 
       WHERE typname LIKE '%_enum_old' 
       AND typtype = 'e'
     `);
     
-    if (oldEnums.length === 0) {
-      console.log('[DB FIX] No stale enum types found');
-      await tempDataSource.destroy();
-      return;
-    }
-
-    console.log(`[DB FIX] Found ${oldEnums.length} stale enum type(s): ${oldEnums.map(e => e.typname).join(', ')}`);
-
-    for (const enumType of oldEnums) {
-      const enumName = enumType.typname;
-      const newEnumName = enumName.replace('_old', '');
-      
-      // Find columns using this old enum
-      const dependentColumns = await tempDataSource.query(`
-        SELECT 
-          c.relname as table_name,
-          a.attname as column_name
-        FROM pg_attribute a
-        JOIN pg_class c ON a.attrelid = c.oid
-        JOIN pg_type t ON a.atttypid = t.oid
-        WHERE t.typname = $1
-        AND c.relkind = 'r'
-      `, [enumName]);
-
-      for (const col of dependentColumns) {
-        console.log(`[DB FIX] Fixing column ${col.table_name}.${col.column_name} -> ${newEnumName}`);
-        
-        // Change column to use the new enum type
-        await tempDataSource.query(`
-          ALTER TABLE "${col.table_name}" 
-          ALTER COLUMN "${col.column_name}" TYPE "${newEnumName}" 
-          USING "${col.column_name}"::text::"${newEnumName}"
-        `).catch(err => {
-          console.log(`[DB FIX] Column already fixed or error: ${err.message}`);
-        });
-      }
-
-      // Now drop the old enum type
-      await tempDataSource.query(`DROP TYPE IF EXISTS "${enumName}" CASCADE`).catch(err => {
-        console.log(`[DB FIX] Could not drop ${enumName}: ${err.message}`);
-      });
-      
-      console.log(`[DB FIX] Cleaned up ${enumName}`);
+    for (const enumType of otherOldEnums) {
+      console.log(`[DB FIX] Dropping ${enumType.typname} with CASCADE...`);
+      await tempDataSource.query(`DROP TYPE IF EXISTS "${enumType.typname}" CASCADE`)
+        .catch(e => console.log(`[DB FIX] ${enumType.typname}:`, e.message));
     }
 
     await tempDataSource.destroy();
-    console.log('[DB FIX] Enum cleanup complete');
+    console.log('[DB FIX] ========================================');
+    console.log('[DB FIX] Enum cleanup complete!');
+    console.log('[DB FIX] ========================================');
   } catch (error) {
-    console.error('[DB FIX] Error during enum fix:', error.message);
+    console.error('[DB FIX] CRITICAL ERROR:', error.message);
+    console.error('[DB FIX] Stack:', error.stack);
     try {
       await tempDataSource.destroy();
     } catch {}
