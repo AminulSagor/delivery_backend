@@ -24,9 +24,8 @@ import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 import { BanksModule } from './banks/banks.module';
 
-// When FORCE_SYNC is enabled, synchronize creates all tables from entities
-// When disabled, migrationsRun handles schema changes
-const forceSync = process.env.FORCE_SYNC === 'true';
+// Synchronize is ALWAYS enabled - no manual migrations needed
+// TypeORM will auto-create/update all tables based on entities
 
 @Module({
   imports: [
@@ -37,9 +36,8 @@ const forceSync = process.env.FORCE_SYNC === 'true';
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      // When FORCE_SYNC is enabled, synchronize handles everything
-      // When disabled, run migrations automatically on startup
-      migrationsRun: !forceSync,
+      // Migrations disabled - synchronize handles everything automatically
+      migrationsRun: false,
       retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000,  // 2s between retries
     }),
