@@ -30,19 +30,22 @@ if (databaseUrl && databaseUrl.includes('${{')) {
   throw new Error('DATABASE_URL contains unresolved Railway template syntax');
 }
 
+// FORCE_SYNC: Set to 'true' to enable TypeORM synchronize in production
+// In development, synchronize is ALWAYS enabled for convenience
+const forceSync = process.env.FORCE_SYNC === 'true';
+
 // Check if running on Railway or in production
-const isProduction = !!(
+const isProductionEnv = !!(
   process.env.NODE_ENV === 'production' ||
   process.env.RAILWAY_ENVIRONMENT ||
   process.env.RAILWAY_PRIVATE_DOMAIN ||
   databaseUrl
 );
 
-// FORCE_SYNC: Set to 'true' to enable TypeORM synchronize
-// This will auto-create ALL missing tables based on entities
-// USE ONLY for first deployment or when you need to sync schema
-// After sync, REMOVE this env var to use migrations-only mode
-const forceSync = process.env.FORCE_SYNC === 'true';
+// Synchronize: 
+// - Development: ALWAYS true (auto-sync schema for convenience)
+// - Production: Only when FORCE_SYNC=true (for safety)
+const shouldSynchronize = !isProductionEnv || forceSync;
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -53,11 +56,10 @@ const baseConfig = {
   migrations: isTs
     ? [path.join(__dirname, 'migrations/*.ts')]
     : [path.join(__dirname, 'migrations/*.js')],
-  // synchronize: When true, TypeORM auto-creates/updates tables based on entities
-  // FORCE_SYNC env var enables this for first deployment or schema fixes
-  // Default: false (use migrations for schema changes)
-  synchronize: forceSync,
-  logging: (forceSync ? ['schema', 'error', 'warn'] : false) as LoggerOptions,
+  // synchronize: Auto-creates/updates tables based on entities
+  // Development: always enabled | Production: only with FORCE_SYNC
+  synchronize: shouldSynchronize,
+  logging: (shouldSynchronize ? ['schema', 'error', 'warn'] : false) as LoggerOptions,
 };
 
 // Railway/Production config: Use DATABASE_URL directly if available
@@ -99,14 +101,14 @@ const developmentConfig: DataSourceOptions = {
 };
 
 // Select config based on environment
-export const dataSourceOptions: DataSourceOptions = isProduction
+export const dataSourceOptions: DataSourceOptions = isProductionEnv
   ? productionConfig
   : developmentConfig;
 
 // Single log line for startup (reduce log spam)
 if (process.env.NODE_ENV !== 'production') {
   console.log(
-    `[DATABASE] ${isProduction ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`,
+    `[DATABASE] ${isProductionEnv ? 'Railway' : 'Local'} | DATABASE_URL: ${databaseUrl ? 'SET' : 'NOT SET'}`,
   );
 }
 
@@ -115,19 +117,20 @@ console.log('');
 console.log('='.repeat(60));
 console.log('[DATABASE CONFIG]');
 console.log('='.repeat(60));
-console.log(`Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+console.log(`Environment: ${isProductionEnv ? 'PRODUCTION' : 'DEVELOPMENT'}`);
 console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
-console.log(`FORCE_SYNC: ${forceSync ? '⚠️  ENABLED (will auto-create tables!)' : '❌ DISABLED'}`);
-console.log(`Synchronize: ${baseConfig.synchronize ? '✅ ENABLED' : '❌ DISABLED'}`);
+console.log(`FORCE_SYNC: ${forceSync ? '⚠️  ENABLED' : '❌ DISABLED'}`);
+console.log(`Synchronize: ${shouldSynchronize ? '✅ ENABLED' : '❌ DISABLED'}`);
 
-if (forceSync) {
+if (shouldSynchronize) {
   console.log('');
-  console.log('🔄 FORCE_SYNC is ENABLED - TypeORM will auto-create/update ALL tables!');
-  console.log('   This should only be used for:');
-  console.log('   - First deployment to create all tables');
-  console.log('   - Fixing missing tables after migration issues');
-  console.log('   ⚠️  Remove FORCE_SYNC env var after tables are created!');
+  console.log('🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!');
+  if (!isProductionEnv) {
+    console.log('   ℹ️  This is normal for development environment.');
+  } else {
+    console.log('   ⚠️  PRODUCTION: Remove FORCE_SYNC env var after tables are created!');
+  }
   console.log('');
 }
 
@@ -146,7 +149,7 @@ if (databaseUrl) {
   } catch (e) {
     console.error('⚠️  Failed to parse DATABASE_URL:', e.message);
   }
-} else if (isProduction) {
+} else if (isProductionEnv) {
   console.warn('⚠️  WARNING: Running in production but DATABASE_URL is not set!');
 }
 

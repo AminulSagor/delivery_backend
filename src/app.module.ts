@@ -24,9 +24,18 @@ import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 import { BanksModule } from './banks/banks.module';
 
-// When FORCE_SYNC is enabled, synchronize creates all tables from entities
-// When disabled, migrationsRun handles schema changes
+// Check if running in production
+const isProductionEnv = !!(
+  process.env.NODE_ENV === 'production' ||
+  process.env.RAILWAY_ENVIRONMENT ||
+  process.env.RAILWAY_PRIVATE_DOMAIN ||
+  process.env.DATABASE_URL
+);
+
+// In development: synchronize handles everything, no migrations needed
+// In production: run migrations unless FORCE_SYNC is enabled
 const forceSync = process.env.FORCE_SYNC === 'true';
+const shouldRunMigrations = isProductionEnv && !forceSync;
 
 @Module({
   imports: [
@@ -37,9 +46,9 @@ const forceSync = process.env.FORCE_SYNC === 'true';
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      // When FORCE_SYNC is enabled, synchronize handles everything
-      // When disabled, run migrations automatically on startup
-      migrationsRun: !forceSync,
+      // Development: no migrations (synchronize handles it)
+      // Production: run migrations unless FORCE_SYNC is enabled
+      migrationsRun: shouldRunMigrations,
       retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000,  // 2s between retries
     }),
