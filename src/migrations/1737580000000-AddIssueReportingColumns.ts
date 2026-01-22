@@ -22,6 +22,12 @@ export class AddIssueReportingColumns1737580000000 implements MigrationInterface
       END $$
     `);
 
+    // Add merchant_profile_id to merchant_invoices
+    await queryRunner.query(`
+      ALTER TABLE "merchant_invoices" 
+      ADD COLUMN IF NOT EXISTS "merchant_profile_id" uuid NULL
+    `);
+
     // Create enum type if not exists
     await queryRunner.query(`
       DO $$ BEGIN
@@ -80,6 +86,7 @@ export class AddIssueReportingColumns1737580000000 implements MigrationInterface
     await queryRunner.query(`DROP TYPE IF EXISTS parcel_issue_type_enum`);
     await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP CONSTRAINT IF EXISTS "UQ_merchant_invoices_transaction_id"`);
     await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "transaction_id"`);
+    await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "merchant_profile_id"`);
   }
 }
 
