@@ -41,7 +41,8 @@ const isProductionEnv = !!(
 // Synchronize: ALWAYS enabled for both development and production
 // This auto-creates/updates all tables based on entities
 // No manual migrations needed!
-const shouldSynchronize = true;
+// SET DISABLE_SYNC=true to temporarily disable this if needed
+const shouldSynchronize = process.env.DISABLE_SYNC !== 'true';
 
 // Base configuration shared across environments
 const baseConfig = {
