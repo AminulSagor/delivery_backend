@@ -1,5 +1,5 @@
 /**
- * Production CSV Import for Coverage Areas
+ * Production CSV Import for Coverage Areas and Carrybee Locations
  * Runs automatically during Railway deployment
  */
 
@@ -7,10 +7,10 @@ const { DataSource } = require('typeorm');
 const fs = require('fs');
 const path = require('path');
 
-async function importCoverageAreas() {
+async function importCsvData() {
   console.log('');
   console.log('========================================');
-  console.log('📥 Coverage Areas CSV Import');
+  console.log('📥 CSV Data Inflation (Coverage + Carrybee)');
   console.log('========================================');
   console.log('');
 
@@ -31,7 +31,7 @@ async function importCoverageAreas() {
   const databaseUrl = process.env.DATABASE_URL;
   
   if (!databaseUrl) {
-    console.error('❌ DATABASE_URL not set, cannot import coverage areas');
+    console.error('❌ DATABASE_URL not set, cannot import data');
     return false;
   }
 
@@ -58,28 +58,33 @@ async function importCoverageAreas() {
     console.log('✅ Database connected');
     console.log('');
 
-    // Check if coverage_areas table exists and has data
-    const tableExists = await dataSource.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'coverage_areas'
-      );
+    // Check if tables exist
+    const tablesCheck = await dataSource.query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('coverage_areas', 'carrybee_locations')
     `);
 
-    if (!tableExists[0].exists) {
-      console.log('⚠️  coverage_areas table does not exist yet');
-      console.log('⏭️  Skipping CSV import (table will be created by migrations)');
+    const existingTables = tablesCheck.map(t => t.table_name);
+    if (!existingTables.includes('coverage_areas') || !existingTables.includes('carrybee_locations')) {
+      console.log('⚠️  Required tables do not exist yet');
+      console.log('⏭️  Skipping CSV import');
       console.log('');
       return false;
     }
 
-    // Check if table already has data
-    const count = await dataSource.query(`SELECT COUNT(*) as count FROM coverage_areas`);
-    const currentCount = parseInt(count[0].count);
+    // Check if coverage_areas already has data
+    const coverageCount = await dataSource.query(`SELECT COUNT(*) as count FROM coverage_areas`);
+    const currentCoverageCount = parseInt(coverageCount[0].count);
     
-    if (currentCount > 0) {
-      console.log(`✅ Coverage areas already populated (${currentCount} records)`);
+    // Check if carrybee_locations already has data
+    const carrybeeCount = await dataSource.query(`SELECT COUNT(*) as count FROM carrybee_locations`);
+    const currentCarrybeeCount = parseInt(carrybeeCount[0].count);
+
+    if (currentCoverageCount > 0 && currentCarrybeeCount > 0) {
+      console.log(`✅ Data already exists:`);
+      console.log(`   - Coverage Areas: ${currentCoverageCount} records`);
+      console.log(`   - Carrybee Locations: ${currentCarrybeeCount} records`);
       console.log('⏭️  Skipping import to preserve existing data');
       console.log('');
       return true;
@@ -90,17 +95,14 @@ async function importCoverageAreas() {
     const lines = csvContent.split('\n').filter((line) => line.trim() !== '');
 
     console.log(`📋 Total lines in CSV: ${lines.length}`);
-
-    // Parse header
-    const header = lines[0].split(',').map((h) => h.trim());
     console.log('');
 
-    // Parse and insert data
-    let successCount = 0;
-    let errorCount = 0;
-    const batchSize = 500;
-    let values = [];
+    const cities = new Map(); // id -> name
+    const zones = new Map(); // id -> { name, parent_id }
+    const areas = new Map(); // id -> { name, parent_id, city_id }
+    const coverageData = [];
 
+    // Parse data
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -117,49 +119,72 @@ async function importCoverageAreas() {
         const area_id = parseInt(cols[6]) || 0;
         const inside_dhaka_flag = cols[7]?.trim().toUpperCase() === 'TRUE' || cols[7]?.trim() === '1';
 
-        if (!division || !city || !zone || !area) {
-          throw new Error('Missing required fields');
-        }
+        if (!city_id || !zone_id || !area_id) continue;
 
-        values.push([division, city, city_id, zone, zone_id, area, area_id, inside_dhaka_flag]);
-        successCount++;
+        // Collect unique locations
+        cities.set(city_id, city);
+        zones.set(zone_id, { name: zone, parent_id: city_id });
+        areas.set(area_id, { name: area, parent_id: zone_id, city_id: city_id });
 
-        // Batch insert every 500 rows
-        if (values.length >= batchSize) {
-          await insertBatch(dataSource, values);
-          console.log(`   ✓ Inserted ${successCount} rows...`);
-          values = [];
-        }
-      } catch (error) {
-        errorCount++;
-        if (errorCount <= 5) {
-          console.error(`   ✗ Error in row ${i}: ${error.message}`);
-        }
+        // Collect coverage data
+        coverageData.push([division, city, city_id, zone, zone_id, area, area_id, inside_dhaka_flag]);
+
+      } catch (e) {
+        // Skip malformed lines
       }
     }
 
-    // Insert remaining rows
-    if (values.length > 0) {
-      await insertBatch(dataSource, values);
+    // 1. Inflate Carrybee Locations
+    if (currentCarrybeeCount === 0) {
+      console.log('🚀 Inflating carrybee_locations...');
+      
+      // Insert Cities
+      const cityValues = Array.from(cities.entries()).map(([id, name]) => [id, name, 'CITY', null, id]);
+      if (cityValues.length > 0) {
+        await insertCarrybeeBatch(dataSource, cityValues);
+        console.log(`   ✓ Inserted ${cityValues.length} cities`);
+      }
+
+      // Insert Zones
+      const zoneValues = Array.from(zones.entries()).map(([id, info]) => [id, info.name, 'ZONE', info.parent_id, info.parent_id]);
+      if (zoneValues.length > 0) {
+        await insertCarrybeeBatch(dataSource, zoneValues);
+        console.log(`   ✓ Inserted ${zoneValues.length} zones`);
+      }
+
+      // Insert Areas
+      const areaValues = Array.from(areas.entries()).map(([id, info]) => [id, info.name, 'AREA', info.parent_id, info.city_id]);
+      if (areaValues.length > 0) {
+        const batchSize = 1000;
+        for (let i = 0; i < areaValues.length; i += batchSize) {
+          const batch = areaValues.slice(i, i + batchSize);
+          await insertCarrybeeBatch(dataSource, batch);
+        }
+        console.log(`   ✓ Inserted ${areaValues.length} areas`);
+      }
+    }
+
+    // 2. Inflate Coverage Areas
+    if (currentCoverageCount === 0) {
+      console.log('🚀 Inflating coverage_areas...');
+      const batchSize = 500;
+      for (let i = 0; i < coverageData.length; i += batchSize) {
+        const batch = coverageData.slice(i, i + batchSize);
+        await insertCoverageBatch(dataSource, batch);
+        if (i % 5000 === 0 && i > 0) {
+          console.log(`   ✓ Processed ${i} coverage rows...`);
+        }
+      }
+      console.log(`   ✓ Inserted ${coverageData.length} total coverage areas`);
     }
 
     console.log('');
-    console.log('✅ CSV Import Complete!');
-    console.log(`📊 Summary:`);
-    console.log(`   - Total rows processed: ${lines.length - 1}`);
-    console.log(`   - Successfully imported: ${successCount}`);
-    console.log(`   - Errors: ${errorCount}`);
-    
-    // Verify final count
-    const finalCount = await dataSource.query(`SELECT COUNT(*) as count FROM coverage_areas`);
-    console.log(`   - Records in database: ${finalCount[0].count}`);
-    console.log('');
-
+    console.log('✅ CSV Inflation Complete!');
     return true;
 
   } catch (error) {
     console.error('❌ CSV Import Error:', error.message);
-    console.error('');
+    console.error(error.stack);
     return false;
   } finally {
     if (dataSource && dataSource.isInitialized) {
@@ -168,7 +193,23 @@ async function importCoverageAreas() {
   }
 }
 
-async function insertBatch(dataSource, values) {
+async function insertCarrybeeBatch(dataSource, values) {
+  const placeholders = values.map((_, i) => {
+    const base = i * 5;
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+  }).join(', ');
+
+  const flatValues = values.flat();
+
+  await dataSource.query(
+    `INSERT INTO carrybee_locations (carrybee_id, name, type, parent_id, city_id) 
+     VALUES ${placeholders}
+     ON CONFLICT DO NOTHING`,
+    flatValues
+  );
+}
+
+async function insertCoverageBatch(dataSource, values) {
   const placeholders = values.map((_, i) => {
     const base = i * 8;
     return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
@@ -178,7 +219,8 @@ async function insertBatch(dataSource, values) {
 
   await dataSource.query(
     `INSERT INTO coverage_areas (division, city, city_id, zone, zone_id, area, area_id, inside_dhaka_flag) 
-     VALUES ${placeholders}`,
+     VALUES ${placeholders}
+     ON CONFLICT DO NOTHING`,
     flatValues
   );
 }
@@ -203,11 +245,11 @@ function parseCSVLine(line) {
   return result;
 }
 
-module.exports = { importCoverageAreas };
+module.exports = { importCoverageAreas: importCsvData };
 
 // Allow running standalone
 if (require.main === module) {
-  importCoverageAreas()
+  importCsvData()
     .then((success) => {
       process.exit(success ? 0 : 1);
     })
@@ -216,4 +258,3 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
