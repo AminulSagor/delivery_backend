@@ -30,10 +30,6 @@ if (databaseUrl && databaseUrl.includes('${{')) {
   throw new Error('DATABASE_URL contains unresolved Railway template syntax');
 }
 
-// FORCE_SYNC: Set to 'true' to enable TypeORM synchronize in production
-// In development, synchronize is ALWAYS enabled for convenience
-const forceSync = process.env.FORCE_SYNC === 'true';
-
 // Check if running on Railway or in production
 const isProductionEnv = !!(
   process.env.NODE_ENV === 'production' ||
@@ -42,10 +38,10 @@ const isProductionEnv = !!(
   databaseUrl
 );
 
-// Synchronize: 
-// - Development: ALWAYS true (auto-sync schema for convenience)
-// - Production: Only when FORCE_SYNC=true (for safety)
-const shouldSynchronize = !isProductionEnv || forceSync;
+// Synchronize: ALWAYS enabled for both development and production
+// This auto-creates/updates all tables based on entities
+// No manual migrations needed!
+const shouldSynchronize = true;
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -120,19 +116,11 @@ console.log('='.repeat(60));
 console.log(`Environment: ${isProductionEnv ? 'PRODUCTION' : 'DEVELOPMENT'}`);
 console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
-console.log(`FORCE_SYNC: ${forceSync ? '⚠️  ENABLED' : '❌ DISABLED'}`);
-console.log(`Synchronize: ${shouldSynchronize ? '✅ ENABLED' : '❌ DISABLED'}`);
-
-if (shouldSynchronize) {
-  console.log('');
-  console.log('🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!');
-  if (!isProductionEnv) {
-    console.log('   ℹ️  This is normal for development environment.');
-  } else {
-    console.log('   ⚠️  PRODUCTION: Remove FORCE_SYNC env var after tables are created!');
-  }
-  console.log('');
-}
+console.log(`Synchronize: ✅ ALWAYS ENABLED (auto-sync schema)`);
+console.log('');
+console.log('🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!');
+console.log('   ℹ️  No manual migrations needed. Schema syncs automatically on startup.');
+console.log('');
 
 // Show paths being used
 console.log(`Migration Path: ${JSON.stringify(dataSourceOptions.migrations)}`);

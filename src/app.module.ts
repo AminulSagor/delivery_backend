@@ -24,18 +24,8 @@ import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 import { BanksModule } from './banks/banks.module';
 
-// Check if running in production
-const isProductionEnv = !!(
-  process.env.NODE_ENV === 'production' ||
-  process.env.RAILWAY_ENVIRONMENT ||
-  process.env.RAILWAY_PRIVATE_DOMAIN ||
-  process.env.DATABASE_URL
-);
-
-// In development: synchronize handles everything, no migrations needed
-// In production: run migrations unless FORCE_SYNC is enabled
-const forceSync = process.env.FORCE_SYNC === 'true';
-const shouldRunMigrations = isProductionEnv && !forceSync;
+// Synchronize is ALWAYS enabled - no manual migrations needed
+// TypeORM will auto-create/update all tables based on entities
 
 @Module({
   imports: [
@@ -46,9 +36,8 @@ const shouldRunMigrations = isProductionEnv && !forceSync;
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      // Development: no migrations (synchronize handles it)
-      // Production: run migrations unless FORCE_SYNC is enabled
-      migrationsRun: shouldRunMigrations,
+      // Migrations disabled - synchronize handles everything automatically
+      migrationsRun: false,
       retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000,  // 2s between retries
     }),
