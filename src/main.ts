@@ -7,64 +7,59 @@ import { DataSource } from 'typeorm';
 import { dataSourceOptions } from './data-source';
 
 /**
- * Fix stale enum types before TypeORM synchronize runs
- * This handles the "_old" enum type leftovers from previous sync attempts
+ * Fix stale enum types and orphan data before TypeORM synchronize runs.
+ * This is a critical startup fix for Railway deployment stability.
  */
-async function fixStaleEnumTypes() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.log('[DB FIX] Skipping enum fix - no DATABASE_URL (local dev)');
-    return;
-  }
-
+async function runDatabaseFixes() {
   console.log('[DB FIX] ========================================');
-  console.log('[DB FIX] Starting CRITICAL enum type cleanup...');
+  console.log('[DB FIX] Starting CRITICAL database fixes...');
   console.log('[DB FIX] ========================================');
   
-  // Use the SAME options as the main application to ensure connection success
   const tempDataSource = new DataSource({
     ...dataSourceOptions,
-    synchronize: false, // ABSOLUTELY NO SYNC HERE
+    synchronize: false,
     migrationsRun: false,
-    logging: true,
+    logging: false,
   });
 
   try {
     await tempDataSource.initialize();
     console.log('[DB FIX] Connected to database');
     
-    // We'll run a single block of SQL to fix everything at once
-    // This is more reliable than multiple query calls
+    // 1. COMPREHENSIVE ENUM CLEANUP
+    // This script finds ANY column using an enum ending in '_old' and fixes it
     await tempDataSource.query(`
       DO $$ 
       DECLARE
         r RECORD;
+        enum_record RECORD;
+        column_record RECORD;
       BEGIN
-        -- 1. Fix delivery_verifications dependency specifically
+        -- A. Handle known problematic otp_recipient_type_enum_old first
         IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum_old') THEN
-          RAISE NOTICE 'Found otp_recipient_type_enum_old, performing cleanup...';
+          RAISE NOTICE 'Found otp_recipient_type_enum_old, performing specific cleanup...';
           
-          -- Create the new enum if it doesn't exist
           IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum') THEN
             CREATE TYPE "otp_recipient_type_enum" AS ENUM ('MERCHANT', 'CUSTOMER');
           END IF;
 
-          -- Break dependencies by changing column types to TEXT temporarily
-          -- This is the critical part that prevents "cannot drop type" errors
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
+          -- Break all possible dependencies in delivery_verifications
+          PERFORM 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by';
+          IF FOUND THEN
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" DROP DEFAULT';
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE TEXT';
           END IF;
 
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
+          PERFORM 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type';
+          IF FOUND THEN
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" DROP DEFAULT';
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE TEXT';
           END IF;
 
-          -- 4. Now we can safely drop the old enum with CASCADE
+          -- Force drop the old type
           DROP TYPE IF EXISTS "otp_recipient_type_enum_old" CASCADE;
           
-          -- 5. Restore the columns to the new enum type
+          -- Re-cast columns to the new enum type
           IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" USING "otp_verified_by"::"otp_recipient_type_enum"';
           END IF;
@@ -72,35 +67,50 @@ async function fixStaleEnumTypes() {
           IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
             EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" USING "otp_recipient_type"::"otp_recipient_type_enum"';
           END IF;
-          
-          RAISE NOTICE 'Cleanup of otp_recipient_type_enum_old successful';
         END IF;
 
-        -- Generic cleanup for any other _old enums that might be lying around
-        -- This is safer than individual drops
-        FOR r IN (SELECT typname FROM pg_type WHERE typname LIKE '%_enum_old' AND typtype = 'e') LOOP
-          RAISE NOTICE 'Dropping stale enum % with CASCADE', r.typname;
-          EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
+        -- B. Generic cleanup for ANY other stale enum types ending in _old
+        FOR enum_record IN (SELECT typname FROM pg_type WHERE typname LIKE '%_enum_old' AND typtype = 'e') LOOP
+          RAISE NOTICE 'Generic cleanup for stale enum: %', enum_record.typname;
+          
+          -- Find any columns still using this stale type and break dependency
+          FOR column_record IN (
+            SELECT table_name, column_name 
+            FROM information_schema.columns 
+            WHERE udt_name = enum_record.typname
+          ) LOOP
+            RAISE NOTICE 'Breaking dependency on %.%', column_record.table_name, column_record.column_name;
+            EXECUTE 'ALTER TABLE ' || quote_ident(column_record.table_name) || 
+                    ' ALTER COLUMN ' || quote_ident(column_record.column_name) || ' TYPE TEXT';
+          END LOOP;
+
+          -- Drop the type
+          EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(enum_record.typname) || ' CASCADE';
         END LOOP;
       END $$;
     `);
+    console.log('[DB FIX] Enum cleanup completed');
 
-    // DATA CLEANUP: Fix orphan parcels that prevent foreign key creation
+    // 2. DATA INTEGRITY CLEANUP
+    // Delete orphan parcels that violate foreign key constraints (merchant_id)
     console.log('[DB FIX] Checking for orphan parcel records...');
-    const orphanParcels = await tempDataSource.query(`
-      SELECT id FROM parcels p 
+    const result = await tempDataSource.query(`
+      SELECT COUNT(*) as count FROM parcels p 
       WHERE p.merchant_id IS NOT NULL 
       AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.merchant_id)
     `);
     
-    if (orphanParcels.length > 0) {
-      console.log(`[DB FIX] Found ${orphanParcels.length} orphan parcels. Deleting...`);
+    const orphanCount = parseInt(result[0].count);
+    if (orphanCount > 0) {
+      console.log(`[DB FIX] Found ${orphanCount} orphan parcels. Deleting...`);
       await tempDataSource.query(`
         DELETE FROM parcels 
         WHERE merchant_id IS NOT NULL 
         AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = parcels.merchant_id)
       `);
-      console.log('[DB FIX] Orphan parcels deleted.');
+      console.log('[DB FIX] Orphan parcels deleted successfully');
+    } else {
+      console.log('[DB FIX] No orphan parcels found');
     }
 
     await tempDataSource.destroy();
@@ -124,31 +134,27 @@ async function bootstrap() {
   console.log(`[BOOTSTRAP] Platform: ${isRailway ? 'Railway' : 'Local'}`);
   console.log(`[BOOTSTRAP] Port: ${process.env.PORT || 3000}`);
 
-  // Fix stale enum types before TypeORM synchronize runs
-  await fixStaleEnumTypes();
+  // Run database fixes BEFORE NestJS/TypeORM starts
+  await runDatabaseFixes();
   
   const app = await NestFactory.create(AppModule, {
     logger: isProduction ? ['error', 'warn', 'log'] : ['log', 'error', 'warn', 'debug'],
-    abortOnError: false, // Don't crash on startup errors
+    abortOnError: false, 
   });
 
-  // Enable CORS for all origins (configure as needed for production)
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
   
-  // Global exception filter for consistent error responses
   app.useGlobalFilters(new HttpExceptionFilter());
   
-  // Global interceptors
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),
     new ResponseInterceptor(),
   );
   
-  // Global validation pipe with detailed error messages
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
