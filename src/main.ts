@@ -4,26 +4,20 @@ import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { DataSource } from 'typeorm';
+import { dataSourceOptions } from './data-source';
 
 /**
  * Fix stale enum types before TypeORM synchronize runs
  * This handles the "_old" enum type leftovers from previous sync attempts
  */
 async function fixStaleEnumTypes() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.log('[DB FIX] Skipping enum fix - no DATABASE_URL (local dev)');
-    return;
-  }
-
   console.log('[DB FIX] ========================================');
   console.log('[DB FIX] Starting enum type cleanup...');
   console.log('[DB FIX] ========================================');
   
+  // Use the SAME options as the main application to ensure connection success
   const tempDataSource = new DataSource({
-    type: 'postgres',
-    url: databaseUrl,
-    ssl: { rejectUnauthorized: false },
+    ...dataSourceOptions,
     synchronize: false,
     logging: false,
   });
@@ -58,6 +52,12 @@ async function fixStaleEnumTypes() {
       
       // Step 2: Fix otp_verified_by column
       console.log('[DB FIX] Altering delivery_verifications.otp_verified_by column...');
+      
+      // DROP DEFAULT if exists to prevent dependency issues during type change
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" DROP DEFAULT
+      `).catch(() => {});
+
       await tempDataSource.query(`
         ALTER TABLE "delivery_verifications" 
         ALTER COLUMN "otp_verified_by" TYPE VARCHAR(20)
@@ -71,6 +71,11 @@ async function fixStaleEnumTypes() {
       
       // Step 3: Fix otp_recipient_type column if needed
       console.log('[DB FIX] Checking otp_recipient_type column...');
+      
+      await tempDataSource.query(`
+        ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" DROP DEFAULT
+      `).catch(() => {});
+
       await tempDataSource.query(`
         ALTER TABLE "delivery_verifications" 
         ALTER COLUMN "otp_recipient_type" TYPE VARCHAR(20)
@@ -112,7 +117,6 @@ async function fixStaleEnumTypes() {
     console.log('[DB FIX] ========================================');
   } catch (error) {
     console.error('[DB FIX] CRITICAL ERROR:', error.message);
-    console.error('[DB FIX] Stack:', error.stack);
     try {
       await tempDataSource.destroy();
     } catch {}
