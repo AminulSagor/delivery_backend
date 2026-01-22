@@ -10,20 +10,21 @@ import { dataSourceOptions } from './data-source';
  * Fix stale enum types before TypeORM synchronize runs
  * This handles the "_old" enum type leftovers from previous sync attempts
  */
+/**
+ * Fix stale enum types before TypeORM synchronize runs
+ * This handles the "_old" enum type leftovers from previous sync attempts
+ */
 async function fixStaleEnumTypes() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.log('[DB FIX] Skipping enum fix - no DATABASE_URL (local dev)');
-    return;
-  }
-
+  const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
+  
   console.log('[DB FIX] ========================================');
   console.log('[DB FIX] Starting CRITICAL enum type cleanup...');
   console.log('[DB FIX] ========================================');
   
+  // Use the SAME options as the main application
   const tempDataSource = new DataSource({
     ...dataSourceOptions,
-    synchronize: false, // ABSOLUTELY NO SYNC HERE
+    synchronize: false, 
     migrationsRun: false,
     logging: true,
   });
@@ -32,97 +33,75 @@ async function fixStaleEnumTypes() {
     await tempDataSource.initialize();
     console.log('[DB FIX] Connected to database');
     
-    // We'll run a single block of SQL to fix everything at once
-    // This is more reliable than multiple query calls
+    // DIRECT FIX: Handle the known problematic otp_recipient_type_enum_old
+    // and any other _old enums. We use CASCADE to force drop dependencies.
     await tempDataSource.query(`
       DO $$ 
+      DECLARE
+        r RECORD;
       BEGIN
-        -- 1. Check if the old enum exists
+        -- 1. Fix delivery_verifications dependency specifically
         IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum_old') THEN
           RAISE NOTICE 'Found otp_recipient_type_enum_old, performing cleanup...';
           
-          -- 2. Create the new enum if it doesn't exist
+          -- Create the new enum if it doesn't exist
           IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'otp_recipient_type_enum') THEN
             CREATE TYPE "otp_recipient_type_enum" AS ENUM ('MERCHANT', 'CUSTOMER');
           END IF;
 
-          -- 3. Break dependencies by changing column types to TEXT
-          -- We do this for all columns that might be using the old enum
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
-            ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" DROP DEFAULT;
-            ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE TEXT;
-          END IF;
+          -- Break dependencies by changing column types to TEXT temporarily
+          -- This is the critical part that prevents "cannot drop type" errors
+          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE TEXT';
+          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE TEXT';
 
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
-            ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" DROP DEFAULT;
-            ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE TEXT;
-          END IF;
-
-          -- 4. Now we can safely drop the old enum with CASCADE
+          -- Now we can safely drop the old enum with CASCADE
           DROP TYPE IF EXISTS "otp_recipient_type_enum_old" CASCADE;
           
-          -- 5. Restore the columns to the new enum type
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
-            ALTER TABLE "delivery_verifications" 
-            ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" 
-            USING "otp_verified_by"::"otp_recipient_type_enum";
-          END IF;
-
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
-            ALTER TABLE "delivery_verifications" 
-            ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" 
-            USING "otp_recipient_type"::"otp_recipient_type_enum";
-          END IF;
+          -- Restore the columns to the new enum type
+          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" USING "otp_verified_by"::"otp_recipient_type_enum"';
+          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" USING "otp_recipient_type"::"otp_recipient_type_enum"';
           
           RAISE NOTICE 'Cleanup of otp_recipient_type_enum_old successful';
         END IF;
 
-        -- Generic cleanup for any other _old enums that might be lying around
-        -- This is safer than individual drops
-        EXECUTE (
-          SELECT COALESCE(string_agg('DROP TYPE IF EXISTS ' || quote_ident(typname) || ' CASCADE;', ' '), '-- no other old enums')
-          FROM pg_type 
-          WHERE typname LIKE '%_enum_old' 
-          AND typtype = 'e'
-        );
+        -- 2. Generic cleanup for ANY other _old enums that might be lying around
+        -- We find them and drop them with CASCADE
+        FOR r IN (SELECT typname FROM pg_type WHERE typname LIKE '%_enum_old' AND typtype = 'e') LOOP
+          RAISE NOTICE 'Dropping stale enum % with CASCADE', r.typname;
+          EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
+        END LOOP;
       END $$;
     `);
 
-    await tempDataSource.destroy();
-    console.log('[DB FIX] ========================================');
-    console.log('[DB FIX] Enum cleanup block executed successfully');
-    console.log('[DB FIX] ========================================');
-
     // DATA CLEANUP: Fix orphan parcels that prevent foreign key creation
-    // This is the cause of the "violates foreign key constraint" error
     console.log('[DB FIX] Checking for orphan parcel records...');
-    const cleanupDataSource = new DataSource({
-      ...dataSourceOptions,
-      synchronize: false,
-      migrationsRun: false,
-      logging: false,
-    });
-    
-    await cleanupDataSource.initialize();
-    const orphanCount = await cleanupDataSource.query(`
-      SELECT COUNT(*) as count FROM parcels p 
+    const orphanParcels = await tempDataSource.query(`
+      SELECT id FROM parcels p 
       WHERE p.merchant_id IS NOT NULL 
       AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.merchant_id)
     `);
     
-    if (parseInt(orphanCount[0].count) > 0) {
-      console.log(`[DB FIX] Found ${orphanCount[0].count} orphan parcels. Deleting...`);
-      await cleanupDataSource.query(`
+    if (orphanParcels.length > 0) {
+      console.log(`[DB FIX] Found ${orphanParcels.length} orphan parcels. Deleting...`);
+      await tempDataSource.query(`
         DELETE FROM parcels 
         WHERE merchant_id IS NOT NULL 
         AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = parcels.merchant_id)
       `);
       console.log('[DB FIX] Orphan parcels deleted.');
-    } else {
-      console.log('[DB FIX] No orphan parcels found.');
     }
-    await cleanupDataSource.destroy();
+
+    await tempDataSource.destroy();
+    console.log('[DB FIX] ========================================');
+    console.log('[DB FIX] Database fixes completed successfully');
+    console.log('[DB FIX] ========================================');
   } catch (error) {
+    console.error('[DB FIX] CRITICAL ERROR during database fixes:', error.message);
+    try {
+      if (tempDataSource.isInitialized) await tempDataSource.destroy();
+    } catch {}
+  }
+}
     console.error('[DB FIX] CRITICAL ERROR during enum fix:', error.message);
     try {
       await tempDataSource.destroy();
