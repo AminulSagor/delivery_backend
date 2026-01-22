@@ -10,21 +10,21 @@ import { dataSourceOptions } from './data-source';
  * Fix stale enum types before TypeORM synchronize runs
  * This handles the "_old" enum type leftovers from previous sync attempts
  */
-/**
- * Fix stale enum types before TypeORM synchronize runs
- * This handles the "_old" enum type leftovers from previous sync attempts
- */
 async function fixStaleEnumTypes() {
-  const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
-  
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.log('[DB FIX] Skipping enum fix - no DATABASE_URL (local dev)');
+    return;
+  }
+
   console.log('[DB FIX] ========================================');
   console.log('[DB FIX] Starting CRITICAL enum type cleanup...');
   console.log('[DB FIX] ========================================');
   
-  // Use the SAME options as the main application
+  // Use the SAME options as the main application to ensure connection success
   const tempDataSource = new DataSource({
     ...dataSourceOptions,
-    synchronize: false, 
+    synchronize: false, // ABSOLUTELY NO SYNC HERE
     migrationsRun: false,
     logging: true,
   });
@@ -33,8 +33,8 @@ async function fixStaleEnumTypes() {
     await tempDataSource.initialize();
     console.log('[DB FIX] Connected to database');
     
-    // DIRECT FIX: Handle the known problematic otp_recipient_type_enum_old
-    // and any other _old enums. We use CASCADE to force drop dependencies.
+    // We'll run a single block of SQL to fix everything at once
+    // This is more reliable than multiple query calls
     await tempDataSource.query(`
       DO $$ 
       DECLARE
@@ -51,21 +51,33 @@ async function fixStaleEnumTypes() {
 
           -- Break dependencies by changing column types to TEXT temporarily
           -- This is the critical part that prevents "cannot drop type" errors
-          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE TEXT';
-          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE TEXT';
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" DROP DEFAULT';
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE TEXT';
+          END IF;
 
-          -- Now we can safely drop the old enum with CASCADE
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" DROP DEFAULT';
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE TEXT';
+          END IF;
+
+          -- 4. Now we can safely drop the old enum with CASCADE
           DROP TYPE IF EXISTS "otp_recipient_type_enum_old" CASCADE;
           
-          -- Restore the columns to the new enum type
-          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" USING "otp_verified_by"::"otp_recipient_type_enum"';
-          EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" USING "otp_recipient_type"::"otp_recipient_type_enum"';
+          -- 5. Restore the columns to the new enum type
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_verified_by') THEN
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_verified_by" TYPE "otp_recipient_type_enum" USING "otp_verified_by"::"otp_recipient_type_enum"';
+          END IF;
+
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'delivery_verifications' AND column_name = 'otp_recipient_type') THEN
+            EXECUTE 'ALTER TABLE "delivery_verifications" ALTER COLUMN "otp_recipient_type" TYPE "otp_recipient_type_enum" USING "otp_recipient_type"::"otp_recipient_type_enum"';
+          END IF;
           
           RAISE NOTICE 'Cleanup of otp_recipient_type_enum_old successful';
         END IF;
 
-        -- 2. Generic cleanup for ANY other _old enums that might be lying around
-        -- We find them and drop them with CASCADE
+        -- Generic cleanup for any other _old enums that might be lying around
+        -- This is safer than individual drops
         FOR r IN (SELECT typname FROM pg_type WHERE typname LIKE '%_enum_old' AND typtype = 'e') LOOP
           RAISE NOTICE 'Dropping stale enum % with CASCADE', r.typname;
           EXECUTE 'DROP TYPE IF EXISTS ' || quote_ident(r.typname) || ' CASCADE';
@@ -100,13 +112,6 @@ async function fixStaleEnumTypes() {
     try {
       if (tempDataSource.isInitialized) await tempDataSource.destroy();
     } catch {}
-  }
-}
-    console.error('[DB FIX] CRITICAL ERROR during enum fix:', error.message);
-    try {
-      await tempDataSource.destroy();
-    } catch {}
-    // If this fails, we might want to know why but let the app try to start anyway
   }
 }
 
