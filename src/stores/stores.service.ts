@@ -648,7 +648,8 @@ export class StoresService {
       throw new NotFoundException(`Hub with ID ${hubId} not found`);
     }
 
-    store.hub_id = hubId;
+    store.hub = hub;
+    store.hub_id = hub.id;
     await this.storesRepository.save(store);
 
     console.log(
