@@ -1,13 +1,19 @@
-import { 
-  Injectable, 
-  NotFoundException, 
+import {
+  Injectable,
+  NotFoundException,
   ConflictException,
   BadRequestException,
   InternalServerErrorException,
-  Logger
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, Between, In } from 'typeorm';
+import {
+  Repository,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Between,
+  In,
+} from 'typeorm';
 import { Hub } from './entities/hub.entity';
 import { HubManager } from './entities/hub-manager.entity';
 import { RiderSettlement } from './entities/rider-settlement.entity';
@@ -98,12 +104,12 @@ export class HubsService {
     try {
       // Auto-generate hub_code if not provided
       let hubCode = createHubDto.hub_code;
-      
+
       if (!hubCode || hubCode.trim() === '') {
         hubCode = await this.generateUniqueHubCode(createHubDto.area);
       } else {
         hubCode = hubCode.toUpperCase();
-        
+
         // Check if manually provided hub_code already exists
         const existing = await this.hubRepository.findOne({
           where: { hub_code: hubCode },
@@ -185,10 +191,7 @@ export class HubsService {
       }
 
       // Log and throw internal server error for unexpected errors
-      this.logger.error(
-        `Failed to create hub: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to create hub: ${error.message}`, error.stack);
       throw new InternalServerErrorException(
         'Failed to create hub. Please try again later.',
       );
@@ -217,7 +220,8 @@ export class HubsService {
   async findOne(id: string): Promise<Hub> {
     try {
       // Validate UUID format
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(id)) {
         throw new BadRequestException('Invalid hub ID format');
       }
@@ -331,7 +335,9 @@ export class HubsService {
         throw new NotFoundException('Hub information not found');
       }
 
-      this.logger.log(`Hub manager ${userId} retrieved hub ${hubManager.hub.id}`);
+      this.logger.log(
+        `Hub manager ${userId} retrieved hub ${hubManager.hub.id}`,
+      );
       return hubManager.hub;
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -385,7 +391,10 @@ export class HubsService {
   /**
    * Get rider settlement details
    */
-  async getRiderSettlementDetails(riderId: string, hubId: string): Promise<any> {
+  async getRiderSettlementDetails(
+    riderId: string,
+    hubId: string,
+  ): Promise<any> {
     try {
       // Validate rider belongs to hub
       const rider = await this.riderRepository.findOne({
@@ -592,7 +601,8 @@ export class HubsService {
         settled_at: new Date(),
       });
 
-      const savedSettlement = await this.riderSettlementRepository.save(settlement);
+      const savedSettlement =
+        await this.riderSettlementRepository.save(settlement);
 
       this.logger.log(
         `Settlement recorded for rider ${riderId}: ` +
@@ -661,7 +671,9 @@ export class HubsService {
 
       // Status filter
       if (status) {
-        queryBuilder.andWhere('settlement.settlement_status = :status', { status });
+        queryBuilder.andWhere('settlement.settlement_status = :status', {
+          status,
+        });
       }
 
       // Pagination
@@ -1129,7 +1141,9 @@ export class HubsService {
           total_transaction_amount: Number(
             topMerchant.total_transaction_amount.toFixed(2),
           ),
-          total_cod_collected: Number(topMerchant.total_cod_collected.toFixed(2)),
+          total_cod_collected: Number(
+            topMerchant.total_cod_collected.toFixed(2),
+          ),
           total_delivery_charges: Number(
             topMerchant.total_delivery_charges.toFixed(2),
           ),
@@ -1144,6 +1158,72 @@ export class HubsService {
       );
       throw new InternalServerErrorException(
         'Failed to retrieve top merchant statistics. Please try again later.',
+      );
+    }
+  }
+
+  /**
+   * Get unique merchants associated with the hub's assigned stores
+   * Used for the "Select Merchant" dropdown in Hub Panel
+   */
+  async getHubMerchants(hubId: string): Promise<any[]> {
+    try {
+      // 1. Find all stores assigned to this hub
+      const stores = await this.storeRepository.find({
+        where: { hub_id: hubId },
+        relations: ['merchant', 'merchant.user'],
+        select: {
+          id: true,
+          merchant_id: true,
+          merchant: {
+            id: true,
+            user_id: true,
+            user: {
+              id: true,
+              full_name: true,
+              phone: true,
+            },
+            merchant_profile: {
+              business_name: true, // Assuming this exists or getting it from Store business_name
+            },
+          } as any,
+        },
+      });
+
+      if (!stores.length) {
+        return [];
+      }
+
+      // 2. Extract unique merchants using a Map
+      const merchantMap = new Map();
+
+      for (const store of stores) {
+        if (store.merchant && !merchantMap.has(store.merchant.id)) {
+          merchantMap.set(store.merchant.id, {
+            id: store.merchant.id,
+            user_id: store.merchant.user_id,
+            full_name: store.merchant.user?.full_name || 'N/A',
+            phone: store.merchant.user?.phone || 'N/A',
+            // If merchant has a profile with business name, or use User name
+            // Note: Store entity usually holds the 'business_name' for that specific branch
+          });
+        }
+      }
+
+      const uniqueMerchants = Array.from(merchantMap.values());
+
+      this.logger.log(
+        `Retrieved ${uniqueMerchants.length} merchants for hub ${hubId}`,
+      );
+
+      return uniqueMerchants;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get merchants for hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve hub merchants. Please try again.',
       );
     }
   }

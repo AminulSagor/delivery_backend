@@ -102,9 +102,9 @@ export class Parcel {
   @Column({ type: 'uuid' })
   merchant_id: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Merchant, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'merchant_id' })
-  merchant: User;
+  merchant: Merchant;
 
   @Column({ type: 'uuid', nullable: true })
   store_id: string | null;

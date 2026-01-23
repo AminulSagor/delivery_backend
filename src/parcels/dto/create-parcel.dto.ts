@@ -29,6 +29,10 @@ export class CreateParcelDto {
 
   @IsOptional()
   @IsUUID()
+  merchant_id?: string;
+
+  @IsOptional()
+  @IsUUID()
   store_id?: string; // UUID of merchant's store (if using predefined store)
 
   // ===== DELIVERY AREA (Merchant's pickup location) =====
@@ -56,7 +60,8 @@ export class CreateParcelDto {
   @IsOptional()
   @IsString()
   @Matches(/^01[0-9]{9}$/, {
-    message: 'Customer secondary phone must be a valid Bangladesh number (01XXXXXXXXX)',
+    message:
+      'Customer secondary phone must be a valid Bangladesh number (01XXXXXXXXX)',
   })
   customer_secondary_phone?: string;
 
@@ -100,13 +105,17 @@ export class CreateParcelDto {
 
   @IsOptional()
   @IsNumber()
-  @IsIn([1, 2, 3], { message: 'Parcel type must be 1 (Parcel), 2 (Book), or 3 (Document)' })
+  @IsIn([1, 2, 3], {
+    message: 'Parcel type must be 1 (Parcel), 2 (Book), or 3 (Document)',
+  })
   @Type(() => Number)
   parcel_type?: ParcelType;
 
   @IsOptional()
   @IsNumber()
-  @IsIn([1, 2, 3], { message: 'Delivery type must be 1 (Normal), 2 (Express), or 3 (Same Day)' })
+  @IsIn([1, 2, 3], {
+    message: 'Delivery type must be 1 (Normal), 2 (Express), or 3 (Same Day)',
+  })
   @Type(() => Number)
   delivery_type?: DeliveryType;
 
