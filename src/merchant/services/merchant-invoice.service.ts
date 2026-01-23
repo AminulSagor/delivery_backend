@@ -8,7 +8,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, Not } from 'typeorm';
-import { MerchantInvoice, InvoiceStatus } from '../entities/merchant-invoice.entity';
+import {
+  MerchantInvoice,
+  InvoiceStatus,
+} from '../entities/merchant-invoice.entity';
 import { Parcel, ParcelStatus } from '../../parcels/entities/parcel.entity';
 import { Merchant } from '../entities/merchant.entity';
 import { User } from '../../users/entities/user.entity';
@@ -146,17 +149,35 @@ export class MerchantInvoiceService {
     });
 
     const totalInvoices = invoices.length;
-    const paidInvoices = invoices.filter(inv => inv.invoice_status === InvoiceStatus.PAID).length;
-    const unpaidInvoices = invoices.filter(inv => inv.invoice_status === InvoiceStatus.UNPAID).length;
-    const processingInvoices = invoices.filter(inv => inv.invoice_status === InvoiceStatus.PROCESSING).length;
+    const paidInvoices = invoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.PAID,
+    ).length;
+    const unpaidInvoices = invoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.UNPAID,
+    ).length;
+    const processingInvoices = invoices.filter(
+      (inv) => inv.invoice_status === InvoiceStatus.PROCESSING,
+    ).length;
 
     // Calculate total amounts
-    const totalCodCollected = invoices.reduce((sum, inv) => sum + Number(inv.total_cod_collected), 0);
-    const totalDeliveryCharges = invoices.reduce((sum, inv) => sum + Number(inv.total_delivery_charges), 0);
-    const totalReturnCharges = invoices.reduce((sum, inv) => sum + Number(inv.total_return_charges), 0);
-    const totalPayable = invoices.reduce((sum, inv) => sum + Number(inv.payable_amount), 0);
+    const totalCodCollected = invoices.reduce(
+      (sum, inv) => sum + Number(inv.total_cod_collected),
+      0,
+    );
+    const totalDeliveryCharges = invoices.reduce(
+      (sum, inv) => sum + Number(inv.total_delivery_charges),
+      0,
+    );
+    const totalReturnCharges = invoices.reduce(
+      (sum, inv) => sum + Number(inv.total_return_charges),
+      0,
+    );
+    const totalPayable = invoices.reduce(
+      (sum, inv) => sum + Number(inv.payable_amount),
+      0,
+    );
     const totalPaid = invoices
-      .filter(inv => inv.invoice_status === InvoiceStatus.PAID)
+      .filter((inv) => inv.invoice_status === InvoiceStatus.PAID)
       .reduce((sum, inv) => sum + Number(inv.payable_amount), 0);
     const totalPending = totalPayable - totalPaid;
 
@@ -191,12 +212,14 @@ export class MerchantInvoiceService {
         delivered_parcels: deliveredParcels,
         returned_parcels: returnedParcels,
         pending_parcels: pendingParcels,
-        delivery_rate: totalParcels > 0 
-          ? Math.round((deliveredParcels / totalParcels) * 100 * 100) / 100 
-          : 0,
-        return_rate: totalParcels > 0 
-          ? Math.round((returnedParcels / totalParcels) * 100 * 100) / 100 
-          : 0,
+        delivery_rate:
+          totalParcels > 0
+            ? Math.round((deliveredParcels / totalParcels) * 100 * 100) / 100
+            : 0,
+        return_rate:
+          totalParcels > 0
+            ? Math.round((returnedParcels / totalParcels) * 100 * 100) / 100
+            : 0,
       },
 
       // Invoice/Transaction Statistics
@@ -222,14 +245,20 @@ export class MerchantInvoiceService {
         parcels: eligibleBreakdowns,
         count: eligibleBreakdowns.length,
         summary: {
-          total_cod_collected: eligibleBreakdowns.reduce((sum, p) => sum + p.cod_collected, 0),
+          total_cod_collected: eligibleBreakdowns.reduce(
+            (sum, p) => sum + p.cod_collected,
+            0,
+          ),
           total_delivery_charges: eligibleBreakdowns
             .filter((p) => p.delivery_charge_applicable)
             .reduce((sum, p) => sum + p.delivery_charge, 0),
           total_return_charges: eligibleBreakdowns
             .filter((p) => p.return_charge_applicable)
             .reduce((sum, p) => sum + p.return_charge, 0),
-          estimated_payable: eligibleBreakdowns.reduce((sum, p) => sum + p.net_payable, 0),
+          estimated_payable: eligibleBreakdowns.reduce(
+            (sum, p) => sum + p.net_payable,
+            0,
+          ),
         },
       },
     };
@@ -332,10 +361,12 @@ export class MerchantInvoiceService {
     });
 
     // Calculate totals
-    const totals = this.invoiceCalculationService.calculateInvoiceTotals(parcels);
+    const totals =
+      this.invoiceCalculationService.calculateInvoiceTotals(parcels);
 
     // Start transaction
-    const queryRunner = this.parcelRepository.manager.connection.createQueryRunner();
+    const queryRunner =
+      this.parcelRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
@@ -364,7 +395,10 @@ export class MerchantInvoiceService {
         invoice_status: InvoiceStatus.UNPAID,
       });
 
-      const savedInvoice = await queryRunner.manager.save(MerchantInvoice, invoice);
+      const savedInvoice = await queryRunner.manager.save(
+        MerchantInvoice,
+        invoice,
+      );
 
       // Update parcels
       await queryRunner.manager.update(
@@ -402,7 +436,10 @@ export class MerchantInvoiceService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to generate invoice: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to generate invoice: ${error.message}`,
+        error.stack,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -415,7 +452,14 @@ export class MerchantInvoiceService {
   async getInvoices(
     query: InvoiceQueryDto,
   ): Promise<{ invoices: MerchantInvoice[]; total: number }> {
-    const { merchant_id, invoice_status, fromDate, toDate, page = 1, limit = 10 } = query;
+    const {
+      merchant_id,
+      invoice_status,
+      fromDate,
+      toDate,
+      page = 1,
+      limit = 10,
+    } = query;
 
     const queryBuilder = this.merchantInvoiceRepository
       .createQueryBuilder('invoice')
@@ -423,7 +467,9 @@ export class MerchantInvoiceService {
       .leftJoinAndSelect('invoice.paidByUser', 'paidByUser');
 
     if (merchant_id) {
-      queryBuilder.andWhere('invoice.merchant_id = :merchant_id', { merchant_id });
+      queryBuilder.andWhere('invoice.merchant_id = :merchant_id', {
+        merchant_id,
+      });
     }
 
     if (invoice_status) {
@@ -482,7 +528,13 @@ export class MerchantInvoiceService {
     // Get invoice with relations
     const invoice = await this.merchantInvoiceRepository.findOne({
       where: { id: invoiceId },
-      relations: ['merchant', 'paidByUser', 'merchantProfile', 'merchantProfile.user', 'payoutMethod'],
+      relations: [
+        'merchant',
+        'paidByUser',
+        'merchantProfile',
+        'merchantProfile.user',
+        'payoutMethod',
+      ],
     });
 
     if (!invoice) {
@@ -493,13 +545,18 @@ export class MerchantInvoiceService {
     const parcelQueryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.store', 'store')
-      .leftJoinAndSelect('parcel.delivery_coverage_area', 'delivery_coverage_area')
+      .leftJoinAndSelect(
+        'parcel.delivery_coverage_area',
+        'delivery_coverage_area',
+      )
       .leftJoinAndSelect('parcel.customer', 'customer')
       .where('parcel.invoice_id = :invoiceId', { invoiceId });
 
     // Apply filters
     if (order_status) {
-      parcelQueryBuilder.andWhere('parcel.status = :order_status', { order_status });
+      parcelQueryBuilder.andWhere('parcel.status = :order_status', {
+        order_status,
+      });
     }
 
     if (store_id) {
@@ -507,7 +564,9 @@ export class MerchantInvoiceService {
     }
 
     if (from_date) {
-      parcelQueryBuilder.andWhere('parcel.created_at >= :from_date', { from_date });
+      parcelQueryBuilder.andWhere('parcel.created_at >= :from_date', {
+        from_date,
+      });
     }
 
     if (to_date) {
@@ -539,13 +598,16 @@ export class MerchantInvoiceService {
       invoice.merchant?.full_name ||
       'N/A';
     const merchantPhone =
-      invoice.merchantProfile?.user?.phone ||
-      invoice.merchant?.phone ||
-      'N/A';
+      invoice.merchantProfile?.user?.phone || invoice.merchant?.phone || 'N/A';
 
     // Determine invoice type based on parcel statuses
     const deliveredStatuses = ['DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE'];
-    const returnedStatuses = ['RETURNED', 'PAID_RETURN', 'RETURNED_TO_HUB', 'RETURN_TO_MERCHANT'];
+    const returnedStatuses = [
+      'RETURNED',
+      'PAID_RETURN',
+      'RETURNED_TO_HUB',
+      'RETURN_TO_MERCHANT',
+    ];
 
     // Build detailed parcel list
     const parcelDetails = parcels.map((parcel) => {
@@ -562,7 +624,8 @@ export class MerchantInvoiceService {
 
       // Calculate discount (if total_charge is less than sum of individual charges)
       const calculatedTotal = deliveryFee + codFee + weightCharge;
-      const discount = calculatedTotal > totalCharge ? calculatedTotal - totalCharge : 0;
+      const discount =
+        calculatedTotal > totalCharge ? calculatedTotal - totalCharge : 0;
 
       // Store receivable = Collected - Total Fee - Return Charge
       const receivableAmount = collectedAmount - totalCharge - returnCharge;
@@ -722,7 +785,8 @@ export class MerchantInvoiceService {
     }
 
     // Start transaction
-    const queryRunner = this.parcelRepository.manager.connection.createQueryRunner();
+    const queryRunner =
+      this.parcelRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
@@ -743,7 +807,8 @@ export class MerchantInvoiceService {
 
       // Mark each parcel as paid
       for (const parcel of parcels) {
-        const payableAmount = this.invoiceCalculationService.calculateParcelPayable(parcel);
+        const payableAmount =
+          this.invoiceCalculationService.calculateParcelPayable(parcel);
 
         await queryRunner.manager.update(
           Parcel,
@@ -782,7 +847,10 @@ export class MerchantInvoiceService {
       return invoice;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to mark invoice as paid: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to mark invoice as paid: ${error.message}`,
+        error.stack,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -816,14 +884,20 @@ export class MerchantInvoiceService {
     try {
       const amount = Number(invoice.payable_amount);
 
-      if (oldStatus === InvoiceStatus.UNPAID && status === InvoiceStatus.PROCESSING) {
+      if (
+        oldStatus === InvoiceStatus.UNPAID &&
+        status === InvoiceStatus.PROCESSING
+      ) {
         // Moving from UNPAID to PROCESSING
         await this.merchantFinanceService.moveToProcessing(
           invoice.merchant_id,
           amount,
           invoice.id,
         );
-      } else if (oldStatus === InvoiceStatus.PROCESSING && status === InvoiceStatus.UNPAID) {
+      } else if (
+        oldStatus === InvoiceStatus.PROCESSING &&
+        status === InvoiceStatus.UNPAID
+      ) {
         // Moving back from PROCESSING to UNPAID
         await this.merchantFinanceService.moveBackToInvoiced(
           invoice.merchant_id,
@@ -837,7 +911,9 @@ export class MerchantInvoiceService {
       );
     }
 
-    this.logger.log(`Invoice ${invoice.invoice_no} status changed to ${status}`);
+    this.logger.log(
+      `Invoice ${invoice.invoice_no} status changed to ${status}`,
+    );
 
     return invoice;
   }
@@ -886,7 +962,10 @@ export class MerchantInvoiceService {
       fgColor: { argb: 'FF4472C4' },
     };
     worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    worksheet.getRow(1).alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
 
     // Add data rows
     pendingInvoices.forEach((invoice) => {
@@ -1002,7 +1081,7 @@ export class MerchantInvoiceService {
         financial_status: FinancialStatus.PENDING,
         status: In(terminalStatuses), // Only terminal statuses
       },
-      relations: ['store', 'merchant'],
+      relations: ['store', 'merchant', 'merchant.user'],
       order: {
         delivered_at: 'DESC',
       },
@@ -1021,7 +1100,7 @@ export class MerchantInvoiceService {
 
     eligibleParcels.forEach((parcel) => {
       const storeId = parcel.store_id || 'no-store';
-      
+
       if (!storeMap.has(storeId)) {
         storeMap.set(storeId, {
           store_id: storeId === 'no-store' ? null : storeId,
@@ -1063,7 +1142,10 @@ export class MerchantInvoiceService {
 
       // Update last payment date
       if (parcel.delivered_at) {
-        if (!store.last_payment_date || parcel.delivered_at > store.last_payment_date) {
+        if (
+          !store.last_payment_date ||
+          parcel.delivered_at > store.last_payment_date
+        ) {
           store.last_payment_date = parcel.delivered_at;
         }
       }
@@ -1071,14 +1153,14 @@ export class MerchantInvoiceService {
 
     // Calculate due amount for each store and prepare response
     const stores = Array.from(storeMap.values()).map((store) => {
-      store.due_amount = 
-        store.total_cod_collected - 
-        store.total_delivery_charges - 
+      store.due_amount =
+        store.total_cod_collected -
+        store.total_delivery_charges -
         store.total_return_charges;
-      
+
       store.total_unpaid_parcels = store.parcels.length;
       delete store.parcels; // Remove parcel details, only keep summary
-      
+
       return store;
     });
 
@@ -1086,9 +1168,18 @@ export class MerchantInvoiceService {
     const summary = {
       total_stores: stores.length,
       total_unpaid_parcels: eligibleParcels.length,
-      total_collected: stores.reduce((sum, s) => sum + s.total_cod_collected, 0),
-      total_delivery_charges: stores.reduce((sum, s) => sum + s.total_delivery_charges, 0),
-      total_return_charges: stores.reduce((sum, s) => sum + s.total_return_charges, 0),
+      total_collected: stores.reduce(
+        (sum, s) => sum + s.total_cod_collected,
+        0,
+      ),
+      total_delivery_charges: stores.reduce(
+        (sum, s) => sum + s.total_delivery_charges,
+        0,
+      ),
+      total_return_charges: stores.reduce(
+        (sum, s) => sum + s.total_return_charges,
+        0,
+      ),
       total_due: stores.reduce((sum, s) => sum + s.due_amount, 0),
     };
 
@@ -1097,7 +1188,7 @@ export class MerchantInvoiceService {
 
     return {
       merchant_id: merchantId,
-      merchant_name: merchantInfo?.full_name || 'Unknown Merchant',
+      merchant_name: merchantInfo?.user?.full_name || 'Unknown Merchant',
       stores: stores.sort((a, b) => a.store_name.localeCompare(b.store_name)),
       summary,
     };
@@ -1205,7 +1296,7 @@ export class MerchantInvoiceService {
       const searchLower = search.toLowerCase();
       const filteredMap = new Map<
         string,
-        (typeof merchantMap extends Map<string, infer V> ? V : never)
+        typeof merchantMap extends Map<string, infer V> ? V : never
       >();
       for (const [mid, data] of merchantMap.entries()) {
         if (
@@ -1394,10 +1485,7 @@ export class MerchantInvoiceService {
     });
 
     // Create merchant info map
-    const merchantInfoMap = new Map<
-      string,
-      { name: string; phone: string }
-    >();
+    const merchantInfoMap = new Map<string, { name: string; phone: string }>();
     for (const merchant of merchants) {
       merchantInfoMap.set(merchant.id, {
         name: merchant?.user?.full_name || 'N/A',
@@ -1425,7 +1513,8 @@ export class MerchantInvoiceService {
       const payable = collectedAmount - totalCharge - returnCharge;
 
       // Determine which hub to show (current > destination > origin)
-      const hub = parcel.currentHub || parcel.destinationHub || parcel.originHub;
+      const hub =
+        parcel.currentHub || parcel.destinationHub || parcel.originHub;
 
       return {
         parcel_id: parcel.id,
@@ -1437,7 +1526,8 @@ export class MerchantInvoiceService {
           phone: merchantInfo.phone,
         },
         merchant_invoice_id: parcel.invoice_id || null,
-        additional_note: parcel.special_instructions || parcel.admin_notes || null,
+        additional_note:
+          parcel.special_instructions || parcel.admin_notes || null,
         customer: {
           id: parcel.customer_id || null,
           name: parcel.customer_name,
@@ -1548,7 +1638,9 @@ export class MerchantInvoiceService {
 
     // Apply filters
     if (merchantId) {
-      queryBuilder.andWhere('invoice.merchant_id = :merchantId', { merchantId });
+      queryBuilder.andWhere('invoice.merchant_id = :merchantId', {
+        merchantId,
+      });
     }
 
     if (search) {
@@ -1722,22 +1814,26 @@ export class MerchantInvoiceService {
     // Get eligible parcels that are NOT yet invoiced
     const eligibleParcels = await this.getEligibleParcels(merchantUserId);
     const uninvoicedAmount = eligibleParcels.reduce((sum, parcel) => {
-      const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+      const breakdown =
+        this.invoiceCalculationService.calculateParcelBreakdown(parcel);
       return sum + breakdown.net_payable;
     }, 0);
 
     // Available Balance = uninvoiced + unpaid invoices + processing invoices
-    const availableBalance = uninvoicedAmount + invoicedUnpaid + invoicedProcessing;
+    const availableBalance =
+      uninvoicedAmount + invoicedUnpaid + invoicedProcessing;
 
     // Pending Clearance = unpaid + processing invoices
     const pendingClearance = invoicedUnpaid + invoicedProcessing;
 
     // Get Last Paid info
-    const lastPaidInvoice = paidInvoices.length > 0
-      ? paidInvoices.sort((a, b) => 
-          new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime()
-        )[0]
-      : null;
+    const lastPaidInvoice =
+      paidInvoices.length > 0
+        ? paidInvoices.sort(
+            (a, b) =>
+              new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime(),
+          )[0]
+        : null;
 
     // Get parcel statistics
     const deliveredStatuses = [
@@ -1768,7 +1864,10 @@ export class MerchantInvoiceService {
 
     // Get recent payments (last 5 paid invoices)
     const recentPayments = paidInvoices
-      .sort((a, b) => new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime(),
+      )
       .slice(0, 5)
       .map((inv) => ({
         invoice_id: inv.id,
@@ -1792,7 +1891,9 @@ export class MerchantInvoiceService {
         available_balance: availableBalance,
         pending_clearance: pendingClearance,
         last_paid_at: lastPaidInvoice?.paid_at || null,
-        last_paid_amount: lastPaidInvoice ? Number(lastPaidInvoice.payable_amount) : null,
+        last_paid_amount: lastPaidInvoice
+          ? Number(lastPaidInvoice.payable_amount)
+          : null,
       },
 
       balance_breakdown: {
@@ -1964,24 +2065,34 @@ export class MerchantInvoiceService {
           0,
         );
         const pendingBalance =
-          unpaidInvoices.reduce((sum, inv) => sum + Number(inv.payable_amount), 0) +
-          processingInvoices.reduce((sum, inv) => sum + Number(inv.payable_amount), 0);
+          unpaidInvoices.reduce(
+            (sum, inv) => sum + Number(inv.payable_amount),
+            0,
+          ) +
+          processingInvoices.reduce(
+            (sum, inv) => sum + Number(inv.payable_amount),
+            0,
+          );
 
         // Get eligible parcels not yet invoiced
         const eligibleParcels = await this.getEligibleParcels(merchant.user_id);
         const uninvoicedAmount = eligibleParcels.reduce((sum, parcel) => {
-          const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+          const breakdown =
+            this.invoiceCalculationService.calculateParcelBreakdown(parcel);
           return sum + breakdown.net_payable;
         }, 0);
 
         const availableBalance = uninvoicedAmount + pendingBalance;
 
         // Get last paid date
-        const lastPaidInvoice = paidInvoices.length > 0
-          ? paidInvoices.sort((a, b) =>
-              new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime()
-            )[0]
-          : null;
+        const lastPaidInvoice =
+          paidInvoices.length > 0
+            ? paidInvoices.sort(
+                (a, b) =>
+                  new Date(b.paid_at!).getTime() -
+                  new Date(a.paid_at!).getTime(),
+              )[0]
+            : null;
 
         return {
           merchant_id: merchant.id,
@@ -1992,7 +2103,9 @@ export class MerchantInvoiceService {
           available_balance: availableBalance,
           pending_invoices: unpaidInvoices.length + processingInvoices.length,
           last_paid_at: lastPaidInvoice?.paid_at || null,
-          last_paid_amount: lastPaidInvoice ? Number(lastPaidInvoice.payable_amount) : null,
+          last_paid_amount: lastPaidInvoice
+            ? Number(lastPaidInvoice.payable_amount)
+            : null,
           uninvoiced_parcels: eligibleParcels.length,
         };
       }),
@@ -2009,7 +2122,10 @@ export class MerchantInvoiceService {
     // Calculate grand totals
     const grandTotals = {
       total_merchants: filteredSummaries.length,
-      total_earning: filteredSummaries.reduce((sum, m) => sum + m.total_earning, 0),
+      total_earning: filteredSummaries.reduce(
+        (sum, m) => sum + m.total_earning,
+        0,
+      ),
       total_available_balance: filteredSummaries.reduce(
         (sum, m) => sum + m.available_balance,
         0,
@@ -2064,4 +2180,3 @@ export class MerchantInvoiceService {
     }
   }
 }
-

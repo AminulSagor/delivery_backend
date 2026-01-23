@@ -54,6 +54,7 @@ import {
   ResolveReportDto,
 } from './dto/resolve-report.dto';
 import { ParcelReportQueryDto } from './dto/parcel-report-query.dto';
+import { CreateParcelDto } from 'src/parcels/dto/create-parcel.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -200,7 +201,7 @@ export class HubsController {
 
   /**
    * Get return to merchant parcels (Hub Manager)
-   * 
+   *
    * PURPOSE: View parcels with RETURN_TO_MERCHANT status
    * These are original parcels that have been marked for return
    */
@@ -270,7 +271,7 @@ export class HubsController {
 
   /**
    * Bulk mark parcels as RETURN_TO_MERCHANT (Hub Manager)
-   * 
+   *
    * Creates return parcels for each original parcel.
    * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
@@ -296,15 +297,16 @@ export class HubsController {
         },
         results: result.results,
       },
-      message: result.failed === 0
-        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return to merchant`
-        : `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return, ${result.failed} failed`,
+      message:
+        result.failed === 0
+          ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return to merchant`
+          : `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for return, ${result.failed} failed`,
     };
   }
 
   /**
    * Mark parcel as DELIVERY_RESCHEDULED (Hub Manager)
-   * 
+   *
    * Used to reschedule delivery from delivery outcomes list.
    * Parcel will appear in /hubs/parcels/rescheduled endpoint.
    */
@@ -320,13 +322,14 @@ export class HubsController {
     return {
       success: true,
       data: toParcelActionResponse(parcel),
-      message: 'Parcel marked for redelivery. It will appear in rescheduled list.',
+      message:
+        'Parcel marked for redelivery. It will appear in rescheduled list.',
     };
   }
 
   /**
    * Bulk mark parcels as DELIVERY_RESCHEDULED (Hub Manager)
-   * 
+   *
    * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
   @Post('parcels/bulk-reschedule-delivery')
@@ -351,9 +354,10 @@ export class HubsController {
         },
         results: result.results,
       },
-      message: result.failed === 0
-        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for rescheduled delivery`
-        : `${result.success} parcel${result.success !== 1 ? 's' : ''} rescheduled, ${result.failed} failed`,
+      message:
+        result.failed === 0
+          ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked for rescheduled delivery`
+          : `${result.success} parcel${result.success !== 1 ? 's' : ''} rescheduled, ${result.failed} failed`,
     };
   }
 
@@ -410,6 +414,53 @@ export class HubsController {
     };
   }
 
+  // ===== HUB MANAGER: PARCEL CREATION & MERCHANTS =====
+
+  /**
+   * Get merchants associated with stores assigned to this Hub
+   * Used for the "Select Merchant" dropdown in "Create and Receive"
+   */
+  @Get('merchants')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getHubMerchants(@CurrentUser() user: any) {
+    const merchants = await this.hubsService.getHubMerchants(user.hubId);
+    return {
+      success: true,
+      data: merchants,
+      message: 'Hub merchants retrieved successfully',
+    };
+  }
+
+  /**
+   * Create and Receive Parcel (Hub Manager)
+   * Creates a parcel and immediately sets status to IN_HUB
+   */
+  @Post('parcels/create-and-receive')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async createAndReceiveParcel(
+    @Body() createParcelDto: CreateParcelDto,
+    @CurrentUser() user: any,
+  ) {
+    const parcel = await this.parcelsService.createByHubManager(
+      createParcelDto,
+      user.userId,
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: {
+        id: parcel.id,
+        tracking_number: parcel.tracking_number,
+        status: parcel.status,
+        total_charge: parcel.total_charge,
+      },
+      message: 'Parcel created and received successfully',
+    };
+  }
+
   /**
    * Get parcels awaiting receipt (PENDING/PICKED_UP)
    */
@@ -441,7 +492,7 @@ export class HubsController {
 
   /**
    * Bulk mark parcels as received (PENDING/PICKED_UP → IN_HUB)
-   * 
+   *
    * Accepts array of parcel IDs and returns result for each.
    * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
@@ -452,8 +503,11 @@ export class HubsController {
     @Body() dto: BulkReceiveParcelsDto,
     @CurrentUser() user: any,
   ) {
-    const result = await this.parcelsService.bulkMarkAsReceived(dto.parcel_ids, user.hubId);
-    
+    const result = await this.parcelsService.bulkMarkAsReceived(
+      dto.parcel_ids,
+      user.hubId,
+    );
+
     return {
       success: true,
       data: {
@@ -464,9 +518,10 @@ export class HubsController {
         },
         results: result.results,
       },
-      message: result.failed === 0
-        ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked as received successfully`
-        : `${result.success} parcel${result.success !== 1 ? 's' : ''} received, ${result.failed} failed`,
+      message:
+        result.failed === 0
+          ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked as received successfully`
+          : `${result.success} parcel${result.success !== 1 ? 's' : ''} received, ${result.failed} failed`,
     };
   }
 
@@ -529,7 +584,7 @@ export class HubsController {
 
   /**
    * Assign parcels to rider (Unified endpoint)
-   * 
+   *
    * Supports both single and bulk parcel assignment:
    * - Single: { rider_id: "...", parcel_id: "..." }
    * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
@@ -541,11 +596,14 @@ export class HubsController {
     @Body() assignDto: BulkAssignParcelsToRiderDto,
     @CurrentUser() user: any,
   ) {
-    const result = await this.parcelsService.bulkAssignToRider(assignDto, user.hubId);
-    
+    const result = await this.parcelsService.bulkAssignToRider(
+      assignDto,
+      user.hubId,
+    );
+
     // Calculate total from what was actually processed
     const total = result.success + result.failed;
-    
+
     return {
       success: true,
       data: {
@@ -556,9 +614,12 @@ export class HubsController {
         },
         results: result.results,
       },
-      message: total === 1 
-        ? (result.success === 1 ? 'Parcel assigned to rider successfully' : 'Failed to assign parcel')
-        : `${result.success} parcel${result.success !== 1 ? 's' : ''} assigned to rider successfully${result.failed > 0 ? `, ${result.failed} failed` : ''}`,
+      message:
+        total === 1
+          ? result.success === 1
+            ? 'Parcel assigned to rider successfully'
+            : 'Failed to assign parcel'
+          : `${result.success} parcel${result.success !== 1 ? 's' : ''} assigned to rider successfully${result.failed > 0 ? `, ${result.failed} failed` : ''}`,
     };
   }
 
