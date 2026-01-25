@@ -14,7 +14,10 @@ import {
 import { CarrybeeService } from './carrybee.service';
 import { CarrybeeWebhookService } from './carrybee-webhook.service';
 import { SyncStoreToCarrybeeDto } from './dto/sync-store-to-carrybee.dto';
-import { AssignToCarrybeeDto } from './dto/assign-to-carrybee.dto';
+import {
+  AssignParcelToCarrybeeDto,
+  AssignToCarrybeeDto,
+} from './dto/assign-to-carrybee.dto';
 import { CarrybeeWebhookDto } from './dto/carrybee-webhook.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -133,9 +136,8 @@ export class CarrybeeController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.HUB_MANAGER)
   async getParcelsForThirdPartyAssignment(@CurrentUser() user: any) {
-    const parcels = await this.carrybeeService.getParcelsForThirdPartyAssignment(
-      user.hubId,
-    );
+    const parcels =
+      await this.carrybeeService.getParcelsForThirdPartyAssignment(user.hubId);
 
     return {
       parcels,
@@ -164,6 +166,27 @@ export class CarrybeeController {
       delivery_fee: result.delivery_fee,
       cod_fee: result.cod_fee,
       message: 'Parcel assigned to Carrybee successfully',
+    };
+  }
+
+  @Post('parcels/assign/carrybee')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async assignParcelsToCarrybee(
+    @Body() dto: AssignParcelToCarrybeeDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.carrybeeService.assignParcelsToCarrybee(
+      dto,
+      user.hubId,
+    );
+
+    // Optional: Return 207 Multi-Status if mixed results, or just 200 with details
+    return {
+      success: true,
+      data: result,
+      message: `Processed ${dto.parcel_ids.length} parcels. Success: ${result.success.length}, Failed: ${result.failed.length}`,
     };
   }
 }

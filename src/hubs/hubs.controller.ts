@@ -26,7 +26,10 @@ import { CreateHubDto } from './dto/create-hub.dto';
 import { UpdateHubDto } from './dto/update-hub.dto';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
-import { TransferParcelDto } from '../parcels/dto/transfer-parcel.dto';
+import {
+  BulkTransferDto,
+  TransferParcelDto,
+} from '../parcels/dto/transfer-parcel.dto';
 import { BulkReceiveParcelsDto } from './dto/bulk-receive-parcels.dto';
 import { BulkReturnToMerchantDto } from './dto/bulk-return-to-merchant.dto';
 import { BulkRescheduleDeliveryDto } from './dto/bulk-reschedule-delivery.dto';
@@ -635,6 +638,36 @@ export class HubsController {
       success: true,
       data: hubs.map(toHubListItem),
       message: 'Hubs retrieved successfully',
+    };
+  }
+
+  /**
+   * Bulk Transfer parcels to another hub
+   */
+  @Patch('parcels/bulk-transfer')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkTransferParcels(
+    @Body() bulkTransferDto: BulkTransferDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.transferParcelsBulk(
+      bulkTransferDto,
+      user.hubId,
+    );
+
+    // Partial success handling
+    if (result.transferred_count === 0 && result.errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Failed to transfer any parcels',
+        errors: result.errors,
+      });
+    }
+
+    return {
+      success: true,
+      data: result,
+      message: `Successfully transferred ${result.transferred_count} parcels.`,
     };
   }
 
