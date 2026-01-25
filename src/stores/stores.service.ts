@@ -251,6 +251,7 @@ export class StoresService {
 
     const stores = await this.storesRepository.find({
       where: { merchant_id: merchant.id },
+      relations: ['hub'],
       order: {
         is_default: 'DESC', // Default first
         created_at: 'DESC',
@@ -329,6 +330,7 @@ export class StoresService {
 
     const defaultStore = await this.storesRepository.findOne({
       where: { merchant_id: merchant.id, is_default: true },
+      relations: ['hub'],
     });
 
     if (!defaultStore) {
@@ -397,6 +399,7 @@ export class StoresService {
 
     const store = await this.storesRepository.findOne({
       where: { id, merchant_id: merchant.id },
+      relations: ['hub'],
     });
 
     if (!store) {
@@ -649,6 +652,7 @@ export class StoresService {
     }
 
     store.hub_id = hubId;
+    store.hub = hub;  // Update in-memory hub object to match ID
     await this.storesRepository.save(store);
 
     console.log(

@@ -1142,10 +1142,34 @@ export class ParcelsService {
           throw new BadRequestException(
             'Duplicate tracking number detected. Please try again.',
           );
-        else if (error.code === '23503')
-          throw new BadRequestException(
-            'Invalid reference data. Please check store ID and delivery area.',
+        else if (error.code === '23503') {
+          // FK constraint violation - provide better error message
+          const constraintMsg = error.constraint || 'unknown';
+          this.logger.error(
+            `[FK CONSTRAINT VIOLATION] Constraint: ${constraintMsg}, Detail: ${error.detail}`,
           );
+          
+          if (constraintMsg.includes('delivery_coverage_area')) {
+            throw new BadRequestException(
+              'Invalid delivery area ID. Please verify the delivery coverage area exists.',
+            );
+          } else if (constraintMsg.includes('store')) {
+            throw new BadRequestException(
+              'Invalid store ID. Please verify the store exists and belongs to your account.',
+            );
+          } else if (constraintMsg.includes('merchant')) {
+            throw new BadRequestException(
+              'Invalid merchant ID. Please contact support.',
+            );
+          } else if (constraintMsg.includes('customer')) {
+            throw new BadRequestException(
+              'Invalid customer ID. Please verify the customer exists.',
+            );
+          }
+          throw new BadRequestException(
+            'Invalid reference data. Please check store ID, delivery area ID, and customer ID.',
+          );
+        }
         throw new InternalServerErrorException(
           'Failed to create parcel. Please try again or contact support.',
         );
