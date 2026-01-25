@@ -58,6 +58,7 @@ import {
 } from './dto/resolve-report.dto';
 import { ParcelReportQueryDto } from './dto/parcel-report-query.dto';
 import { CreateParcelDto } from 'src/parcels/dto/create-parcel.dto';
+import { BulkAcceptDto } from './dto/bulk-accept-parcels.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -714,6 +715,36 @@ export class HubsController {
       success: true,
       data: result,
       message: 'Incoming parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Bulk Accept incoming parcels (Hub Manager)
+   */
+  @Patch('parcels/bulk-accept')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async acceptIncomingParcelsBulk(
+    @Body() bulkAcceptDto: BulkAcceptDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.acceptIncomingParcelsBulk(
+      bulkAcceptDto,
+      user.hubId,
+    );
+
+    // Partial success handling
+    if (result.accepted_count === 0 && result.errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Failed to accept any parcels',
+        errors: result.errors,
+      });
+    }
+
+    return {
+      success: true,
+      data: result,
+      message: `Successfully accepted ${result.accepted_count} parcels.`,
     };
   }
 

@@ -24,6 +24,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 @Controller('carrybee')
 export class CarrybeeController {
@@ -135,12 +136,19 @@ export class CarrybeeController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.HUB_MANAGER)
-  async getParcelsForThirdPartyAssignment(@CurrentUser() user: any) {
+  async getParcelsForThirdPartyAssignment(
+    @CurrentUser() user: any,
+    @Query() query: PaginationDto,
+  ) {
     const parcels =
-      await this.carrybeeService.getParcelsForThirdPartyAssignment(user.hubId);
+      await this.carrybeeService.getParcelsForThirdPartyAssignment(
+        user.hubId,
+        query,
+      );
 
     return {
-      parcels,
+      success: true,
+      data: parcels,
       message: 'Parcels retrieved successfully',
     };
   }

@@ -74,6 +74,7 @@ import {
   BulkResolveReportDto,
   ResolveReportDto,
 } from 'src/hubs/dto/resolve-report.dto';
+import { BulkAcceptDto } from 'src/hubs/dto/bulk-accept-parcels.dto';
 
 @Injectable()
 export class ParcelsService {
@@ -3114,6 +3115,96 @@ export class ParcelsService {
     );
 
     return parcel;
+  }
+
+  /**
+   * Bulk Accept incoming parcels at destination hub
+   */
+  async acceptIncomingParcelsBulk(
+    dto: BulkAcceptDto,
+    currentHubId: string,
+  ): Promise<{ accepted_count: number; errors: any[] }> {
+    const { parcel_ids } = dto;
+
+    // Explicit types for arrays
+    const errors: { id: string; tracking_number?: string; error: string }[] =
+      [];
+    const successIds: string[] = [];
+    const updatePromises: Promise<Parcel>[] = [];
+
+    // 1. Fetch all requested parcels
+    const parcels = await this.parcelRepository.find({
+      where: { id: In(parcel_ids) },
+    });
+
+    // 2. Process each parcel
+    for (const id of parcel_ids) {
+      const parcel = parcels.find((p) => p.id === id);
+
+      // --- Validation Checks ---
+      if (!parcel) {
+        errors.push({ id, error: 'Parcel not found' });
+        continue;
+      }
+
+      // Verify parcel is destined for this hub
+      if (parcel.destination_hub_id !== currentHubId) {
+        errors.push({
+          id,
+          tracking_number: parcel.tracking_number,
+          error: 'This parcel is not destined for your hub',
+        });
+        continue;
+      }
+
+      // Verify parcel is in transit
+      if (parcel.status !== ParcelStatus.IN_TRANSIT) {
+        errors.push({
+          id,
+          tracking_number: parcel.tracking_number,
+          error: `Invalid status: ${parcel.status}. Parcel must be IN_TRANSIT`,
+        });
+        continue;
+      }
+
+      // Verify not already received
+      if (parcel.received_at_destination_hub) {
+        errors.push({
+          id,
+          tracking_number: parcel.tracking_number,
+          error: 'Parcel has already been received',
+        });
+        continue;
+      }
+
+      // --- Prepare Update ---
+      parcel.current_hub_id = currentHubId;
+      parcel.destination_hub_id = null; // Clear destination as it arrived
+      parcel.received_at_destination_hub = new Date();
+      parcel.status = ParcelStatus.IN_HUB;
+
+      // We assume is_inter_hub_transfer stays true to track history,
+      // or you can set it to false if the journey ends here.
+      // Usually, we keep it true or clear it depending on business logic.
+      // For now, leaving it as is.
+
+      successIds.push(parcel.id);
+      updatePromises.push(this.parcelRepository.save(parcel));
+    }
+
+    // 3. Execute all valid updates
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+    }
+
+    this.logger.log(
+      `[BULK RECEIVE] Hub ${currentHubId} received ${successIds.length} parcels`,
+    );
+
+    return {
+      accepted_count: successIds.length,
+      errors,
+    };
   }
 
   /**
