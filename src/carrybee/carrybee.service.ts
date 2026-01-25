@@ -13,7 +13,10 @@ import { ThirdPartyProvider } from '../third-party-providers/entities/third-part
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
 import { CarrybeeApiService } from './carrybee-api.service';
 import { SyncStoreToCarrybeeDto } from './dto/sync-store-to-carrybee.dto';
-import { AssignToCarrybeeDto } from './dto/assign-to-carrybee.dto';
+import {
+  AssignParcelToCarrybeeDto,
+  AssignToCarrybeeDto,
+} from './dto/assign-to-carrybee.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 
@@ -51,7 +54,9 @@ export class CarrybeeService {
 
   async searchArea(query: string) {
     if (!query || query.length < 3) {
-      throw new BadRequestException('Search query must be at least 3 characters');
+      throw new BadRequestException(
+        'Search query must be at least 3 characters',
+      );
     }
     return await this.carrybeeApiService.searchArea(query);
   }
@@ -135,8 +140,10 @@ export class CarrybeeService {
       // Note: Carrybee doesn't return store_id in response, so we use the store name as identifier
       // In production, you might need to call GET /stores to find the created store
       const stores = await this.carrybeeApiService.getStores();
-      const carrybeeStore = stores.find((s: any) => s.name === store.business_name);
-      
+      const carrybeeStore = stores.find(
+        (s: any) => s.name === store.business_name,
+      );
+
       if (carrybeeStore) {
         store.carrybee_store_id = carrybeeStore.id;
       }
@@ -160,6 +167,76 @@ export class CarrybeeService {
       throw new BadRequestException(
         `Failed to sync store to Carrybee: ${error.response?.data?.message || error.message}`,
       );
+    }
+  }
+
+  // ===== NEW: INTERNAL SYNC HELPER =====
+  /**
+   * Auto-syncs a store using existing DB data.
+   * Used during Parcel Assignment if the store isn't synced yet.
+   */
+  private async internalSyncStore(store: Store): Promise<void> {
+    this.logger.log(`Auto-syncing store ${store.id} to Carrybee...`);
+
+    // 1. Validate Store Data
+    if (!store.district || !store.thana || !store.area) {
+      throw new BadRequestException(
+        'Store missing location data (district/thana/area)',
+      );
+    }
+    if (
+      !store.carrybee_city_id ||
+      !store.carrybee_zone_id ||
+      !store.carrybee_area_id
+    ) {
+      throw new BadRequestException('Store missing Carrybee location mapping');
+    }
+
+    // 2. Prepare Data
+    const contactPersonName = store.merchant?.user?.full_name || 'Store Owner';
+    const contactPhone = this.carrybeeApiService.formatPhoneForCarrybee(
+      store.phone_number,
+    );
+
+    try {
+      // 3. Check / Create
+      const existingStores = await this.carrybeeApiService.getStores();
+      const truncatedName = store.business_name.substring(0, 30).trim();
+
+      let carrybeeStore = existingStores.find(
+        (s: any) => s.name === store.business_name || s.name === truncatedName,
+      );
+
+      if (!carrybeeStore) {
+        await this.carrybeeApiService.createStore({
+          name: store.business_name,
+          contact_person_name: contactPersonName,
+          contact_person_number: contactPhone,
+          address: store.business_address,
+          city_id: store.carrybee_city_id,
+          zone_id: store.carrybee_zone_id,
+          area_id: store.carrybee_area_id,
+        });
+
+        // Fetch again to get ID
+        const updatedStores = await this.carrybeeApiService.getStores();
+        carrybeeStore = updatedStores.find(
+          (s: any) =>
+            s.name === store.business_name || s.name === truncatedName,
+        );
+      }
+
+      if (carrybeeStore) {
+        store.carrybee_store_id = carrybeeStore.id;
+        store.is_carrybee_synced = true;
+        store.carrybee_synced_at = new Date();
+        await this.storeRepository.save(store);
+        this.logger.log(`Store auto-synced. ID: ${store.carrybee_store_id}`);
+      } else {
+        throw new Error('Could not retrieve Carrybee Store ID after creation');
+      }
+    } catch (error) {
+      throw new BadRequestException(`Auto-sync failed: ${error.message}`);
     }
   }
 
@@ -187,7 +264,12 @@ export class CarrybeeService {
     // 1. Find parcel with all necessary relations
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
-      relations: ['store', 'store.merchant', 'store.merchant.user', 'delivery_coverage_area'],
+      relations: [
+        'store',
+        'store.merchant',
+        'store.merchant.user',
+        'delivery_coverage_area',
+      ],
     });
 
     if (!parcel) {
@@ -196,9 +278,10 @@ export class CarrybeeService {
 
     // 2. Validate parcel belongs to hub
     // Check both current_hub_id and store.hub_id for flexibility
-    const belongsToHub = parcel.current_hub_id === hubId || 
-                        (parcel.store && parcel.store.hub_id === hubId);
-    
+    const belongsToHub =
+      parcel.current_hub_id === hubId ||
+      (parcel.store && parcel.store.hub_id === hubId);
+
     if (!belongsToHub) {
       throw new BadRequestException('Parcel does not belong to your hub');
     }
@@ -236,8 +319,10 @@ export class CarrybeeService {
 
     // Auto-sync store to Carrybee if not already synced
     if (!store.is_carrybee_synced || !store.carrybee_store_id) {
-      this.logger.log(`Auto-syncing store ${store.id} to Carrybee before parcel assignment`);
-      
+      this.logger.log(
+        `Auto-syncing store ${store.id} to Carrybee before parcel assignment`,
+      );
+
       // Validate store has required location fields
       if (!store.district || !store.thana || !store.area) {
         throw new BadRequestException(
@@ -246,14 +331,19 @@ export class CarrybeeService {
       }
 
       // Validate store has Carrybee location IDs
-      if (!store.carrybee_city_id || !store.carrybee_zone_id || !store.carrybee_area_id) {
+      if (
+        !store.carrybee_city_id ||
+        !store.carrybee_zone_id ||
+        !store.carrybee_area_id
+      ) {
         throw new BadRequestException(
           'Store must have Carrybee location IDs (city_id, zone_id, area_id). Please update store with Carrybee location first.',
         );
       }
 
       // Get merchant name for contact person
-      const contactPersonName = store.merchant?.user?.full_name || 'Store Owner';
+      const contactPersonName =
+        store.merchant?.user?.full_name || 'Store Owner';
 
       // Format phone number
       const contactPhone = this.carrybeeApiService.formatPhoneForCarrybee(
@@ -264,17 +354,18 @@ export class CarrybeeService {
       try {
         // First, check if store already exists in Carrybee
         const existingStores = await this.carrybeeApiService.getStores();
-        
+
         // Carrybee truncates name to 30 chars, so check with truncated name
         const truncatedName = store.business_name.substring(0, 30).trim();
-        let carrybeeStore = existingStores.find((s: any) => 
-          s.name === store.business_name || s.name === truncatedName
+        let carrybeeStore = existingStores.find(
+          (s: any) =>
+            s.name === store.business_name || s.name === truncatedName,
         );
-        
+
         if (!carrybeeStore) {
           // Store doesn't exist, create it
           this.logger.log(`Creating new store in Carrybee: ${truncatedName}`);
-          
+
           await this.carrybeeApiService.createStore({
             name: store.business_name,
             contact_person_name: contactPersonName,
@@ -287,18 +378,23 @@ export class CarrybeeService {
 
           // Fetch the newly created store
           const updatedStores = await this.carrybeeApiService.getStores();
-          carrybeeStore = updatedStores.find((s: any) => 
-            s.name === store.business_name || s.name === truncatedName
+          carrybeeStore = updatedStores.find(
+            (s: any) =>
+              s.name === store.business_name || s.name === truncatedName,
           );
         } else {
-          this.logger.log(`Store "${store.business_name}" already exists in Carrybee with ID: ${carrybeeStore.id}`);
+          this.logger.log(
+            `Store "${store.business_name}" already exists in Carrybee with ID: ${carrybeeStore.id}`,
+          );
         }
-        
+
         if (carrybeeStore) {
           store.carrybee_store_id = carrybeeStore.id;
           this.logger.log(`Carrybee store ID set: ${carrybeeStore.id}`);
         } else {
-          this.logger.warn(`Could not retrieve Carrybee store ID for "${store.business_name}"`);
+          this.logger.warn(
+            `Could not retrieve Carrybee store ID for "${store.business_name}"`,
+          );
         }
 
         // Update store sync status
@@ -306,7 +402,9 @@ export class CarrybeeService {
         store.carrybee_synced_at = new Date();
         await this.storeRepository.save(store);
 
-        this.logger.log(`Store ${store.id} synced to Carrybee successfully (ID: ${store.carrybee_store_id})`);
+        this.logger.log(
+          `Store ${store.id} synced to Carrybee successfully (ID: ${store.carrybee_store_id})`,
+        );
       } catch (error) {
         this.logger.error(
           `Failed to auto-sync store ${store.id} to Carrybee`,
@@ -327,13 +425,17 @@ export class CarrybeeService {
 
     // 8. Validate weight
     if (!parcel.product_weight || parcel.product_weight <= 0) {
-      throw new BadRequestException('Parcel weight is required for Carrybee assignment');
+      throw new BadRequestException(
+        'Parcel weight is required for Carrybee assignment',
+      );
     }
 
     // 9. Convert weight to grams
     let itemWeight: number;
     try {
-      itemWeight = this.carrybeeApiService.convertWeightToGrams(parcel.product_weight);
+      itemWeight = this.carrybeeApiService.convertWeightToGrams(
+        parcel.product_weight,
+      );
     } catch (error) {
       throw new BadRequestException(error.message);
     }
@@ -351,13 +453,18 @@ export class CarrybeeService {
     );
 
     // 12. Map delivery type
-    const deliveryType = this.carrybeeApiService.mapDeliveryType(parcel.delivery_type);
+    const deliveryType = this.carrybeeApiService.mapDeliveryType(
+      parcel.delivery_type,
+    );
 
     // 13. Get recipient Carrybee location from coverage area (preferred) or parcel fields
     const coverageArea = parcel.delivery_coverage_area;
-    const recipientCityId = coverageArea?.city_id || parcel.recipient_carrybee_city_id;
-    const recipientZoneId = coverageArea?.zone_id || parcel.recipient_carrybee_zone_id;
-    const recipientAreaId = coverageArea?.area_id || parcel.recipient_carrybee_area_id;
+    const recipientCityId =
+      coverageArea?.city_id || parcel.recipient_carrybee_city_id;
+    const recipientZoneId =
+      coverageArea?.zone_id || parcel.recipient_carrybee_zone_id;
+    const recipientAreaId =
+      coverageArea?.area_id || parcel.recipient_carrybee_area_id;
 
     if (!recipientCityId || !recipientZoneId) {
       throw new BadRequestException(
@@ -389,7 +496,8 @@ export class CarrybeeService {
     // 16. Build order data for Carrybee
     const orderData = {
       store_id: store.carrybee_store_id,
-      merchant_order_id: parcel.merchant_order_id?.substring(0, 25) || undefined,
+      merchant_order_id:
+        parcel.merchant_order_id?.substring(0, 25) || undefined,
       delivery_type: deliveryType,
       product_type: parcel.parcel_type || 1,
       recipient_phone: recipientPhone,
@@ -398,17 +506,22 @@ export class CarrybeeService {
       city_id: recipientCityId,
       zone_id: recipientZoneId,
       area_id: recipientAreaId || undefined,
-      special_instruction: parcel.special_instructions?.substring(0, 256) || undefined,
-      product_description: parcel.product_description?.substring(0, 256) || undefined,
+      special_instruction:
+        parcel.special_instructions?.substring(0, 256) || undefined,
+      product_description:
+        parcel.product_description?.substring(0, 256) || undefined,
       item_weight: itemWeight,
       collectable_amount: parcel.is_cod ? Math.round(parcel.cod_amount) : 0,
     };
 
-    this.logger.log(`Creating Carrybee order with data: ${JSON.stringify(orderData)}`);
+    this.logger.log(
+      `Creating Carrybee order with data: ${JSON.stringify(orderData)}`,
+    );
 
     // 17. Create order in Carrybee
     try {
-      const carrybeeOrder = await this.carrybeeApiService.createOrder(orderData);
+      const carrybeeOrder =
+        await this.carrybeeApiService.createOrder(orderData);
 
       // 18. Update parcel
       parcel.delivery_provider = DeliveryProvider.CARRYBEE;
@@ -444,5 +557,174 @@ export class CarrybeeService {
         `Failed to assign parcel to Carrybee: ${error.response?.data?.message || error.message}`,
       );
     }
+  }
+
+  // ===== BULK ASSIGNMENT =====
+  async assignParcelsToCarrybee(
+    dto: AssignParcelToCarrybeeDto,
+    hubId: string,
+  ): Promise<{ success: any[]; failed: any[] }> {
+    const { parcel_ids, provider_id, notes } = dto;
+
+    // FIX 1: Explicitly type the arrays
+    const success: any[] = [];
+    const failed: { parcel_id: string; reason: string }[] = [];
+
+    // 1. Validate Provider
+    const provider = await this.providerRepository.findOne({
+      where: { id: provider_id, is_active: true },
+    });
+
+    if (!provider || provider.provider_code !== 'CARRYBEE') {
+      throw new BadRequestException('Invalid or inactive provider selected');
+    }
+
+    // 2. Process Loop
+    for (const parcelId of parcel_ids) {
+      try {
+        const result = await this.assignSingleParcel(
+          parcelId,
+          provider,
+          hubId,
+          notes,
+        );
+        success.push(result);
+      } catch (error) {
+        failed.push({
+          parcel_id: parcelId,
+          reason: error.message,
+        });
+      }
+    }
+
+    return { success, failed };
+  }
+
+  // ===== SINGLE ASSIGNMENT HELPER =====
+  private async assignSingleParcel(
+    parcelId: string,
+    provider: ThirdPartyProvider,
+    hubId: string,
+    notes?: string,
+  ) {
+    // 1. Find parcel
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId },
+      relations: [
+        'store',
+        'store.merchant',
+        'store.merchant.user',
+        'delivery_coverage_area',
+      ],
+    });
+
+    if (!parcel) throw new NotFoundException(`Parcel not found`);
+
+    // 2. Validate Hub
+    const belongsToHub =
+      parcel.current_hub_id === hubId ||
+      (parcel.store && parcel.store.hub_id === hubId);
+    if (!belongsToHub)
+      throw new BadRequestException('Parcel does not belong to your hub');
+
+    // 3. Validate Status
+    if (parcel.status !== ParcelStatus.IN_HUB) {
+      throw new BadRequestException(
+        `Invalid status: ${parcel.status}. Must be IN_HUB.`,
+      );
+    }
+
+    // 4. Validate Conflicts
+    if (parcel.assigned_rider_id)
+      throw new BadRequestException('Already assigned to a rider');
+    if (parcel.delivery_provider === DeliveryProvider.CARRYBEE)
+      throw new BadRequestException('Already assigned to Carrybee');
+
+    // 5. Check Store & Sync
+    const store = parcel.store;
+    if (!store) throw new BadRequestException('Parcel has no associated store');
+
+    if (!store.is_carrybee_synced || !store.carrybee_store_id) {
+      // FIX 2: Call the new internal method, NOT the public controller method
+      await this.internalSyncStore(store);
+    }
+
+    // Re-check
+    if (!store.carrybee_store_id)
+      throw new BadRequestException('Store failed to sync with Carrybee');
+
+    // 6. Validate Data
+    if (!parcel.product_weight || parcel.product_weight <= 0)
+      throw new BadRequestException('Weight is required');
+    if (parcel.cod_amount > 100000)
+      throw new BadRequestException('COD exceeds limit');
+
+    // 7. Prepare Carrybee Data
+    const itemWeight = this.carrybeeApiService.convertWeightToGrams(
+      parcel.product_weight,
+    );
+    const recipientPhone = this.carrybeeApiService.formatPhoneForCarrybee(
+      parcel.customer_phone,
+    );
+    const deliveryType = this.carrybeeApiService.mapDeliveryType(
+      parcel.delivery_type,
+    );
+
+    const coverageArea = parcel.delivery_coverage_area;
+    const cityId = coverageArea?.city_id || parcel.recipient_carrybee_city_id;
+    const zoneId = coverageArea?.zone_id || parcel.recipient_carrybee_zone_id;
+    const areaId = coverageArea?.area_id || parcel.recipient_carrybee_area_id;
+
+    if (!cityId || !zoneId)
+      throw new BadRequestException('Missing Carrybee location IDs');
+
+    // Text Validations
+    const address = parcel.customer_address?.trim() || '';
+    if (address.length < 10) throw new BadRequestException('Address too short');
+    if (address.length > 200) throw new BadRequestException('Address too long');
+
+    const name = parcel.customer_name?.trim() || '';
+    if (name.length < 2 || name.length > 99)
+      throw new BadRequestException('Name invalid length');
+
+    // 8. Create Order Payload
+    const orderData = {
+      store_id: store.carrybee_store_id,
+      merchant_order_id: parcel.merchant_order_id?.substring(0, 25),
+      delivery_type: deliveryType,
+      product_type: parcel.parcel_type || 1,
+      recipient_phone: recipientPhone,
+      recipient_name: name,
+      recipient_address: address,
+      city_id: cityId,
+      zone_id: zoneId,
+      area_id: areaId || undefined,
+      special_instruction: parcel.special_instructions?.substring(0, 256),
+      product_description: parcel.product_description?.substring(0, 256),
+      item_weight: itemWeight,
+      collectable_amount: parcel.is_cod ? Math.round(parcel.cod_amount) : 0,
+    };
+
+    // 9. Call API
+    const carrybeeOrder = await this.carrybeeApiService.createOrder(orderData);
+
+    // 10. Update Local
+    parcel.delivery_provider = DeliveryProvider.CARRYBEE;
+    parcel.third_party_provider_id = provider.id;
+    parcel.status = ParcelStatus.ASSIGNED_TO_THIRD_PARTY;
+    parcel.carrybee_consignment_id = carrybeeOrder.consignment_id;
+    parcel.carrybee_delivery_fee = parseFloat(carrybeeOrder.delivery_fee);
+    parcel.carrybee_cod_fee = carrybeeOrder.cod_fee;
+    parcel.assigned_to_carrybee_at = new Date();
+    if (notes) parcel.admin_notes = notes;
+
+    await this.parcelRepository.save(parcel);
+
+    return {
+      parcel_id: parcel.id,
+      tracking_number: parcel.tracking_number,
+      consignment_id: carrybeeOrder.consignment_id,
+      delivery_fee: carrybeeOrder.delivery_fee,
+    };
   }
 }

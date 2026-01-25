@@ -29,7 +29,7 @@ import { PickupRequestsService } from '../pickup-requests/pickup-requests.servic
 import { Rider } from '../riders/entities/rider.entity';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
-import { TransferParcelDto } from './dto/transfer-parcel.dto';
+import { BulkTransferDto, TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
@@ -2955,6 +2955,110 @@ export class ParcelsService {
     );
 
     return parcel;
+  }
+
+  /**
+   * Bulk Transfer parcels to another hub
+   */
+  async transferParcelsBulk(
+    dto: BulkTransferDto,
+    currentHubId: string,
+  ): Promise<{ transferred_count: number; errors: any[] }> {
+    const { parcel_ids, destination_hub_id, transfer_notes } = dto;
+
+    // FIX 1: Explicitly type the errors array
+    const errors: { id: string; tracking_number?: string; error: string }[] =
+      [];
+
+    // FIX 2: Explicitly type the successIds array
+    const successIds: string[] = [];
+
+    // 1. Validate Destination Hub
+    if (destination_hub_id === currentHubId) {
+      throw new BadRequestException('Cannot transfer parcels to the same hub');
+    }
+
+    const destinationHub = await this.hubRepository.findOne({
+      where: { id: destination_hub_id },
+    });
+
+    if (!destinationHub) {
+      throw new NotFoundException('Destination hub not found');
+    }
+
+    // 2. Fetch all requested parcels
+    const parcels = await this.parcelRepository.find({
+      where: { id: In(parcel_ids) },
+    });
+
+    // 3. Process each parcel
+    const allowedStatuses = [ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB];
+
+    // FIX 3: Explicitly type the promises array
+    const updatePromises: Promise<Parcel>[] = [];
+
+    for (const id of parcel_ids) {
+      const parcel = parcels.find((p) => p.id === id);
+
+      // --- Validation Checks ---
+      if (!parcel) {
+        errors.push({ id, error: 'Parcel not found' });
+        continue;
+      }
+
+      if (parcel.current_hub_id !== currentHubId) {
+        errors.push({
+          id,
+          tracking_number: parcel.tracking_number,
+          error: 'Parcel is not in your hub',
+        });
+        continue;
+      }
+
+      if (!allowedStatuses.includes(parcel.status)) {
+        errors.push({
+          id,
+          tracking_number: parcel.tracking_number,
+          error: `Invalid status: ${parcel.status}. Must be IN_HUB or RETURNED_TO_HUB`,
+        });
+        continue;
+      }
+
+      // --- Prepare Update ---
+      // Set origin hub if not already set
+      if (!parcel.origin_hub_id) {
+        parcel.origin_hub_id = currentHubId;
+      }
+
+      parcel.current_hub_id = null; // In transit
+      parcel.destination_hub_id = destination_hub_id;
+      parcel.is_inter_hub_transfer = true;
+      parcel.transferred_at = new Date();
+      parcel.transfer_notes = transfer_notes || null;
+      parcel.status = ParcelStatus.IN_TRANSIT;
+
+      // Clear rider assignment
+      parcel.assigned_rider_id = null;
+      parcel.assigned_at = null;
+      parcel.rider_accepted_at = null;
+
+      successIds.push(parcel.id);
+      updatePromises.push(this.parcelRepository.save(parcel));
+    }
+
+    // 4. Execute all valid updates
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+    }
+
+    this.logger.log(
+      `[BULK TRANSFER] Transferred ${successIds.length} parcels from Hub ${currentHubId} to Hub ${destination_hub_id}`,
+    );
+
+    return {
+      transferred_count: successIds.length,
+      errors,
+    };
   }
 
   /**
