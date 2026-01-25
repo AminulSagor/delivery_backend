@@ -19,6 +19,11 @@ import {
 } from './dto/assign-to-carrybee.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
+import {
+  PaginatedResponse,
+  PaginationDto,
+  PaginationMeta,
+} from 'src/common/dto/pagination.dto';
 
 @Injectable()
 export class CarrybeeService {
@@ -242,18 +247,46 @@ export class CarrybeeService {
 
   // ===== PARCEL ASSIGNMENT METHODS =====
 
-  async getParcelsForThirdPartyAssignment(hubId: string) {
-    const parcels = await this.parcelRepository.find({
+  async getParcelsForThirdPartyAssignment(
+    hubId: string,
+    query: PaginationDto,
+  ): Promise<PaginatedResponse<Parcel>> {
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
+    const skip = (page - 1) * limit;
+    // Use dynamic sorting key
+    const orderOption: any = { [sortBy]: order };
+
+    const [parcels, total] = await this.parcelRepository.findAndCount({
       where: {
         current_hub_id: hubId,
         status: ParcelStatus.IN_HUB,
       },
       relations: ['store', 'delivery_coverage_area'],
-      order: { created_at: 'DESC' },
-      take: 50,
+      order: orderOption,
+      skip,
+      take: limit,
     });
 
-    return parcels;
+    const totalPages = Math.ceil(total / limit);
+
+    const pagination: PaginationMeta = {
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
+
+    return {
+      items: parcels,
+      pagination,
+    };
   }
 
   async assignParcelToCarrybee(
