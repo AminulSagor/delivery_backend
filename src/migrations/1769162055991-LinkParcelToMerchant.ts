@@ -4,15 +4,12 @@ export class LinkParcelToMerchant1769162055991 implements MigrationInterface {
   name = 'LinkParcelToMerchant1769162055991';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // 1. Drop the old constraint (that points to users table)
+    // 1. Drop old constraint
     await queryRunner.query(
       `ALTER TABLE "parcels" DROP CONSTRAINT "FK_84d3757f0e4a20f86842a05a0a2"`,
     );
 
-    // =========================================================
-    // ⬇️ ADD THIS BLOCK MANUALLY ⬇️
-    // This converts the existing User IDs in 'parcels' to Merchant IDs
-    // so they match the new table you are linking to.
+    // 2. Map User IDs to Merchant IDs
     await queryRunner.query(`
         UPDATE "parcels"
         SET "merchant_id" = "merchants"."id"
@@ -20,15 +17,15 @@ export class LinkParcelToMerchant1769162055991 implements MigrationInterface {
         WHERE "parcels"."merchant_id" = "merchants"."user_id"
     `);
 
-    // Optional: Delete "Zombie" parcels (created by users who don't have a merchant profile)
-    // If you don't run this, and bad data exists, the next step will still fail.
-    await queryRunner.query(`
+    // 🔴 REMOVE OR COMMENT OUT THIS DESTRUCTIVE BLOCK 🔴
+    /* await queryRunner.query(`
         DELETE FROM "parcels" 
         WHERE "merchant_id" NOT IN (SELECT "id" FROM "merchants")
     `);
-    // =========================================================
+    */
 
-    // 2. Now safe to Add the new constraint (points to merchants table)
+    // 3. Add new constraint
+    // Note: This might fail if you still have unmapped IDs, but it's better than silent deletion.
     await queryRunner.query(
       `ALTER TABLE "parcels" ADD CONSTRAINT "FK_84d3757f0e4a20f86842a05a0a2" FOREIGN KEY ("merchant_id") REFERENCES "merchants"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
