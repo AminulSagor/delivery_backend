@@ -33,7 +33,7 @@ export interface InvoiceTotals {
 export class InvoiceCalculationService {
   /**
    * Calculate net payable amount for a single parcel
-   * Formula: COD Collected - Applicable Charges
+   * Formula: COD Collected - Total Charges (Delivery + Return + COD)
    */
   calculateParcelPayable(parcel: Parcel): number {
     const codCollected = Number(parcel.cod_collected_amount) || 0;
@@ -46,8 +46,10 @@ export class InvoiceCalculationService {
       ? Number(parcel.return_charge) || 0
       : 0;
 
-    // Net payable can be negative (merchant owes us for return charges)
-    return codCollected - deliveryCharge - returnCharge;
+    const codCharge = Number(parcel.cod_charge) || 0;
+
+    // Net payable = COD Collected - Total Charges
+    return codCollected - deliveryCharge - returnCharge - codCharge;
   }
 
   /**

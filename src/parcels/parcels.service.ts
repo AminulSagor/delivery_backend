@@ -14,6 +14,7 @@ import {
   PaginationMeta,
 } from '../common/dto/pagination.dto';
 import { Parcel, ParcelStatus, PaymentStatus } from './entities/parcel.entity';
+import { FinancialStatus } from '../common/enums/financial-status.enum';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
@@ -1113,6 +1114,7 @@ export class ParcelsService {
         pickup_request_id: pickupRequest?.id || null, // Phase 2: Link to pickup request
         status: ParcelStatus.PENDING,
         payment_status: PaymentStatus.UNPAID,
+        financial_status: FinancialStatus.PENDING, // CRITICAL: Must always be PENDING on creation
         delivery_type: createParcelDto.delivery_type || DeliveryType.NORMAL, // Default to Normal (1)
         is_cod: isCod, // Auto-set based on product_price > 0
         cod_amount: codAmount, // Set from product_price

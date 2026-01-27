@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RidersService } from './riders.service';
 import { RidersController } from './riders.controller';
 import { Rider } from './entities/rider.entity';
+import { RiderFinance } from './entities/rider-finance.entity';
 import { User } from '../users/entities/user.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { PickupRequest } from '../pickup-requests/entities/pickup-request.entity';
@@ -16,6 +17,7 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
   imports: [
     TypeOrmModule.forFeature([
       Rider,
+      RiderFinance,
       User,
       Parcel,
       PickupRequest,
@@ -30,4 +32,4 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
   controllers: [RidersController],
   exports: [RidersService],
 })
-export class RidersModule {}
+export class RidersModule { }

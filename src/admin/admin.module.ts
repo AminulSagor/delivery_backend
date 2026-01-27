@@ -8,16 +8,17 @@ import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { HubTransferRecord } from '../hubs/entities/hub-transfer-record.entity';
+import { AdminFinance } from './entities/admin-finance.entity';
 import { UsersModule } from '../users/users.module';
 import { EmailService } from '../utils/email.service';
 import { SmsService } from '../utils/sms.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, HubTransferRecord, Merchant, Parcel]),
+    TypeOrmModule.forFeature([User, HubTransferRecord, Merchant, Parcel, AdminFinance]),
     UsersModule,
   ],
   controllers: [AdminController, AdminEmailTestController, AdminSmsTestController],
   providers: [AdminService, EmailService, SmsService],
 })
-export class AdminModule {}
+export class AdminModule { }

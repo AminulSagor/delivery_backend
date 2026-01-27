@@ -97,7 +97,7 @@ async function runDatabaseFixes() {
     const result = await tempDataSource.query(`
       SELECT COUNT(*) as count FROM parcels p 
       WHERE p.merchant_id IS NOT NULL 
-      AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.merchant_id)
+      AND NOT EXISTS (SELECT 1 FROM merchants m WHERE m.id = p.merchant_id)
     `);
     
     const orphanCount = parseInt(result[0].count);
@@ -106,7 +106,7 @@ async function runDatabaseFixes() {
       await tempDataSource.query(`
         DELETE FROM parcels 
         WHERE merchant_id IS NOT NULL 
-        AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = parcels.merchant_id)
+        AND NOT EXISTS (SELECT 1 FROM merchants m WHERE m.id = parcels.merchant_id)
       `);
       console.log('[DB FIX] Orphan parcels deleted successfully');
     } else {

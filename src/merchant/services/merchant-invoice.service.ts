@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull, Not } from 'typeorm';
+import { Repository, In, IsNull, Not, Like } from 'typeorm';
 import {
   MerchantInvoice,
   InvoiceStatus,
@@ -71,7 +71,7 @@ export class MerchantInvoiceService {
         financial_status: FinancialStatus.PENDING,
         status: In(terminalStatuses), // Only terminal statuses
       },
-      relations: ['store', 'delivery_coverage_area'],
+      relations: ['store', 'delivery_coverage_area', 'currentHub', 'merchant', 'merchant.user'],
       order: {
         delivered_at: 'DESC',
       },
@@ -270,16 +270,17 @@ export class MerchantInvoiceService {
   private async generateInvoiceNumber(): Promise<string> {
     const year = new Date().getFullYear();
     const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    const prefix = `INV-${year}-${month}`;
 
-    // Get count of invoices this month
+    // Get count of invoices this month using LIKE query
     const count = await this.merchantInvoiceRepository.count({
       where: {
-        invoice_no: In([`INV-${year}-${month}%`]),
+        invoice_no: Like(`${prefix}-%`),
       },
     });
 
     const sequence = String(count + 1).padStart(4, '0');
-    return `INV-${year}-${month}-${sequence}`;
+    return `${prefix}-${sequence}`;
   }
 
   /**
@@ -451,7 +452,7 @@ export class MerchantInvoiceService {
    */
   async getInvoices(
     query: InvoiceQueryDto,
-  ): Promise<{ invoices: MerchantInvoice[]; total: number }> {
+  ): Promise<{ invoices: any[]; total: number }> {
     const {
       merchant_id,
       invoice_status,
@@ -464,6 +465,8 @@ export class MerchantInvoiceService {
     const queryBuilder = this.merchantInvoiceRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'user')
+      .leftJoinAndSelect('invoice.payoutMethod', 'payoutMethod')
       .leftJoinAndSelect('invoice.paidByUser', 'paidByUser');
 
     if (merchant_id) {
@@ -493,7 +496,79 @@ export class MerchantInvoiceService {
 
     const [invoices, total] = await queryBuilder.getManyAndCount();
 
-    return { invoices, total };
+    // Map and calculate payable amount for each invoice
+    const mappedInvoices = await Promise.all(invoices.map(async (invoice) => {
+      // Get amounts from invoice
+      const collectableAmount = Number(invoice.total_cod_amount) || 0;
+      const collectedAmount = Number(invoice.total_cod_collected) || 0;
+
+      // Get parcels for this invoice to calculate detailed charges
+      const parcels = await this.parcelRepository.find({
+        where: { invoice_id: invoice.id },
+      });
+
+      // Calculate charges from parcels
+      let deliveryCharge = 0;
+      let codCharge = 0;
+      let weightCharge = 0;
+      let returnCharge = 0;
+      let discount = 0;
+
+      parcels.forEach((parcel) => {
+        deliveryCharge += Number(parcel.delivery_charge) || 0;
+        codCharge += Number(parcel.cod_charge) || 0;
+        weightCharge += Number(parcel.weight_charge) || 0;
+        returnCharge += parcel.return_charge_applicable ? Number(parcel.return_charge) || 0 : 0;
+        
+        // Calculate discount (if total_charge is less than sum of individual charges)
+        const calculatedTotal = (Number(parcel.delivery_charge) || 0) + 
+                                (Number(parcel.cod_charge) || 0) + 
+                                (Number(parcel.weight_charge) || 0);
+        const totalCharge = Number(parcel.total_charge) || 0;
+        if (calculatedTotal > totalCharge) {
+          discount += calculatedTotal - totalCharge;
+        }
+      });
+
+      // Total charges = delivery + cod + weight + return - discount
+      const totalCharges = deliveryCharge + codCharge + weightCharge + returnCharge - discount;
+
+      // Payable amount = Collected Amount - Total Charges
+      const payableAmount = collectedAmount - totalCharges;
+
+      // Format payment method
+      let paymentMethod: any = null;
+      if (invoice.payoutMethod) {
+        paymentMethod = {
+          id: invoice.payoutMethod.id,
+          method_type: invoice.payoutMethod.method_type,
+        };
+      }
+
+      return {
+        invoice_id: invoice.id,
+        invoice_no: invoice.invoice_no,
+        merchant_name: invoice.merchant?.user?.full_name || 'N/A',
+        merchant_phone: invoice.merchant?.user?.phone || 'N/A',
+        total_parcels: invoice.total_parcels,
+        financial_breakdown: {
+          collectable_amount: collectableAmount,
+          collected_amount: collectedAmount,
+          charges: {
+            delivery_charge: deliveryCharge,
+            cod_charge: codCharge,
+            weight_charge: weightCharge,
+            return_charge: returnCharge,
+            discount: discount,
+            total_charges: totalCharges,
+          },
+        },
+        payable_amount: payableAmount,
+        payment_method: paymentMethod,
+      };
+    }));
+
+    return { invoices: mappedInvoices, total };
   }
 
   /**
@@ -595,10 +670,10 @@ export class MerchantInvoiceService {
     // Get merchant info
     const merchantName =
       invoice.merchantProfile?.user?.full_name ||
-      invoice.merchant?.full_name ||
+      invoice.merchant?.user?.full_name ||
       'N/A';
     const merchantPhone =
-      invoice.merchantProfile?.user?.phone || invoice.merchant?.phone || 'N/A';
+      invoice.merchantProfile?.user?.phone || invoice.merchant?.user?.phone || 'N/A';
 
     // Determine invoice type based on parcel statuses
     const deliveredStatuses = ['DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE'];
@@ -726,6 +801,8 @@ export class MerchantInvoiceService {
         paid_at: invoice.paid_at,
         payment_reference: invoice.payment_reference,
         notes: invoice.notes,
+        created_at: invoice.created_at,
+        updated_at: invoice.updated_at,
       },
 
       // Merchant Info
@@ -971,8 +1048,8 @@ export class MerchantInvoiceService {
     pendingInvoices.forEach((invoice) => {
       const row = worksheet.addRow({
         invoice_no: invoice.invoice_no,
-        merchant_name: invoice.merchant?.full_name || 'N/A',
-        merchant_phone: invoice.merchant?.phone || 'N/A',
+        merchant_name: invoice.merchant?.user?.full_name || 'N/A',
+        merchant_phone: invoice.merchant?.user?.phone || 'N/A',
         status: invoice.invoice_status,
         total_parcels: invoice.total_parcels,
         delivered_count: invoice.delivered_count,
@@ -1678,11 +1755,11 @@ export class MerchantInvoiceService {
       // Get merchant info from merchantProfile or merchant user
       const merchantName =
         invoice.merchantProfile?.user?.full_name ||
-        invoice.merchant?.full_name ||
+        invoice.merchant?.user?.full_name ||
         'N/A';
       const merchantPhone =
         invoice.merchantProfile?.user?.phone ||
-        invoice.merchant?.phone ||
+        invoice.merchant?.user?.phone ||
         'N/A';
 
       return {
