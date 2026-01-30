@@ -1,9 +1,16 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { EmailService } from '../utils/email.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
-import { UserRole } from '../common/enums/user-role.enum';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { UserRole } from 'src/common/enums/user-role.enum';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { EmailService } from 'src/utils/email.service';
 
 class TestEmailDto {
   email: string;
@@ -24,8 +31,8 @@ export class AdminEmailTestController {
     const isConnected = await this.emailService.verifyConnection();
     return {
       success: isConnected,
-      message: isConnected 
-        ? 'Email server connection verified successfully' 
+      message: isConnected
+        ? 'Email server connection verified successfully'
         : 'Failed to connect to email server - check your SMTP credentials',
     };
   }

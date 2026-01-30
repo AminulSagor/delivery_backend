@@ -1777,6 +1777,15 @@ export class MerchantInvoiceService {
       where: { user_id: merchantUserId },
     });
 
+    // Get Real-Time Finance Record (The Source of Truth)
+    // This record includes the negative balance from Advance Payments
+    let finance =
+      await this.merchantFinanceService.getOrCreateFinance(merchantUserId);
+
+    // CURRENT LEDGER BALANCE
+    // This balance is: (Earnings from Parcels) - (Withdrawals) - (Advance Payments)
+    const ledgerBalance = Number(finance.current_balance);
+
     // Get all invoices for this merchant
     const allInvoices = await this.merchantInvoiceRepository.find({
       where: { merchant_id: merchantUserId },
@@ -1795,11 +1804,14 @@ export class MerchantInvoiceService {
       (inv) => inv.invoice_status === InvoiceStatus.PROCESSING,
     );
 
-    // Calculate Total Earning (from PAID invoices)
-    const totalEarning = paidInvoices.reduce(
-      (sum, inv) => sum + Number(inv.payable_amount),
-      0,
-    );
+    // // Calculate Total Earning (from PAID invoices)
+    // const totalEarning = paidInvoices.reduce(
+    //   (sum, inv) => sum + Number(inv.payable_amount),
+    //   0,
+    // );
+
+    // Calculate invoice totals
+    const totalEarning = Number(finance.total_earned); // Use lifetime stats from finance entity
 
     // Calculate amounts in pending invoices
     const invoicedUnpaid = unpaidInvoices.reduce(
@@ -1819,9 +1831,17 @@ export class MerchantInvoiceService {
       return sum + breakdown.net_payable;
     }, 0);
 
-    // Available Balance = uninvoiced + unpaid invoices + processing invoices
-    const availableBalance =
-      uninvoicedAmount + invoicedUnpaid + invoicedProcessing;
+    // Determine "Available Balance" for Withdrawal
+    // If we use the Ledger Balance, it naturally accounts for everything.
+    // However, pending parcels (uninvoiced) might not be in 'current_balance' yet
+    // depending on your specific implementation of 'recordParcelTransaction'.
+    // Assuming 'recordParcelTransaction' adds to 'current_balance' (or pending_balance) immediately upon delivery:
+    // The safest "Available" is the finance record's current balance
+    const availableBalance = ledgerBalance;
+
+    // // Available Balance = uninvoiced + unpaid invoices + processing invoices
+    // const availableBalance =
+    //   uninvoicedAmount + invoicedUnpaid + invoicedProcessing;
 
     // Pending Clearance = unpaid + processing invoices
     const pendingClearance = invoicedUnpaid + invoicedProcessing;
@@ -1835,32 +1855,36 @@ export class MerchantInvoiceService {
           )[0]
         : null;
 
-    // Get parcel statistics
-    const deliveredStatuses = [
-      ParcelStatus.DELIVERED,
-      ParcelStatus.PARTIAL_DELIVERY,
-      ParcelStatus.EXCHANGE,
-    ];
-    const returnedStatuses = [
-      ParcelStatus.RETURNED,
-      ParcelStatus.PAID_RETURN,
-      ParcelStatus.RETURNED_TO_HUB,
-      ParcelStatus.RETURN_TO_MERCHANT,
-    ];
+    // // Get parcel statistics
+    // const deliveredStatuses = [
+    //   ParcelStatus.DELIVERED,
+    //   ParcelStatus.PARTIAL_DELIVERY,
+    //   ParcelStatus.EXCHANGE,
+    // ];
+    // const returnedStatuses = [
+    //   ParcelStatus.RETURNED,
+    //   ParcelStatus.PAID_RETURN,
+    //   ParcelStatus.RETURNED_TO_HUB,
+    //   ParcelStatus.RETURN_TO_MERCHANT,
+    // ];
 
-    const deliveredCount = await this.parcelRepository.count({
-      where: {
-        merchant_id: merchantUserId,
-        status: In(deliveredStatuses),
-      },
-    });
+    // const deliveredCount = await this.parcelRepository.count({
+    //   where: {
+    //     merchant_id: merchantUserId,
+    //     status: In(deliveredStatuses),
+    //   },
+    // });
 
-    const returnedCount = await this.parcelRepository.count({
-      where: {
-        merchant_id: merchantUserId,
-        status: In(returnedStatuses),
-      },
-    });
+    // const returnedCount = await this.parcelRepository.count({
+    //   where: {
+    //     merchant_id: merchantUserId,
+    //     status: In(returnedStatuses),
+    //   },
+    // });
+
+    // 7. Get Parcel Statistics
+    const deliveredCount = finance.total_parcels_delivered;
+    const returnedCount = finance.total_parcels_returned;
 
     // Get recent payments (last 5 paid invoices)
     const recentPayments = paidInvoices
@@ -1900,6 +1924,7 @@ export class MerchantInvoiceService {
         uninvoiced_amount: uninvoicedAmount,
         invoiced_unpaid: invoicedUnpaid,
         invoiced_processing: invoicedProcessing,
+        ledger_balance: ledgerBalance,
       },
 
       statistics: {

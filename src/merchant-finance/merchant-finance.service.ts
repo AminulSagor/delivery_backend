@@ -19,8 +19,16 @@ import {
   CreateTransactionDto,
   RecordParcelTransactionDto,
 } from './dto/create-transaction.dto';
-import { GetTransactionsQueryDto, GetAllMerchantsFinanceQueryDto } from './dto/get-transactions.dto';
-import { AdjustBalanceDto, HoldBalanceDto, ReleaseHoldDto, ProcessWithdrawalDto } from './dto/adjust-balance.dto';
+import {
+  GetTransactionsQueryDto,
+  GetAllMerchantsFinanceQueryDto,
+} from './dto/get-transactions.dto';
+import {
+  AdjustBalanceDto,
+  HoldBalanceDto,
+  ReleaseHoldDto,
+  ProcessWithdrawalDto,
+} from './dto/adjust-balance.dto';
 import {
   MerchantFinanceOverview,
   TransactionListResponse,
@@ -84,7 +92,9 @@ export class MerchantFinanceService {
   /**
    * Get merchant finance overview/dashboard
    */
-  async getMerchantFinanceOverview(merchantId: string): Promise<MerchantFinanceOverview> {
+  async getMerchantFinanceOverview(
+    merchantId: string,
+  ): Promise<MerchantFinanceOverview> {
     const finance = await this.getOrCreateFinance(merchantId);
 
     // Get user info
@@ -117,7 +127,7 @@ export class MerchantFinanceService {
         hold_amount: Number(finance.hold_amount),
         available_for_withdrawal: Math.max(
           0,
-          Number(finance.current_balance) - Number(finance.hold_amount)
+          Number(finance.current_balance) - Number(finance.hold_amount),
         ),
       },
       lifetime_stats: {
@@ -134,7 +144,7 @@ export class MerchantFinanceService {
         credit_used: Number(finance.credit_used),
         credit_available: Math.max(
           0,
-          Number(finance.credit_limit) - Number(finance.credit_used)
+          Number(finance.credit_limit) - Number(finance.credit_used),
         ),
       },
       last_activity: {
@@ -180,28 +190,43 @@ export class MerchantFinanceService {
       let transactionType: FinanceTransactionType;
 
       const deliveredStatuses = ['DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE'];
-      const returnedStatuses = ['RETURNED', 'PAID_RETURN', 'RETURNED_TO_HUB', 'RETURN_TO_MERCHANT'];
+      const returnedStatuses = [
+        'RETURNED',
+        'PAID_RETURN',
+        'RETURNED_TO_HUB',
+        'RETURN_TO_MERCHANT',
+      ];
 
       if (deliveredStatuses.includes(dto.parcel_status)) {
-        referenceType = dto.parcel_status === 'PARTIAL_DELIVERY'
-          ? FinanceReferenceType.PARCEL_PARTIAL_DELIVERY
-          : dto.parcel_status === 'EXCHANGE'
-          ? FinanceReferenceType.PARCEL_EXCHANGE
-          : FinanceReferenceType.PARCEL_DELIVERED;
-        transactionType = netPayable >= 0 ? FinanceTransactionType.CREDIT : FinanceTransactionType.DEBIT;
+        referenceType =
+          dto.parcel_status === 'PARTIAL_DELIVERY'
+            ? FinanceReferenceType.PARCEL_PARTIAL_DELIVERY
+            : dto.parcel_status === 'EXCHANGE'
+              ? FinanceReferenceType.PARCEL_EXCHANGE
+              : FinanceReferenceType.PARCEL_DELIVERED;
+        transactionType =
+          netPayable >= 0
+            ? FinanceTransactionType.CREDIT
+            : FinanceTransactionType.DEBIT;
 
         // Update delivered count
         finance.total_parcels_delivered += 1;
       } else if (returnedStatuses.includes(dto.parcel_status)) {
-        referenceType = dto.parcel_status === 'PAID_RETURN'
-          ? FinanceReferenceType.PARCEL_PAID_RETURN
-          : FinanceReferenceType.RETURN_CHARGE;
-        transactionType = netPayable >= 0 ? FinanceTransactionType.CREDIT : FinanceTransactionType.DEBIT;
+        referenceType =
+          dto.parcel_status === 'PAID_RETURN'
+            ? FinanceReferenceType.PARCEL_PAID_RETURN
+            : FinanceReferenceType.RETURN_CHARGE;
+        transactionType =
+          netPayable >= 0
+            ? FinanceTransactionType.CREDIT
+            : FinanceTransactionType.DEBIT;
 
         // Update returned count
         finance.total_parcels_returned += 1;
       } else {
-        throw new BadRequestException(`Invalid parcel status: ${dto.parcel_status}`);
+        throw new BadRequestException(
+          `Invalid parcel status: ${dto.parcel_status}`,
+        );
       }
 
       // Update pending balance (money waiting to be invoiced)
@@ -209,32 +234,40 @@ export class MerchantFinanceService {
       finance.pending_balance = newPendingBalance;
 
       // Update lifetime stats
-      finance.total_cod_collected = Number(finance.total_cod_collected) + dto.cod_collected;
-      finance.total_delivery_charges = Number(finance.total_delivery_charges) + dto.delivery_charge;
-      finance.total_return_charges = Number(finance.total_return_charges) + dto.return_charge;
+      finance.total_cod_collected =
+        Number(finance.total_cod_collected) + dto.cod_collected;
+      finance.total_delivery_charges =
+        Number(finance.total_delivery_charges) + dto.delivery_charge;
+      finance.total_return_charges =
+        Number(finance.total_return_charges) + dto.return_charge;
       finance.last_transaction_at = new Date();
 
       await queryRunner.manager.save(MerchantFinance, finance);
 
       // Create transaction record
-      const transaction = queryRunner.manager.create(MerchantFinanceTransaction, {
-        merchant_id: merchantId,
-        transaction_type: transactionType,
-        amount: Math.abs(netPayable),
-        balance_before: balanceBefore,
-        balance_after: newPendingBalance,
-        reference_type: referenceType,
-        reference_id: dto.parcel_id,
-        reference_code: dto.tracking_number,
-        description: dto.description || `Parcel ${dto.tracking_number} - ${dto.parcel_status}`,
-        cod_amount: dto.cod_collected,
-        delivery_charge: dto.delivery_charge,
-        return_charge: dto.return_charge,
-        created_by: createdBy,
-        metadata: {
-          parcel_status: dto.parcel_status,
+      const transaction = queryRunner.manager.create(
+        MerchantFinanceTransaction,
+        {
+          merchant_id: merchantId,
+          transaction_type: transactionType,
+          amount: Math.abs(netPayable),
+          balance_before: balanceBefore,
+          balance_after: newPendingBalance,
+          reference_type: referenceType,
+          reference_id: dto.parcel_id,
+          reference_code: dto.tracking_number,
+          description:
+            dto.description ||
+            `Parcel ${dto.tracking_number} - ${dto.parcel_status}`,
+          cod_amount: dto.cod_collected,
+          delivery_charge: dto.delivery_charge,
+          return_charge: dto.return_charge,
+          created_by: createdBy,
+          metadata: {
+            parcel_status: dto.parcel_status,
+          },
         },
-      });
+      );
 
       await queryRunner.manager.save(MerchantFinanceTransaction, transaction);
 
@@ -247,7 +280,9 @@ export class MerchantFinanceService {
       return transaction;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to record parcel transaction: ${error.message}`);
+      this.logger.error(
+        `Failed to record parcel transaction: ${error.message}`,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -423,22 +458,27 @@ export class MerchantFinanceService {
       await queryRunner.manager.save(MerchantFinance, finance);
 
       // Create transaction record for the withdrawal
-      const transaction = queryRunner.manager.create(MerchantFinanceTransaction, {
-        merchant_id: merchantId,
-        transaction_type: FinanceTransactionType.DEBIT,
-        amount: amount,
-        balance_before: processingAmount + invoicedAmount,
-        balance_after: Number(finance.processing_balance) + Number(finance.invoiced_balance),
-        reference_type: FinanceReferenceType.INVOICE_PAID,
-        reference_id: invoiceId,
-        reference_code: invoiceNo,
-        description: `Invoice payment: ${invoiceNo}`,
-        notes: paymentReference,
-        created_by: paidBy,
-        metadata: {
-          payment_reference: paymentReference,
+      const transaction = queryRunner.manager.create(
+        MerchantFinanceTransaction,
+        {
+          merchant_id: merchantId,
+          transaction_type: FinanceTransactionType.DEBIT,
+          amount: amount,
+          balance_before: processingAmount + invoicedAmount,
+          balance_after:
+            Number(finance.processing_balance) +
+            Number(finance.invoiced_balance),
+          reference_type: FinanceReferenceType.INVOICE_PAID,
+          reference_id: invoiceId,
+          reference_code: invoiceNo,
+          description: `Invoice payment: ${invoiceNo}`,
+          notes: paymentReference,
+          created_by: paidBy,
+          metadata: {
+            payment_reference: paymentReference,
+          },
         },
-      });
+      );
 
       await queryRunner.manager.save(MerchantFinanceTransaction, transaction);
 
@@ -498,17 +538,20 @@ export class MerchantFinanceService {
       );
 
       // Create transaction record
-      const transaction = queryRunner.manager.create(MerchantFinanceTransaction, {
-        merchant_id: merchantId,
-        transaction_type: dto.type,
-        amount: dto.amount,
-        balance_before: balanceBefore,
-        balance_after: newBalance,
-        reference_type: referenceType,
-        description: dto.reason,
-        notes: dto.notes,
-        created_by: adminUserId,
-      });
+      const transaction = queryRunner.manager.create(
+        MerchantFinanceTransaction,
+        {
+          merchant_id: merchantId,
+          transaction_type: dto.type,
+          amount: dto.amount,
+          balance_before: balanceBefore,
+          balance_after: newBalance,
+          reference_type: referenceType,
+          description: dto.reason,
+          notes: dto.notes,
+          created_by: adminUserId,
+        },
+      );
 
       await queryRunner.manager.save(MerchantFinanceTransaction, transaction);
 
@@ -671,7 +714,9 @@ export class MerchantFinanceService {
         reference_code: txn.reference_code,
         description: txn.description,
         cod_amount: txn.cod_amount ? Number(txn.cod_amount) : null,
-        delivery_charge: txn.delivery_charge ? Number(txn.delivery_charge) : null,
+        delivery_charge: txn.delivery_charge
+          ? Number(txn.delivery_charge)
+          : null,
         return_charge: txn.return_charge ? Number(txn.return_charge) : null,
         created_at: txn.created_at,
         created_by: txn.created_by,
@@ -771,7 +816,8 @@ export class MerchantFinanceService {
         total_current_balance: Number(totalsQuery.total_current_balance) || 0,
         total_pending_balance: Number(totalsQuery.total_pending_balance) || 0,
         total_invoiced_balance: Number(totalsQuery.total_invoiced_balance) || 0,
-        total_processing_balance: Number(totalsQuery.total_processing_balance) || 0,
+        total_processing_balance:
+          Number(totalsQuery.total_processing_balance) || 0,
         total_hold_amount: Number(totalsQuery.total_hold_amount) || 0,
       },
       merchants: merchants.map((m) => ({
@@ -922,5 +968,91 @@ export class MerchantFinanceService {
 
     return { synced, errors };
   }
-}
 
+  /**
+   * Generic method to create a finance transaction
+   * Can be used for Advance Payments, Adjustments, etc.
+   */
+  async createTransaction(
+    dto: CreateTransactionDto,
+  ): Promise<MerchantFinanceTransaction> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Get or create finance record
+      let finance = await queryRunner.manager.findOne(MerchantFinance, {
+        where: { merchant_id: dto.merchant_id },
+      });
+
+      if (!finance) {
+        finance = queryRunner.manager.create(MerchantFinance, {
+          merchant_id: dto.merchant_id,
+          current_balance: 0,
+          pending_balance: 0,
+          invoiced_balance: 0,
+          processing_balance: 0,
+        });
+        await queryRunner.manager.save(MerchantFinance, finance);
+      }
+
+      const balanceBefore = Number(finance.current_balance);
+      let newBalance = balanceBefore;
+
+      // 2. Update Balance based on Transaction Type
+      // Advance Payment is a WITHDRAWAL/DEBIT operation (reduces balance)
+      if (dto.transaction_type === FinanceTransactionType.ADVANCE_PAYMENT) {
+        // Amount should be passed as negative, or we subtract absolute value
+        // Let's assume the caller passes a negative amount for deductions
+        newBalance = balanceBefore + dto.amount;
+
+        // Update stats
+        finance.total_withdrawn =
+          Number(finance.total_withdrawn) + Math.abs(dto.amount);
+        finance.last_withdrawal_at = new Date();
+      } else if (dto.transaction_type === FinanceTransactionType.DEBIT) {
+        newBalance = balanceBefore - Math.abs(dto.amount);
+      } else if (dto.transaction_type === FinanceTransactionType.CREDIT) {
+        newBalance = balanceBefore + Math.abs(dto.amount);
+      }
+
+      // Update Finance Record
+      finance.current_balance = newBalance;
+      finance.last_transaction_at = new Date();
+      await queryRunner.manager.save(MerchantFinance, finance);
+
+      // 3. Create Transaction Record
+      const transaction = queryRunner.manager.create(
+        MerchantFinanceTransaction,
+        {
+          merchant_id: dto.merchant_id,
+          transaction_type: dto.transaction_type, // Now supports ADVANCE_PAYMENT
+          amount: dto.amount,
+          balance_before: balanceBefore,
+          balance_after: newBalance,
+          reference_type: dto.reference_type,
+          reference_id: dto.reference_id,
+          reference_code: dto.reference_code || null,
+          description: dto.description,
+          created_by: dto.created_by,
+        },
+      );
+
+      await queryRunner.manager.save(MerchantFinanceTransaction, transaction);
+      await queryRunner.commitTransaction();
+
+      this.logger.log(
+        `Created transaction for merchant ${dto.merchant_id}: ${dto.transaction_type} ${dto.amount}. New Balance: ${newBalance}`,
+      );
+
+      return transaction;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to create transaction: ${error.message}`);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+}

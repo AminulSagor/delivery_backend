@@ -1,6 +1,7 @@
 export enum FinanceTransactionType {
   CREDIT = 'CREDIT',
   DEBIT = 'DEBIT',
+  ADVANCE_PAYMENT = 'ADVANCE_PAYMENT',
 }
 
 export enum FinanceReferenceType {
@@ -19,5 +20,7 @@ export enum FinanceReferenceType {
   WITHDRAWAL = 'WITHDRAWAL',
   ADJUSTMENT_DEBIT = 'ADJUSTMENT_DEBIT',
   CLEARANCE = 'CLEARANCE',
-}
 
+  // Advance
+  ADVANCE_PAYMENT = 'ADVANCE_PAYMENT',
+}
