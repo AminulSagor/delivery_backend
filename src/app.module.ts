@@ -22,7 +22,8 @@ import { CarrybeeModule } from './carrybee/carrybee.module';
 import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations.module';
 import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
-import { BanksModule } from './banks/banks.module';
+// import { BanksModule } from './banks/banks.module';
+import { AdvancePaymentsModule } from './advance-payments/advance-payments.module';
 
 // Synchronize is ALWAYS enabled - no manual migrations needed
 // TypeORM will auto-create/update all tables based on entities
@@ -38,8 +39,8 @@ import { BanksModule } from './banks/banks.module';
       autoLoadEntities: true,
       // Migrations disabled - synchronize handles everything automatically
       migrationsRun: false,
-      retryAttempts: 5,  // Reduced for Railway (faster fail if misconfigured)
-      retryDelay: 2000,  // 2s between retries
+      retryAttempts: 5, // Reduced for Railway (faster fail if misconfigured)
+      retryDelay: 2000, // 2s between retries
     }),
     AdminModule,
     MerchantModule,
@@ -59,7 +60,8 @@ import { BanksModule } from './banks/banks.module';
     CarrybeeLocationsModule,
     UploadModule,
     MerchantFinanceModule,
-    BanksModule,
+    // BanksModule,
+    AdvancePaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
