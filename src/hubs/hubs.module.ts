@@ -4,6 +4,7 @@ import { HubsService } from './hubs.service';
 import { HubsController } from './hubs.controller';
 import { Hub } from './entities/hub.entity';
 import { HubManager } from './entities/hub-manager.entity';
+import { HubManagerFinance } from './entities/hub-manager-finance.entity';
 import { RiderSettlement } from './entities/rider-settlement.entity';
 import { HubTransferRecord } from './entities/hub-transfer-record.entity';
 import { User } from '../users/entities/user.entity';
@@ -19,6 +20,7 @@ import { Parcel } from '../parcels/entities/parcel.entity';
     TypeOrmModule.forFeature([
       Hub,
       HubManager,
+      HubManagerFinance,
       RiderSettlement,
       HubTransferRecord,
       User,
@@ -33,4 +35,4 @@ import { Parcel } from '../parcels/entities/parcel.entity';
   controllers: [HubsController],
   exports: [HubsService],
 })
-export class HubsModule {}
+export class HubsModule { }

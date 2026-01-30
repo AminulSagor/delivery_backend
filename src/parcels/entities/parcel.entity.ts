@@ -209,12 +209,14 @@ export class Parcel {
   return_charge_applicable: boolean;
 
   // Financial Status (separate from parcel status)
+  // CRITICAL: Must never be NULL - always defaults to PENDING
   @Column({
     type: 'enum',
     enum: FinancialStatus,
     default: FinancialStatus.PENDING,
+    nullable: false,
   })
-  financial_status: FinancialStatus;
+  financial_status: FinancialStatus = FinancialStatus.PENDING;
 
   // Invoice Linkage (CRITICAL for preventing double payment)
   @Column({ type: 'uuid', nullable: true })

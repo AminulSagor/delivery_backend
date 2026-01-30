@@ -368,10 +368,26 @@ export class MerchantInvoiceController {
 
     const parcels = await this.merchantInvoiceService.getEligibleParcels(targetMerchantId);
 
-    // Calculate breakdown for each parcel
-    const parcelBreakdowns = parcels.map((parcel) =>
-      this.invoiceCalculationService.calculateParcelBreakdown(parcel),
-    );
+    // Calculate breakdown for each parcel and enrich with customer & hub info
+    const parcelBreakdowns = parcels.map((parcel) => {
+      const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+      return {
+        ...breakdown,
+        merchant_name: parcel.merchant?.user?.full_name || 'N/A',
+        merchant_phone: parcel.merchant?.user?.phone || 'N/A',
+        customer_name: parcel.customer_name,
+        customer_phone: parcel.customer_phone,
+        customer_address: parcel.customer_address,
+        special_instructions: parcel.special_instructions,
+        hub_name: parcel.currentHub?.branch_name || 'N/A',
+        delivery_charge_breakdown: {
+          delivery_charge: Number(parcel.total_charge) || 0,
+          return_charge: Number(parcel.return_charge) || 0,
+          cod_charge: Number(parcel.cod_charge) || 0,
+          total_charges: (Number(parcel.total_charge) || 0) + (Number(parcel.return_charge) || 0) + (Number(parcel.cod_charge) || 0),
+        },
+      };
+    });
 
     return {
       success: true,
