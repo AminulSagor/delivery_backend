@@ -11,9 +11,9 @@ export class GetAdvancePaymentsQueryDto extends PaginationDto {
   @IsUUID()
   merchant_id?: string; // Admin usage to filter by specific merchant
 
-  @IsOptional()
-  @IsString()
-  search?: string; // Search by Invoice ID
+  // @IsOptional()
+  // @IsString()
+  // search?: string; // Search by Invoice ID
 
   @IsOptional()
   @IsString()

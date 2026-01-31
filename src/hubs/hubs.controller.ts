@@ -59,6 +59,11 @@ import {
 import { ParcelReportQueryDto } from './dto/parcel-report-query.dto';
 import { CreateParcelDto } from 'src/parcels/dto/create-parcel.dto';
 import { BulkAcceptDto } from './dto/bulk-accept-parcels.dto';
+import { FinancialReportQueryDto } from './dto/financial-report-query.dto';
+import { CreateHubExpenseDto } from './dto/create-hub-expense.dto';
+import { CollectCodDto } from './dto/collect-cod.dto';
+import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -1070,18 +1075,12 @@ export class HubsController {
   @HttpCode(HttpStatus.CREATED)
   async createTransferRecord(
     @Body() dto: CreateTransferRecordDto,
-    @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
   ) {
-    if (!file) {
-      throw new BadRequestException('Proof file is required');
-    }
-
     const hubManagerId = req.user.hubManagerId;
     const record = await this.hubsService.createTransferRecord(
       hubManagerId,
       dto,
-      file,
     );
 
     return {
@@ -1159,7 +1158,6 @@ export class HubsController {
   async updateTransferRecord(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTransferRecordDto,
-    @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
   ) {
     const hubManagerId = req.user.hubManagerId;
@@ -1167,7 +1165,6 @@ export class HubsController {
       id,
       hubManagerId,
       dto,
-      file,
     );
 
     return {
@@ -1193,6 +1190,169 @@ export class HubsController {
     return {
       success: true,
       message: 'Transfer record deleted successfully',
+    };
+  }
+
+  // 1. Dashboard Stats
+  @Get('finance/dashboard')
+  @Roles(UserRole.HUB_MANAGER)
+  async getFinanceDashboard(@CurrentUser() user: any) {
+    const data = await this.hubsService.getFinanceDashboard(user.hubId);
+    return { success: true, data };
+  }
+
+  // 2. Collect Cash (Manual COD)
+  @Post('finance/collect-cod')
+  @Roles(UserRole.HUB_MANAGER)
+  async collectCod(@CurrentUser() user: any, @Body() dto: CollectCodDto) {
+    const settlement = await this.hubsService.collectCashFromRider(
+      user.hubId,
+      dto,
+    );
+    return {
+      success: true,
+      message: 'Cash collected successfully',
+      data: settlement,
+    };
+  }
+
+  // 3. Log Expense
+  @Post('finance/expense')
+  @Roles(UserRole.HUB_MANAGER)
+  async createExpense(
+    @CurrentUser() user: any,
+    @Body() dto: CreateHubExpenseDto,
+  ) {
+    const expense = await this.hubsService.createHubExpense(user.hubId, dto);
+    return {
+      success: true,
+      message: 'Expense recorded successfully',
+      data: expense,
+    };
+  }
+
+  // 4. Transfer to Admin
+  @Post('finance/transfer')
+  @Roles(UserRole.HUB_MANAGER)
+  async createTransfer(
+    @CurrentUser() user: any,
+    @Body() dto: CreateTransferRecordDto,
+  ) {
+    const transfer = await this.hubsService.createTransfer(user.hubId, dto);
+    return {
+      success: true,
+      message: 'Transfer submitted successfully',
+      data: transfer,
+    };
+  }
+
+  // 5. Get Transfers List
+  @Get('finance/transfers')
+  @Roles(UserRole.HUB_MANAGER)
+  async getTransfers(@CurrentUser() user: any, @Query() query: PaginationDto) {
+    const data = await this.hubsService.getTransfers(user.hubId, query);
+    return { success: true, data };
+  }
+
+  // 6. Get Transfer By ID
+  @Get('finance/transfers/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  async getTransferById(@Param('id') id: string, @CurrentUser() user: any) {
+    const data = await this.hubsService.getTransferById(id, user.hubId);
+    return { success: true, data };
+  }
+
+  // 7. Get Expenses List
+  @Get('finance/expenses')
+  @Roles(UserRole.HUB_MANAGER)
+  async getExpenses(@CurrentUser() user: any, @Query() query: PaginationDto) {
+    const data = await this.hubsService.getExpenses(user.hubId, query);
+    return { success: true, data };
+  }
+
+  // 8. Get Expense By ID
+  @Get('finance/expenses/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  async getExpenseById(@Param('id') id: string, @CurrentUser() user: any) {
+    const data = await this.hubsService.getExpenseById(id, user.hubId);
+    return { success: true, data };
+  }
+
+  // 9. History Report
+  @Get('finance/history')
+  @Roles(UserRole.HUB_MANAGER)
+  async getHistory(
+    @CurrentUser() user: any,
+    @Query() query: FinancialReportQueryDto,
+  ) {
+    const history = await this.hubsService.getFinancialHistory(
+      user.hubId,
+      query,
+    );
+    return { success: true, data: history };
+  }
+
+  // ==========================================
+  // ADMIN ENDPOINTS (Approvals)
+  // ==========================================
+
+  @Get('admin/finance/transfers')
+  @Roles(UserRole.ADMIN)
+  async getAllTransfersAdmin(@Query() query: PaginationDto) {
+    const result = await this.hubsService.getAllTransfersForAdmin(query);
+    return { success: true, ...result };
+  }
+
+  @Get('admin/finance/transfers/:id')
+  @Roles(UserRole.ADMIN)
+  async getTransferByIdAdmin(@Param('id') id: string) {
+    const data = await this.hubsService.getTransferDetailForAdmin(id);
+    return { success: true, data };
+  }
+
+  @Get('admin/finance/expenses')
+  @Roles(UserRole.ADMIN)
+  async getAllExpensesAdmin(@Query() query: PaginationDto) {
+    const result = await this.hubsService.getAllExpensesForAdmin(query);
+    return { success: true, ...result };
+  }
+
+  @Get('admin/finance/expenses/:id')
+  @Roles(UserRole.ADMIN)
+  async getExpenseByIdAdmin(@Param('id') id: string) {
+    const data = await this.hubsService.getExpenseDetailForAdmin(id);
+    return { success: true, data };
+  }
+
+  // 10. Admin Review Transfer
+  @Patch('finance/transfer/:id/review')
+  @Roles(UserRole.ADMIN)
+  async reviewTransfer(
+    @Param('id') id: string,
+    @Body() dto: ReviewFinanceRequestDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.hubsService.reviewTransfer(id, dto, user);
+    return {
+      success: true,
+      message: `Transfer request ${dto.status.toLowerCase()}`,
+      data: result,
+    };
+  }
+
+  // 11. Admin Review Expense
+  @Patch('finance/expense/:id/review')
+  @Roles(UserRole.ADMIN)
+  async reviewExpense(
+    @Param('id') id: string,
+    @Body() dto: ReviewFinanceRequestDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.hubsService.reviewExpense(id, dto, user);
+    return {
+      success: true,
+      message: `Expense request ${dto.status.toLowerCase()}`,
+      data: result,
     };
   }
 }

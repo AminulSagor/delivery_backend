@@ -16,6 +16,10 @@ export class PaginationDto {
   limit?: number = 20;
 
   @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
   @IsString({ message: 'Sort by must be a string' })
   sortBy?: string = 'created_at';
 

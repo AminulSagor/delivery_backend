@@ -4,6 +4,7 @@ import {
   IsString,
   Min,
   MaxLength,
+  IsUUID,
 } from 'class-validator';
 
 export class UpdateTransferRecordDto {
@@ -11,6 +12,10 @@ export class UpdateTransferRecordDto {
   @IsNumber()
   @Min(0.01, { message: 'Transferred amount must be greater than 0' })
   transferred_amount?: number;
+
+  @IsOptional()
+  @IsUUID()
+  admin_account_id?: string;
 
   @IsOptional()
   @IsString()
@@ -34,6 +39,9 @@ export class UpdateTransferRecordDto {
 
   @IsOptional()
   @IsString()
+  proof_file_url?: string;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
 }
-

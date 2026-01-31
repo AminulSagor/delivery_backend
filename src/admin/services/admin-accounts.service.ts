@@ -100,6 +100,45 @@ export class AdminAccountsService {
     return account;
   }
 
+  async findAllActive(query: PaginationDto) {
+    const { page = 1, limit = 20, search } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.accountRepo
+      .createQueryBuilder('account')
+      .where('account.is_active = :active', { active: true });
+
+    if (search) {
+      qb.andWhere(
+        '(account.account_name ILIKE :search OR account.account_number ILIKE :search OR account.provider_type ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    qb.orderBy('account.created_at', 'DESC').skip(skip).take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      success: true,
+      data: items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findActiveOne(id: string) {
+    const account = await this.accountRepo.findOne({
+      where: { id, is_active: true },
+    });
+    if (!account) throw new NotFoundException('Account not found or inactive');
+    return account;
+  }
+
   async update(id: string, dto: UpdateAdminAccountDto): Promise<AdminAccount> {
     const account = await this.findOne(id);
 
