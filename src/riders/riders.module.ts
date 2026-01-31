@@ -2,6 +2,8 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RidersService } from './riders.service';
 import { RidersController } from './riders.controller';
+import { RiderFinanceService } from './services/riders-finance.service';
+import { RiderFinanceController } from './controllers/riders-finance.controller';
 import { Rider } from './entities/rider.entity';
 import { RiderFinance } from './entities/rider-finance.entity';
 import { User } from '../users/entities/user.entity';
@@ -28,8 +30,8 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
     forwardRef(() => ParcelsModule),
     forwardRef(() => PickupRequestsModule),
   ],
-  providers: [RidersService],
-  controllers: [RidersController],
-  exports: [RidersService],
+  providers: [RidersService, RiderFinanceService],
+  controllers: [RidersController, RiderFinanceController],
+  exports: [RidersService, RiderFinanceService],
 })
 export class RidersModule { }

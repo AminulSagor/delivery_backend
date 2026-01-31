@@ -59,17 +59,20 @@ const baseConfig = {
   logging: (shouldSynchronize ? ['schema', 'error', 'warn'] : false) as LoggerOptions,
 };
 
-// Railway/Production config: Use DATABASE_URL directly if available
-// Railway requires: SSL + small pool size + short timeouts
+// Railway/Production config: Use DATABASE_URL directly if available  
+// Railway TCP Proxy: SSL configuration based on connection string or environment
 const productionConfig: DataSourceOptions = databaseUrl
   ? {
       ...baseConfig,
       url: databaseUrl,
-      ssl: { rejectUnauthorized: false }, // Required for Railway proxy
+      // Check if DATABASE_URL contains sslmode=disable
+      ssl: databaseUrl.includes('sslmode=disable') ? false : {
+        rejectUnauthorized: false,
+      },
       extra: {
         max: 5,                      // Small pool for Railway limits
         idleTimeoutMillis: 30000,    // 30s idle timeout
-        connectionTimeoutMillis: 5000, // 5s connection timeout (Railway proxy)
+        connectionTimeoutMillis: 10000, // 10s connection timeout
       },
     }
   : {
@@ -79,11 +82,13 @@ const productionConfig: DataSourceOptions = databaseUrl
       username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
       password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
       database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
-      ssl: { rejectUnauthorized: false }, // Required for Railway proxy
+      ssl: process.env.PGSSLMODE === 'disable' ? false : {
+        rejectUnauthorized: false,
+      },
       extra: {
         max: 5,                      // Small pool for Railway limits
         idleTimeoutMillis: 30000,    // 30s idle timeout
-        connectionTimeoutMillis: 5000, // 5s connection timeout (Railway proxy)
+        connectionTimeoutMillis: 10000, // 10s connection timeout
       },
     };
 
