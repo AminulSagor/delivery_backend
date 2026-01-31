@@ -47,6 +47,19 @@ export class AdminAccountsController {
     return this.service.findOne(id);
   }
 
+  @Get('list/active')
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async findAllActive(@Query() query: PaginationDto) {
+    return this.service.findAllActive(query);
+  }
+
+  @Get('list/active/:id')
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async findActiveOne(@Param('id') id: string) {
+    const data = await this.service.findActiveOne(id);
+    return { success: true, data };
+  }
+
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateAdminAccountDto) {
     return this.service.update(id, dto);

@@ -13,6 +13,7 @@ import {
   MoreThanOrEqual,
   Between,
   In,
+  DataSource,
 } from 'typeorm';
 import { Hub } from './entities/hub.entity';
 import { HubManager } from './entities/hub-manager.entity';
@@ -32,7 +33,22 @@ import { TransferRecordStatus } from '../common/enums/transfer-record-status.enu
 import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
 import { Store } from '../stores/entities/store.entity';
-import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
+import {
+  Parcel,
+  ParcelStatus,
+  PaymentStatus,
+} from '../parcels/entities/parcel.entity';
+import { HubExpense } from './entities/hub-expense.entity';
+import { CollectCodDto } from './dto/collect-cod.dto';
+import { HubManagerFinance } from './entities/hub-manager-finance.entity';
+import { CreateHubExpenseDto } from './dto/create-hub-expense.dto';
+import {
+  FinancialReportQueryDto,
+  ReportPeriod,
+} from './dto/financial-report-query.dto';
+import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 
 @Injectable()
 export class HubsService {
@@ -47,6 +63,10 @@ export class HubsService {
     private readonly riderSettlementRepository: Repository<RiderSettlement>,
     @InjectRepository(HubTransferRecord)
     private readonly hubTransferRecordRepository: Repository<HubTransferRecord>,
+    @InjectRepository(HubExpense)
+    private readonly expenseRepository: Repository<HubExpense>,
+    @InjectRepository(HubManagerFinance)
+    private financeRepository: Repository<HubManagerFinance>,
     @InjectRepository(Rider)
     private readonly riderRepository: Repository<Rider>,
     @InjectRepository(DeliveryVerification)
@@ -57,7 +77,10 @@ export class HubsService {
     private readonly parcelRepository: Repository<Parcel>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(AdminAccount)
+    private adminAccountRepo: Repository<AdminAccount>,
     private readonly usersService: UsersService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -732,10 +755,9 @@ export class HubsService {
   async createTransferRecord(
     hubManagerId: string,
     dto: CreateTransferRecordDto,
-    file: Express.Multer.File,
   ): Promise<HubTransferRecord> {
     try {
-      // Get hub manager to verify and get hub_id
+      // 1. Verify Hub Manager
       const hubManager = await this.hubManagerRepository.findOne({
         where: { id: hubManagerId },
       });
@@ -744,27 +766,51 @@ export class HubsService {
         throw new NotFoundException('Hub manager not found');
       }
 
-      // Get file info
-      const fileExtension = file.mimetype.split('/')[1];
-      const fileType = fileExtension === 'jpeg' ? 'jpg' : fileExtension;
+      // 2. Fetch Admin Account for Snapshot
+      const adminAccount = await this.adminAccountRepo.findOne({
+        where: { id: dto.admin_account_id },
+      });
 
-      // Create transfer record
+      if (!adminAccount) {
+        throw new NotFoundException('Selected Admin Account not found');
+      }
+
+      // 3. Create Transfer Record
       const transferRecord = this.hubTransferRecordRepository.create({
         hub_manager_id: hubManagerId,
         hub_id: hubManager.hub_id,
         transferred_amount: dto.transferred_amount,
-        admin_bank_name: dto.admin_bank_name,
-        admin_bank_account_number: dto.admin_bank_account_number,
-        admin_account_holder_name: dto.admin_account_holder_name,
-        transaction_reference_id: dto.transaction_reference_id || null,
+
+        // Link to Account
+        admin_account_id: adminAccount.id,
+
+        // Snapshot Account Details (From DB, not DTO, for security/accuracy)
+        admin_account_name: adminAccount.account_name,
+        admin_account_number: adminAccount.account_number,
+        admin_account_holder_name: adminAccount.account_holder_name,
+
+        transaction_reference_id: dto.transaction_reference_id,
         notes: dto.notes || null,
-        proof_file_url: `/uploads/transfer-proofs/${file.filename}`,
-        proof_file_type: fileType,
-        proof_file_size: file.size,
+        proof_file_url: dto.proof_file_url,
+
         status: TransferRecordStatus.PENDING,
       });
 
       const saved = await this.hubTransferRecordRepository.save(transferRecord);
+
+      // 4. Update Hub Finance Balance (Deduct transferred amount)
+      // Note: Ensure you have the finance repo injected
+      const finance = await this.financeRepository.findOne({
+        where: { hub_manager_id: hubManagerId },
+      });
+      if (finance) {
+        finance.current_balance =
+          Number(finance.current_balance) - dto.transferred_amount;
+        finance.total_transferred_to_admin =
+          Number(finance.total_transferred_to_admin) + dto.transferred_amount;
+        finance.last_transfer_at = new Date();
+        await this.financeRepository.save(finance);
+      }
 
       this.logger.log(
         `Transfer record created: ${saved.id} by hub manager ${hubManagerId} - Amount: ${saved.transferred_amount}`,
@@ -888,11 +934,14 @@ export class HubsService {
   async updateTransferRecord(
     recordId: string,
     hubManagerId: string,
-    dto: UpdateTransferRecordDto,
-    file?: Express.Multer.File,
+    dto: UpdateTransferRecordDto, // Ensure this DTO exists and has optional fields
   ): Promise<HubTransferRecord> {
     try {
-      const record = await this.getTransferRecordById(recordId, hubManagerId);
+      const record = await this.hubTransferRecordRepository.findOne({
+        where: { id: recordId, hub_manager_id: hubManagerId },
+      });
+
+      if (!record) throw new NotFoundException('Transfer record not found');
 
       if (record.status !== TransferRecordStatus.PENDING) {
         throw new BadRequestException(
@@ -900,34 +949,56 @@ export class HubsService {
         );
       }
 
-      // Update fields
-      if (dto.transferred_amount !== undefined) {
+      // Handle Balance Adjustment if Amount Changed
+      if (
+        dto.transferred_amount &&
+        Number(dto.transferred_amount) !== Number(record.transferred_amount)
+      ) {
+        const finance = await this.financeRepository.findOne({
+          where: { hub_manager_id: hubManagerId },
+        });
+        if (finance) {
+          // Revert old amount
+          finance.current_balance =
+            Number(finance.current_balance) + Number(record.transferred_amount);
+          finance.total_transferred_to_admin =
+            Number(finance.total_transferred_to_admin) -
+            Number(record.transferred_amount);
+
+          // Deduct new amount
+          finance.current_balance =
+            Number(finance.current_balance) - Number(dto.transferred_amount);
+          finance.total_transferred_to_admin =
+            Number(finance.total_transferred_to_admin) +
+            Number(dto.transferred_amount);
+
+          await this.financeRepository.save(finance);
+        }
         record.transferred_amount = dto.transferred_amount;
       }
-      if (dto.admin_bank_name) {
-        record.admin_bank_name = dto.admin_bank_name;
+
+      // Update Account Snapshot if Account Changed
+      if (dto.admin_account_id) {
+        const adminAccount = await this.adminAccountRepo.findOne({
+          where: { id: dto.admin_account_id },
+        });
+        if (!adminAccount)
+          throw new NotFoundException('Admin Account not found');
+
+        record.admin_account_id = adminAccount.id;
+        record.admin_account_name = adminAccount.account_name;
+        record.admin_account_number = adminAccount.account_number;
+        record.admin_account_holder_name = adminAccount.account_holder_name;
       }
-      if (dto.admin_bank_account_number) {
-        record.admin_bank_account_number = dto.admin_bank_account_number;
-      }
-      if (dto.admin_account_holder_name) {
-        record.admin_account_holder_name = dto.admin_account_holder_name;
-      }
+
       if (dto.transaction_reference_id !== undefined) {
         record.transaction_reference_id = dto.transaction_reference_id;
       }
       if (dto.notes !== undefined) {
         record.notes = dto.notes;
       }
-
-      // Update file if provided
-      if (file) {
-        const fileExtension = file.mimetype.split('/')[1];
-        const fileType = fileExtension === 'jpeg' ? 'jpg' : fileExtension;
-
-        record.proof_file_url = `/uploads/transfer-proofs/${file.filename}`;
-        record.proof_file_type = fileType;
-        record.proof_file_size = file.size;
+      if (dto.proof_file_url) {
+        record.proof_file_url = dto.proof_file_url;
       }
 
       const updated = await this.hubTransferRecordRepository.save(record);
@@ -1225,6 +1296,682 @@ export class HubsService {
       throw new InternalServerErrorException(
         'Failed to retrieve hub merchants. Please try again.',
       );
+    }
+  }
+
+  // 1. COLLECT CASH FROM RIDER (Balance: +)
+  async collectCashFromRider(hubManagerId: string, dto: CollectCodDto) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Get Hub Manager Info
+      const managerFinance = await queryRunner.manager.findOne(
+        HubManagerFinance,
+        {
+          where: { hub_manager_id: hubManagerId },
+        },
+      );
+      if (!managerFinance)
+        throw new NotFoundException('Hub Finance record not found');
+
+      const parcels = await queryRunner.manager.find(Parcel, {
+        where: {
+          id: In(dto.parcel_ids),
+          assigned_rider_id: dto.rider_id, // Ensure parcels belong to this rider
+        },
+      });
+
+      if (parcels.length !== dto.parcel_ids.length) {
+        throw new BadRequestException(
+          'Some parcels were not found or do not belong to this rider',
+        );
+      }
+
+      // 3. Calculate "Total Collectable Amount" (Expected from Rider)
+      let totalExpectedAmount = 0;
+      const settledParcelIds: string[] = [];
+
+      // Counters for settlement record
+      let deliveredCount = 0;
+      let partialCount = 0;
+      let exchangeCount = 0;
+      let paidReturnCount = 0;
+      let returnedCount = 0;
+
+      for (const parcel of parcels) {
+        // Validation: Only settle parcels that are effectively "Done" but unpaid to hub
+        if (parcel.payment_status === PaymentStatus.COD_COLLECTED) {
+          throw new BadRequestException(
+            `Parcel ${parcel.tracking_number} is already settled.`,
+          );
+        }
+
+        // Add to total
+        // We use 'cod_collected_amount' which is what the rider actually took from customer
+        totalExpectedAmount += Number(parcel.cod_collected_amount || 0);
+        settledParcelIds.push(parcel.id);
+
+        // Update Counts
+        if (parcel.status === ParcelStatus.DELIVERED) deliveredCount++;
+        else if (parcel.status === ParcelStatus.PARTIAL_DELIVERY)
+          partialCount++;
+        else if (parcel.status === ParcelStatus.EXCHANGE) exchangeCount++;
+        else if (parcel.status === ParcelStatus.PAID_RETURN) paidReturnCount++;
+        else if (parcel.status === ParcelStatus.RETURNED) returnedCount++;
+      }
+
+      // 4. Financial Calculations
+      const cashReceived = dto.cash_received;
+      const totalShortage = totalExpectedAmount - cashReceived;
+
+      // Determine Discrepancy vs Due
+      // If DTO provides explicit breakdown, use it. Otherwise, assume shortage is Due.
+      let discrepancyAmount = 0;
+      let newDueAmount = 0;
+
+      if (
+        dto.discrepancy_amount !== undefined ||
+        dto.due_amount !== undefined
+      ) {
+        discrepancyAmount = dto.discrepancy_amount || 0;
+        newDueAmount = dto.due_amount || 0;
+      } else {
+        // Default Logic: If shortage > 0, treat as discrepancy or due?
+        // Usually, shortage is a discrepancy until proven as a "Due/Loan".
+        // Let's set it as discrepancy by default as per common safety rules.
+        discrepancyAmount = totalShortage > 0 ? totalShortage : 0;
+      }
+
+      // Fetch previous due (if any) to carry forward (Optional logic)
+      const lastSettlement = await queryRunner.manager.findOne(
+        RiderSettlement,
+        {
+          where: { rider_id: dto.rider_id },
+          order: { created_at: 'DESC' },
+        },
+      );
+      const previousDue = lastSettlement
+        ? Number(lastSettlement.new_due_amount)
+        : 0;
+      const totalDue = previousDue + newDueAmount;
+
+      // 5. Create Settlement Record
+      const settlement = queryRunner.manager.create(RiderSettlement, {
+        hub_id: managerFinance.hub_id,
+        hub_manager_id: hubManagerId,
+        rider_id: dto.rider_id,
+
+        total_collected_amount: totalExpectedAmount,
+        cash_received: cashReceived,
+        discrepancy_amount: discrepancyAmount,
+        previous_due_amount: previousDue,
+        new_due_amount: totalDue, // Current due + previous
+
+        // Stats
+        completed_deliveries: parcels.length,
+        delivered_count: deliveredCount,
+        partial_delivery_count: partialCount,
+        exchange_count: exchangeCount,
+        paid_return_count: paidReturnCount,
+        returned_count: returnedCount,
+
+        settlement_status:
+          discrepancyAmount > 0 || totalDue > 0
+            ? SettlementStatus.PARTIAL
+            : SettlementStatus.COMPLETED,
+      });
+
+      await queryRunner.manager.save(settlement);
+
+      // 6. Update Parcels Status
+      // Mark as settled so they aren't picked up again
+      await queryRunner.manager.update(
+        Parcel,
+        { id: In(settledParcelIds) },
+        {
+          payment_status: PaymentStatus.COD_COLLECTED,
+          // Link to a settlement ID if you add that column to parcel later
+        },
+      );
+
+      // 7. Update Hub Finance (Add Cash)
+      managerFinance.current_balance =
+        Number(managerFinance.current_balance) + cashReceived;
+      managerFinance.total_collected_from_riders =
+        Number(managerFinance.total_collected_from_riders) + cashReceived;
+      managerFinance.last_collection_at = new Date();
+
+      await queryRunner.manager.save(managerFinance);
+
+      await queryRunner.commitTransaction();
+
+      return {
+        ...settlement,
+        message: 'Settlement processed successfully',
+      };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 2. LOG HUB EXPENSE (Balance: -)
+  async createHubExpense(hubManagerId: string, dto: CreateHubExpenseDto) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const managerFinance = await queryRunner.manager.findOne(
+        HubManagerFinance,
+        {
+          where: { hub_manager_id: hubManagerId },
+        },
+      );
+      if (!managerFinance)
+        throw new NotFoundException('Hub Finance record not found');
+
+      // Check Balance
+      if (Number(managerFinance.current_balance) < dto.amount) {
+        throw new BadRequestException(
+          'Insufficient balance to record this expense',
+        );
+      }
+
+      // Create Expense
+      const expense = queryRunner.manager.create(HubExpense, {
+        hub_id: managerFinance.hub_id,
+        hub_manager_id: hubManagerId,
+        ...dto,
+      });
+      await queryRunner.manager.save(expense);
+
+      // UPDATE BALANCE: Deduct Expense
+      managerFinance.current_balance =
+        Number(managerFinance.current_balance) - dto.amount;
+      await queryRunner.manager.save(managerFinance);
+
+      await queryRunner.commitTransaction();
+      return expense;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 3. TRANSFER TO ADMIN (Balance: -)
+  // Re-using/Wrapping your existing CreateTransfer logic but ensuring balance update
+  async createTransfer(hubManagerId: string, dto: CreateTransferRecordDto) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const managerFinance = await queryRunner.manager.findOne(
+        HubManagerFinance,
+        {
+          where: { hub_manager_id: hubManagerId },
+        },
+      );
+      if (!managerFinance)
+        throw new NotFoundException('Hub Finance record not found');
+
+      if (Number(managerFinance.current_balance) < dto.transferred_amount) {
+        throw new BadRequestException('Insufficient balance to transfer');
+      }
+
+      const adminAccount = await this.adminAccountRepo.findOne({
+        where: { id: dto.admin_account_id },
+      });
+      if (!adminAccount)
+        throw new NotFoundException('Selected Admin Account not found');
+
+      const transfer = queryRunner.manager.create(HubTransferRecord, {
+        hub_manager_id: hubManagerId,
+        hub_id: managerFinance.hub_id,
+        status: TransferRecordStatus.PENDING,
+        transferred_amount: dto.transferred_amount,
+        admin_account_id: adminAccount.id,
+        // Snapshot Bank Details
+        admin_account_name: adminAccount.account_name,
+        admin_account_number: adminAccount.account_number,
+        admin_account_holder_name: adminAccount.account_holder_name,
+
+        transaction_reference_id: dto.transaction_reference_id,
+        proof_file_url: dto.proof_file_url,
+        notes: dto.notes || '',
+      });
+      await queryRunner.manager.save(transfer);
+
+      // Deduct Balance
+      managerFinance.current_balance =
+        Number(managerFinance.current_balance) - dto.transferred_amount;
+      managerFinance.total_transferred_to_admin =
+        Number(managerFinance.total_transferred_to_admin) +
+        dto.transferred_amount;
+      managerFinance.last_transfer_at = new Date();
+
+      await queryRunner.manager.save(managerFinance);
+      await queryRunner.commitTransaction();
+      return transfer;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 4. FINANCIAL DASHBOARD (The Top Cards)
+  async getFinanceDashboard(hubManagerId: string) {
+    const finance = await this.financeRepository.findOne({
+      where: { hub_manager_id: hubManagerId },
+    });
+    if (!finance) return {}; // Handle empty state
+
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Expenses This Month
+    const expenseResult = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .select('SUM(expense.amount)', 'total')
+      .where('expense.hub_manager_id = :id', { id: hubManagerId })
+      .andWhere('expense.created_at >= :date', { date: firstDayOfMonth })
+      .getRawOne();
+
+    // Transferred This Month (Approved + Pending usually count as "Sent")
+    const transferResult = await this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .select('SUM(transfer.transferred_amount)', 'total')
+      .where('transfer.hub_manager_id = :id', { id: hubManagerId })
+      .andWhere('transfer.transfer_date >= :date', { date: firstDayOfMonth })
+      .getRawOne();
+
+    // Pending Transfer Total
+    const pendingResult = await this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .select('SUM(transfer.transferred_amount)', 'total')
+      .where('transfer.hub_manager_id = :id', { id: hubManagerId })
+      .andWhere('transfer.status = :status', {
+        status: TransferRecordStatus.PENDING,
+      })
+      .getRawOne();
+
+    // Lifetime Expenses
+    const lifeExpenseResult = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .select('SUM(expense.amount)', 'total')
+      .where('expense.hub_manager_id = :id', { id: hubManagerId })
+      .getRawOne();
+
+    return {
+      available_balance: Number(finance.current_balance),
+      transferred_this_month: Number(transferResult.total || 0),
+      expenses_this_month: Number(expenseResult.total || 0),
+      pending_transfer: Number(pendingResult.total || 0),
+      lifetime_expenses: Number(lifeExpenseResult.total || 0),
+      lifetime_transferred: Number(finance.total_transferred_to_admin),
+    };
+  }
+
+  // 5. GET TRANSFERS (Paginated)
+  async getTransfers(hubManagerId: string, query: PaginationDto) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await this.hubTransferRecordRepository.findAndCount({
+      where: { hub_manager_id: hubManagerId },
+      order: { created_at: 'DESC' },
+      take: limit,
+      skip,
+    });
+
+    return {
+      items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // 6. GET TRANSFER BY ID
+  async getTransferById(id: string, hubManagerId: string) {
+    const transfer = await this.hubTransferRecordRepository.findOne({
+      where: { id, hub_manager_id: hubManagerId }, // Ensure ownership
+      relations: ['reviewer'], // Show who reviewed it
+    });
+
+    if (!transfer) throw new NotFoundException('Transfer record not found');
+    return transfer;
+  }
+
+  // 7. GET EXPENSES (Paginated)
+  async getExpenses(hubManagerId: string, query: PaginationDto) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await this.expenseRepository.findAndCount({
+      where: { hub_manager_id: hubManagerId },
+      order: { created_at: 'DESC' },
+      take: limit,
+      skip,
+    });
+
+    return {
+      items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // 8. GET EXPENSE BY ID
+  async getExpenseById(id: string, hubManagerId: string) {
+    const expense = await this.expenseRepository.findOne({
+      where: { id, hub_manager_id: hubManagerId },
+      relations: ['reviewer'],
+    });
+
+    if (!expense) throw new NotFoundException('Expense record not found');
+    return expense;
+  }
+
+  // 5. HISTORY (Paginated List)
+  async getFinancialHistory(
+    hubManagerId: string,
+    query: FinancialReportQueryDto,
+  ) {
+    const { page = 1, limit = 10, period } = query;
+    const skip = (page - 1) * limit;
+
+    // Date Filtering
+    let dateCondition = {};
+    const now = new Date();
+    if (period === ReportPeriod.WEEKLY) {
+      const lastWeek = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - 7,
+      );
+      dateCondition = { created_at: MoreThanOrEqual(lastWeek) };
+    } else if (period === ReportPeriod.MONTHLY) {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      dateCondition = { created_at: MoreThanOrEqual(firstDay) };
+    }
+
+    // We need to fetch from 3 tables and merge?
+    // Or just return specific type?
+    // Ideally, for a unified feed, you union them.
+    // For simplicity, let's just return separate arrays or allow filtering by 'type'.
+
+    // Simplified: Fetch latest Expenses and Transfers
+    const [expenses, expenseCount] = await this.expenseRepository.findAndCount({
+      where: { hub_manager_id: hubManagerId, ...dateCondition },
+      order: { created_at: 'DESC' },
+      take: limit,
+      skip: skip,
+    });
+
+    const [transfers, transferCount] =
+      await this.hubTransferRecordRepository.findAndCount({
+        where: {
+          hub_manager_id: hubManagerId,
+          ...(period !== ReportPeriod.ALL_TIME
+            ? { transfer_date: dateCondition['created_at'] }
+            : {}),
+        },
+        order: { transfer_date: 'DESC' },
+        take: limit,
+        skip: skip,
+      });
+
+    const [settlements, settleCount] =
+      await this.riderSettlementRepository.findAndCount({
+        where: { hub_manager_id: hubManagerId, ...dateCondition },
+        relations: ['rider'], // Show rider name
+        order: { created_at: 'DESC' },
+        take: limit,
+        skip: skip,
+      });
+
+    // Formatting response
+    return {
+      expenses: expenses,
+      transfers: transfers,
+      settlements: settlements,
+      meta: {
+        page,
+        limit,
+        // Simple total count logic might be complex here with 3 sources, returning individual counts
+        counts: {
+          expenses: expenseCount,
+          transfers: transferCount,
+          settlements: settleCount,
+        },
+      },
+    };
+  }
+
+  // ==========================================
+  // ADMIN READ OPERATIONS (For Approval List)
+  // ==========================================
+
+  // 1. All Transfers (Paginated)
+  async getAllTransfersForAdmin(query: PaginationDto) {
+    const { page = 1, limit = 20, search } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .leftJoinAndSelect('transfer.hub', 'hub')
+      .leftJoinAndSelect('transfer.hubManager', 'manager')
+      .leftJoinAndSelect('manager.user', 'user')
+      .orderBy('transfer.created_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    if (search) {
+      qb.andWhere('transfer.transaction_reference_id ILIKE :search', {
+        search: `%${search}%`,
+      });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // 2. Single Transfer Detail
+  async getTransferDetailForAdmin(id: string) {
+    const transfer = await this.hubTransferRecordRepository.findOne({
+      where: { id },
+      relations: ['hub', 'hubManager', 'hubManager.user', 'reviewer'],
+    });
+    if (!transfer) throw new NotFoundException('Transfer not found');
+    return transfer;
+  }
+
+  // 3. All Expenses (Paginated)
+  async getAllExpensesForAdmin(query: PaginationDto) {
+    const { page = 1, limit = 20 } = query;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await this.expenseRepository.findAndCount({
+      relations: ['hub', 'hubManager', 'hubManager.user'],
+      order: { created_at: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // 4. Single Expense Detail
+  async getExpenseDetailForAdmin(id: string) {
+    const expense = await this.expenseRepository.findOne({
+      where: { id },
+      relations: ['hub', 'hubManager', 'hubManager.user', 'reviewer'],
+    });
+    if (!expense) throw new NotFoundException('Expense not found');
+    return expense;
+  }
+
+  // 6. ADMIN REVIEW TRANSFER (Approve/Decline)
+  async reviewTransfer(
+    id: string,
+    dto: ReviewFinanceRequestDto,
+    adminUser: User,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const transfer = await queryRunner.manager.findOne(HubTransferRecord, {
+        where: { id },
+        relations: ['hubManager'], // Needed to find finance record
+      });
+
+      if (!transfer) throw new NotFoundException('Transfer record not found');
+
+      if (transfer.status !== TransferRecordStatus.IN_REVIEW) {
+        throw new BadRequestException(
+          `Cannot review transfer. Current status: ${transfer.status}`,
+        );
+      }
+
+      // Update Transfer Status
+      transfer.status = dto.status;
+      transfer.reviewed_by = adminUser.id;
+      transfer.reviewed_at = new Date();
+      transfer.rejection_reason = dto.rejection_reason || null;
+
+      // LOGIC: If DECLINED, we must REFUND the amount to the Hub Manager's balance.
+      // Why? Because we deducted it immediately when they created the request.
+      if (dto.status === TransferRecordStatus.DECLINED) {
+        if (!dto.rejection_reason) {
+          throw new BadRequestException(
+            'Rejection reason is required when declining',
+          );
+        }
+
+        const finance = await queryRunner.manager.findOne(HubManagerFinance, {
+          where: { hub_manager_id: transfer.hub_manager_id },
+        });
+
+        if (finance) {
+          // Revert the deduction
+          finance.current_balance =
+            Number(finance.current_balance) +
+            Number(transfer.transferred_amount);
+          // Also revert the "Total Transferred" stat since it was rejected
+          finance.total_transferred_to_admin =
+            Number(finance.total_transferred_to_admin) -
+            Number(transfer.transferred_amount);
+
+          await queryRunner.manager.save(finance);
+        }
+      }
+
+      await queryRunner.manager.save(transfer);
+      await queryRunner.commitTransaction();
+
+      return transfer;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 7. ADMIN REVIEW EXPENSE (Approve/Decline)
+  async reviewExpense(
+    id: string,
+    dto: ReviewFinanceRequestDto,
+    adminUser: User,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const expense = await queryRunner.manager.findOne(HubExpense, {
+        where: { id },
+      });
+
+      if (!expense) throw new NotFoundException('Expense record not found');
+
+      if (expense.status !== TransferRecordStatus.IN_REVIEW) {
+        throw new BadRequestException(
+          `Cannot review expense. Current status: ${expense.status}`,
+        );
+      }
+
+      // Update Expense Status
+      expense.status = dto.status;
+      expense.reviewed_by = adminUser.id;
+      expense.reviewed_at = new Date();
+      expense.rejection_reason = dto.rejection_reason || null;
+
+      // LOGIC: If DECLINED, REFUND the amount.
+      if (dto.status === TransferRecordStatus.DECLINED) {
+        if (!dto.rejection_reason) {
+          throw new BadRequestException(
+            'Rejection reason is required when declining',
+          );
+        }
+
+        const finance = await queryRunner.manager.findOne(HubManagerFinance, {
+          where: { hub_manager_id: expense.hub_manager_id },
+        });
+
+        if (finance) {
+          // Revert the deduction
+          finance.current_balance =
+            Number(finance.current_balance) + Number(expense.amount);
+          await queryRunner.manager.save(finance);
+        }
+      }
+
+      await queryRunner.manager.save(expense);
+      await queryRunner.commitTransaction();
+
+      return expense;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
   }
 }

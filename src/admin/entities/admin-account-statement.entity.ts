@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { AdminAccount } from './admin-account.entity';
 import { User } from '../../users/entities/user.entity';
@@ -59,6 +60,6 @@ export class AdminAccountStatement {
   @CreateDateColumn()
   created_at: Date;
 
-  @CreateDateColumn()
+  @UpdateDateColumn()
   updated_at: Date;
 }

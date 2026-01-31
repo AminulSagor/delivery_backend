@@ -14,6 +14,8 @@ import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
+import { HubExpense } from './entities/hub-expense.entity';
+import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { Parcel } from '../parcels/entities/parcel.entity';
       HubManagerFinance,
       RiderSettlement,
       HubTransferRecord,
+      HubExpense,
+      AdminAccount,
       User,
       Rider,
       DeliveryVerification,
@@ -35,4 +39,4 @@ import { Parcel } from '../parcels/entities/parcel.entity';
   controllers: [HubsController],
   exports: [HubsService],
 })
-export class HubsModule { }
+export class HubsModule {}

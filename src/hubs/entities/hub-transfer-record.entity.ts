@@ -12,6 +12,7 @@ import { HubManager } from './hub-manager.entity';
 import { Hub } from './hub.entity';
 import { User } from '../../users/entities/user.entity';
 import { TransferRecordStatus } from '../../common/enums/transfer-record-status.enum';
+import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 
 @Entity('hub_transfer_records')
 @Index(['hub_manager_id', 'transfer_date'])
@@ -42,11 +43,18 @@ export class HubTransferRecord {
   transferred_amount: number;
 
   // ===== ADMIN BANK ACCOUNT DETAILS =====
+  @Column({ type: 'uuid', nullable: true })
+  admin_account_id: string | null;
+
+  @ManyToOne(() => AdminAccount, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'admin_account_id' })
+  adminAccount: AdminAccount;
+
   @Column({ type: 'varchar', length: 255 })
-  admin_bank_name: string;
+  admin_account_name: string;
 
   @Column({ type: 'varchar', length: 100 })
-  admin_bank_account_number: string;
+  admin_account_number: string;
 
   @Column({ type: 'varchar', length: 255 })
   admin_account_holder_name: string;
@@ -58,12 +66,6 @@ export class HubTransferRecord {
   // ===== PROOF DOCUMENT =====
   @Column({ type: 'varchar', length: 500 })
   proof_file_url: string;
-
-  @Column({ type: 'varchar', length: 10 })
-  proof_file_type: string;
-
-  @Column({ type: 'int' })
-  proof_file_size: number;
 
   // ===== STATUS & APPROVAL =====
   @Column({
