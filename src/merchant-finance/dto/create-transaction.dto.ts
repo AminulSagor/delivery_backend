@@ -1,4 +1,11 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 import {
   FinanceTransactionType,
   FinanceReferenceType,
@@ -47,6 +54,9 @@ export class CreateTransactionDto {
   return_charge?: number;
 
   @IsOptional()
+  created_by?: string;
+
+  @IsOptional()
   metadata?: Record<string, any>;
 }
 
@@ -76,4 +86,3 @@ export class RecordParcelTransactionDto {
   @IsString()
   description?: string;
 }
-
