@@ -8,7 +8,8 @@ import {
 
 export class AssignToCarrybeeDto {
   @IsUUID()
-  provider_id: string;
+  @IsOptional() // Optional for auto-assignment scenarios
+  provider_id?: string;
 
   @IsString()
   @IsOptional()

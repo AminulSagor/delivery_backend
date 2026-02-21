@@ -79,6 +79,12 @@ export class AdminAccountsController {
     return this.service.createManualTransaction(dto, user.userId);
   }
 
+  // Finance Overview
+  @Get('finance/overview')
+  async getFinanceOverview(@CurrentUser() user: any) {
+    return this.service.getAdminFinanceOverview(user.userId);
+  }
+
   @Post('transfer')
   @HttpCode(HttpStatus.OK)
   async transferFunds(@Body() dto: TransferFundsDto, @CurrentUser() user: any) {

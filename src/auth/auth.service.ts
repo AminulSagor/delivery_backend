@@ -159,6 +159,7 @@ export class AuthService {
     // Fetch additional context based on role
     let merchantId: string | null = null;
     let hubId: string | null = null;
+    let hubManagerId: string | null = null;
     let riderId: string | null = null;
 
     if (user.role === UserRole.MERCHANT) {
@@ -171,6 +172,7 @@ export class AuthService {
         where: { user_id: user.id },
       });
       hubId = hubManager?.hub_id || null;
+      hubManagerId = hubManager?.id || null; // Store HubManager entity ID
     } else if (user.role === UserRole.RIDER) {
       const rider = await this.riderRepository.findOne({
         where: { user_id: user.id },
@@ -185,6 +187,7 @@ export class AuthService {
       role: user.role,
       merchantId,
       hubId,
+      hubManagerId,
       riderId,
     };
 

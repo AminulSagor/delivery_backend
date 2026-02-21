@@ -84,6 +84,7 @@ export class StoresService {
       ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
     ];
 
     const returnStatuses = [

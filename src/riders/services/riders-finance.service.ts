@@ -72,7 +72,8 @@ export class RiderFinanceService {
         const commissionableStatuses = [
             ParcelStatus.DELIVERED,
             ParcelStatus.PARTIAL_DELIVERY,
-            ParcelStatus.EXCHANGE
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
         ];
 
         const count = await this.parcelRepository.count({

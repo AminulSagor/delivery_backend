@@ -11,6 +11,7 @@ import { Parcel } from '../parcels/entities/parcel.entity';
 import { PickupRequest } from '../pickup-requests/entities/pickup-request.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { Hub } from '../hubs/entities/hub.entity';
+import { Staff } from '../staff/entities/staff.entity';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
 import { EmergencyAlert } from './entities/emergency-alert.entity';
@@ -25,6 +26,7 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
       PickupRequest,
       HubManager,
       Hub,
+      Staff,
       EmergencyAlert,
     ]),
     forwardRef(() => ParcelsModule),

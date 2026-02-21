@@ -93,6 +93,10 @@ export class Store {
   @Column({ type: 'timestamp', nullable: true })
   carrybee_synced_at: Date | null;
 
+  // Auto-assign new parcels to Carrybee
+  @Column({ type: 'boolean', default: false })
+  auto_assign_to_carrybee: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -23,6 +23,7 @@ import { AddPayoutMethodDto } from './dto/add-payout-method.dto';
 import { UpdatePayoutMethodDto } from './dto/update-payout-method.dto';
 import { MerchantProfile } from './entities/merchant-profile.entity';
 import { Store } from 'src/stores/entities/store.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import {
   UpdateBinDto,
   UpdateNidDto,
@@ -46,6 +47,8 @@ export class MerchantService {
     private userRepo: Repository<User>,
     @InjectRepository(Store)
     private storeRepo: Repository<Store>,
+    @InjectRepository(Parcel)
+    private parcelRepo: Repository<Parcel>,
     private dataSource: DataSource,
     private usersService: UsersService,
     private emailService: EmailService,
@@ -612,5 +615,88 @@ export class MerchantService {
     profile.bin_number = dto.bin_number;
     profile.bin_certificate_url = dto.bin_certificate_url;
     return this.profileRepo.save(profile);
+  }
+
+  /**
+   * Get Merchant Lifetime Parcel Summary
+   * Returns counts and total prices for each parcel status category
+   */
+  async getLifetimeParcelSummary(merchantId: string) {
+    // Verify merchant exists
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+    });
+
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    // Get all parcels for this merchant with their prices
+    const parcels = await this.parcelRepo.find({
+      where: { merchant_id: merchantId },
+      select: ['id', 'status', 'product_price'],
+    });
+
+    // Initialize summary object
+    const summary = {
+      total_parcel: { count: 0, total_price: 0 },
+      total_delivered: { count: 0, total_price: 0 },
+      total_partially_delivered: { count: 0, total_price: 0 },
+      total_paid_return: { count: 0, total_price: 0 },
+      total_returned: { count: 0, total_price: 0 },
+      total_pending_return: { count: 0, total_price: 0 },
+      total_return_to_merchant: { count: 0, total_price: 0 },
+      total_exchanged: { count: 0, total_price: 0 },
+    };
+
+    // Calculate totals
+    parcels.forEach((parcel) => {
+      const price = Number(parcel.product_price || 0);
+
+      // Total Parcel
+      summary.total_parcel.count++;
+      summary.total_parcel.total_price += price;
+
+      // Status-specific counts
+      switch (parcel.status) {
+        case ParcelStatus.DELIVERED:
+          summary.total_delivered.count++;
+          summary.total_delivered.total_price += price;
+          break;
+
+        case ParcelStatus.PARTIAL_DELIVERY:
+          summary.total_partially_delivered.count++;
+          summary.total_partially_delivered.total_price += price;
+          break;
+
+        case ParcelStatus.PAID_RETURN:
+          summary.total_paid_return.count++;
+          summary.total_paid_return.total_price += price;
+          break;
+
+        case ParcelStatus.RETURNED:
+          summary.total_returned.count++;
+          summary.total_returned.total_price += price;
+          break;
+
+        case ParcelStatus.RETURNED_TO_HUB:
+          // Pending return (returned to hub but not yet to merchant)
+          summary.total_pending_return.count++;
+          summary.total_pending_return.total_price += price;
+          break;
+
+        case ParcelStatus.RETURN_TO_MERCHANT:
+          summary.total_return_to_merchant.count++;
+          summary.total_return_to_merchant.total_price += price;
+          break;
+
+        case ParcelStatus.EXCHANGE:
+          summary.total_exchanged.count++;
+          summary.total_exchanged.total_price += price;
+          break;
+      }
+    });
+
+    return summary;
   }
 }

@@ -107,6 +107,41 @@ export interface RiderActionResponse {
   is_active: boolean;
 }
 
+// ===== STAFF RESPONSES =====
+
+export interface StaffListItem {
+  id: string;
+  staff_code: string | null;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  photo: string | null;
+  position: string;
+  bike_type: string;
+  is_active: boolean;
+  hub?: {
+    id: string;
+    branch_name: string;
+  } | null;
+}
+
+export interface StaffDetail extends StaffListItem {
+  secondary_phone: string | null;
+  guardian_mobile_no: string;
+  nid_number: string;
+  license_no: string | null;
+  present_address: string;
+  permanent_address: string;
+  fixed_salary: number;
+  created_at: Date;
+}
+
+export interface StaffActionResponse {
+  id: string;
+  full_name: string;
+  is_active: boolean;
+}
+
 // ===== PICKUP REQUEST RESPONSES =====
 
 export interface PickupRequestListItem {
@@ -442,5 +477,47 @@ export function toMerchantDetail(merchant: any): MerchantDetail {
     full_address: merchant.full_address,
     secondary_number: merchant.secondary_number,
     approved_at: merchant.approved_at,
+  };
+}
+
+export function toStaffListItem(staff: any): StaffListItem {
+  return {
+    id: staff.id,
+    staff_code: staff.staff_code || null,
+    full_name: staff.user?.full_name || staff.full_name,
+    phone: staff.user?.phone || staff.phone,
+    email: staff.user?.email || staff.email || null,
+    photo: staff.photo,
+    position: staff.position,
+    bike_type: staff.bike_type,
+    is_active: staff.is_active,
+    hub: staff.hub
+      ? {
+          id: staff.hub.id,
+          branch_name: staff.hub.branch_name,
+        }
+      : null,
+  };
+}
+
+export function toStaffDetail(staff: any): StaffDetail {
+  return {
+    ...toStaffListItem(staff),
+    secondary_phone: staff.secondary_phone || null,
+    guardian_mobile_no: staff.guardian_mobile_no,
+    nid_number: staff.nid_number,
+    license_no: staff.license_no,
+    present_address: staff.present_address,
+    permanent_address: staff.permanent_address,
+    fixed_salary: staff.fixed_salary,
+    created_at: staff.created_at,
+  };
+}
+
+export function toStaffActionResponse(staff: any): StaffActionResponse {
+  return {
+    id: staff.id,
+    full_name: staff.user?.full_name || staff.full_name,
+    is_active: staff.is_active,
   };
 }

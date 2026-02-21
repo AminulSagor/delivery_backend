@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ParcelsController } from './parcels.controller';
 import { ParcelsService } from './parcels.service';
@@ -12,6 +12,7 @@ import { Hub } from '../hubs/entities/hub.entity';
 import { PricingModule } from '../pricing/pricing.module';
 import { CustomerModule } from '../customer/customer.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
+import { CarrybeeModule } from '../carrybee/carrybee.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module'
     PricingModule,
     CustomerModule,
     PickupRequestsModule,
+    forwardRef(() => CarrybeeModule), // Circular dependency resolution
   ],
   controllers: [ParcelsController],
   providers: [ParcelsService],

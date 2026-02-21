@@ -289,7 +289,8 @@ export class AdminAccountsService {
       //   );
       // }
 
-      const transferId = dto.reference_id;
+      const transferId = dto.reference_id || `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const transferDescription = dto.description || 'Internal transfer';
 
       // Debit Sender
       const fromBalance = Number(fromAcc.current_balance);
@@ -306,7 +307,7 @@ export class AdminAccountsService {
 
         balance_before: fromBalance,
         balance_after: senderNewBalance,
-        description: `Transfer to ${toAcc.account_name}: ${dto.description}`,
+        description: `Transfer to ${toAcc.account_name}: ${transferDescription}`,
         reference_type: AccountReferenceType.INTERNAL_TRANSFER,
         reference_id: transferId,
         created_by_id: userId,
@@ -327,7 +328,7 @@ export class AdminAccountsService {
 
         balance_before: toBalance,
         balance_after: receiverNewBalance,
-        description: `Transfer from ${fromAcc.account_name}: ${dto.description}`,
+        description: `Transfer from ${fromAcc.account_name}: ${transferDescription}`,
         reference_type: AccountReferenceType.INTERNAL_TRANSFER,
         reference_id: transferId,
         created_by_id: userId,
@@ -350,7 +351,6 @@ export class AdminAccountsService {
     const [items, total] = await this.statementRepo.findAndCount({
       where: { account_id: accountId },
       order: { created_at: 'DESC' },
-      relations: ['createdBy'], // Include creator info
       skip,
       take: limit,
     });
@@ -382,7 +382,6 @@ export class AdminAccountsService {
     const qb = this.statementRepo
       .createQueryBuilder('statement')
       .leftJoinAndSelect('statement.account', 'account')
-      .leftJoinAndSelect('statement.createdBy', 'user')
       .orderBy('statement.created_at', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -416,7 +415,7 @@ export class AdminAccountsService {
   async findStatementById(id: string): Promise<AdminAccountStatement> {
     const statement = await this.statementRepo.findOne({
       where: { id },
-      relations: ['account', 'createdBy'],
+      relations: ['account'],
     });
     if (!statement) throw new NotFoundException('Transaction not found');
     return statement;
@@ -669,6 +668,75 @@ export class AdminAccountsService {
       from_account: from?.account,
       to_account: to?.account,
       raw_statements: statements,
+    };
+  }
+
+  /**
+   * Get Admin Finance Overview
+   * Returns: Available Balance, Transferred This Month, Expenses This Month,
+   * Pending Transfer, Lifetime Expenses, Lifetime Transferred
+   */
+  async getAdminFinanceOverview(adminId: string) {
+    // Calculate date range for "this month"
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // Get lifetime transferred (all-time CREDIT with HUB_TRANSFER type - APPROVED transfers only)
+    const lifetimeTransferred = await this.statementRepo
+      .createQueryBuilder('statement')
+      .where('statement.type = :type', { type: 'CREDIT' })
+      .andWhere('statement.reference_type = :refType', { refType: 'HUB_TRANSFER' })
+      .select('COALESCE(SUM(statement.credit_amount), 0)', 'total')
+      .getRawOne();
+
+    // Get lifetime expenses (all-time DEBIT with EXPENSE type)
+    const lifetimeExpenses = await this.statementRepo
+      .createQueryBuilder('statement')
+      .where('statement.type = :type', { type: 'DEBIT' })
+      .andWhere('statement.reference_type = :refType', { refType: 'EXPENSE' })
+      .select('COALESCE(SUM(statement.debit_amount), 0)', 'total')
+      .getRawOne();
+
+    // Calculate Available Balance
+    // = Total approved hub transfers - Total approved expenses
+    const availableBalance = Number(lifetimeTransferred.total || 0) - Number(lifetimeExpenses.total || 0);
+
+    // Get all statements for this month with type CREDIT (incoming transfers)
+    const transferredThisMonth = await this.statementRepo
+      .createQueryBuilder('statement')
+      .where('statement.type = :type', { type: 'CREDIT' })
+      .andWhere('statement.reference_type = :refType', { refType: 'HUB_TRANSFER' })
+      .andWhere('statement.created_at BETWEEN :start AND :end', {
+        start: startOfMonth,
+        end: endOfMonth,
+      })
+      .select('COALESCE(SUM(statement.credit_amount), 0)', 'total')
+      .getRawOne();
+
+    // Get expenses this month (DEBIT transactions with EXPENSE reference type)
+    const expensesThisMonth = await this.statementRepo
+      .createQueryBuilder('statement')
+      .where('statement.type = :type', { type: 'DEBIT' })
+      .andWhere('statement.reference_type = :refType', { refType: 'EXPENSE' })
+      .andWhere('statement.created_at BETWEEN :start AND :end', {
+        start: startOfMonth,
+        end: endOfMonth,
+      })
+      .select('COALESCE(SUM(statement.debit_amount), 0)', 'total')
+      .getRawOne();
+
+    // Get pending transfers from hub managers (requires HubTransferRecord access)
+    // For now, we'll return 0 or you can inject HubTransferRecord repository
+    const pendingTransfer = 0;
+
+    return {
+      available_balance: availableBalance,
+      transferred_this_month: Number(transferredThisMonth.total || 0),
+      expenses_this_month: Number(expensesThisMonth.total || 0),
+      pending_transfer: pendingTransfer,
+      lifetime_expenses: Number(lifetimeExpenses.total || 0),
+      lifetime_transferred: Number(lifetimeTransferred.total || 0),
     };
   }
 }

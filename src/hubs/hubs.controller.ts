@@ -149,13 +149,14 @@ export class HubsController {
   /**
    * Get delivery outcomes (Hub Manager)
    *
-   * PURPOSE: View parcels with delivery outcomes that need attention:
-   * - PARTIAL_DELIVERY: Partial items delivered, may need follow-up
-   * - EXCHANGE: Items exchanged, need processing
-   * - DELIVERY_RESCHEDULED: Customer requested later delivery
-   * - PAID_RETURN: Customer refused but paid return fee
-   * - RETURNED: Customer refused, parcel coming back
+   * PURPOSE: View parcels with delivery outcomes that have been cleared:
+   * - DELIVERED: Successfully delivered, COD collected from rider
+   * - PARTIAL_DELIVERY: Partial items delivered, COD collected
+   * - EXCHANGE: Items exchanged, COD collected
+   * - PAID_RETURN: Customer refused but paid return fee, COD collected
+   * - RETURNED: Customer refused, parcels returned
    *
+   * Shows parcels AFTER COD collection (cod_cleared_at IS NOT NULL)
    * Filters: status, zone, merchantId
    * Pagination: page (default 1), limit (default 10, max 100)
    */
@@ -178,6 +179,100 @@ export class HubsController {
       success: true,
       data: result,
       message: 'Delivery outcomes retrieved successfully',
+    };
+  }
+
+  /**
+   * Get COD cleared parcels for a rider (Hub Manager)
+   *
+   * PURPOSE: View parcels ready for COD collection from rider
+   * Shows completed deliveries (DELIVERED, PARTIAL_DELIVERY, EXCHANGE)
+   * Only shows parcels where cod_cleared_at is NULL (before COD collection)
+   * Returns total collectable amount from all pending parcels
+   *
+   * Query Parameters:
+   * - rider_id: UUID of the rider (required)
+   * - page: Page number (default 1)
+   * - limit: Items per page (default 10, max 100)
+   */
+  @Get('parcels/cleared-deliveries')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getClearedDeliveries(
+    @CurrentUser() user: any,
+    @Query('rider_id') riderId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    if (!riderId) {
+      throw new BadRequestException('rider_id query parameter is required');
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(riderId.trim())) {
+      throw new BadRequestException('Invalid rider_id format. Must be a valid UUID');
+    }
+
+    const result = await this.parcelsService.getRiderClearedParcels(
+      user.hubId,
+      riderId.trim(),
+      {
+        page: parseInt(page),
+        limit: Math.min(parseInt(limit), 100),
+      },
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Cleared deliveries retrieved successfully',
+    };
+  }
+
+  /**
+   * Get Carrybee cleared deliveries (Hub Manager)
+   *
+   * PURPOSE: View completed Carrybee deliveries awaiting COD collection
+   * Shows parcels where Carrybee collected COD but hub hasn't settled yet
+   * 
+   * Query params:
+   * - provider_id: UUID of the third-party provider (required)
+   * - page: Page number (default 1)
+   * - limit: Items per page (default 10, max 100)
+   */
+  @Get('parcels/carrybee-cleared-deliveries')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getCarrybeeClearedDeliveries(
+    @CurrentUser() user: any,
+    @Query('provider_id') providerId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    if (!providerId) {
+      throw new BadRequestException('provider_id query parameter is required');
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(providerId.trim())) {
+      throw new BadRequestException('Invalid provider_id format. Must be a valid UUID');
+    }
+
+    const result = await this.parcelsService.getCarrybeeClearedParcels(
+      user.hubId,
+      providerId.trim(),
+      {
+        page: parseInt(page),
+        limit: Math.min(parseInt(limit), 100),
+      },
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Carrybee cleared deliveries retrieved successfully',
     };
   }
 
@@ -1197,21 +1292,46 @@ export class HubsController {
   @Get('finance/dashboard')
   @Roles(UserRole.HUB_MANAGER)
   async getFinanceDashboard(@CurrentUser() user: any) {
-    const data = await this.hubsService.getFinanceDashboard(user.hubId);
+    const data = await this.hubsService.getFinanceDashboard(user.hubManagerId);
     return { success: true, data };
   }
 
-  // 2. Collect Cash (Manual COD)
-  @Post('finance/collect-cod')
+  // 2. Collect Cash (Manual COD) - Per Rider
+  @Post('finance/collect-cod/:rider_id')
   @Roles(UserRole.HUB_MANAGER)
-  async collectCod(@CurrentUser() user: any, @Body() dto: CollectCodDto) {
+  async collectCod(
+    @CurrentUser() user: any,
+    @Param('rider_id', ParseUUIDPipe) riderId: string,
+    @Body() dto: CollectCodDto,
+  ) {
     const settlement = await this.hubsService.collectCashFromRider(
-      user.hubId,
+      user.hubManagerId,
+      riderId,
       dto,
     );
     return {
       success: true,
       message: 'Cash collected successfully',
+      data: settlement,
+    };
+  }
+
+  // 2B. Collect Cash from Carrybee (Third-Party Provider)
+  @Post('finance/collect-cod-carrybee/:provider_id')
+  @Roles(UserRole.HUB_MANAGER)
+  async collectCodFromCarrybee(
+    @CurrentUser() user: any,
+    @Param('provider_id', ParseUUIDPipe) providerId: string,
+    @Body() dto: CollectCodDto,
+  ) {
+    const settlement = await this.hubsService.collectCashFromCarrybee(
+      user.hubManagerId,
+      providerId,
+      dto,
+    );
+    return {
+      success: true,
+      message: settlement.message,
       data: settlement,
     };
   }
@@ -1223,7 +1343,7 @@ export class HubsController {
     @CurrentUser() user: any,
     @Body() dto: CreateHubExpenseDto,
   ) {
-    const expense = await this.hubsService.createHubExpense(user.hubId, dto);
+    const expense = await this.hubsService.createHubExpense(user.hubManagerId, dto);
     return {
       success: true,
       message: 'Expense recorded successfully',
@@ -1238,7 +1358,7 @@ export class HubsController {
     @CurrentUser() user: any,
     @Body() dto: CreateTransferRecordDto,
   ) {
-    const transfer = await this.hubsService.createTransfer(user.hubId, dto);
+    const transfer = await this.hubsService.createTransfer(user.hubManagerId, dto);
     return {
       success: true,
       message: 'Transfer submitted successfully',
@@ -1250,7 +1370,7 @@ export class HubsController {
   @Get('finance/transfers')
   @Roles(UserRole.HUB_MANAGER)
   async getTransfers(@CurrentUser() user: any, @Query() query: PaginationDto) {
-    const data = await this.hubsService.getTransfers(user.hubId, query);
+    const data = await this.hubsService.getTransfers(user.hubManagerId, query);
     return { success: true, data };
   }
 
@@ -1259,6 +1379,16 @@ export class HubsController {
   @Roles(UserRole.HUB_MANAGER)
   async getTransferById(@Param('id') id: string, @CurrentUser() user: any) {
     const data = await this.hubsService.getTransferById(id, user.hubId);
+    return { success: true, data };
+  }
+
+  // 6.5 Get Hub Manager Finance Overview
+  @Get('finance/overview')
+  @Roles(UserRole.HUB_MANAGER)
+  async getFinanceOverview(@Req() req: any) {
+    // Hub managers access via userId (their hub manager record is linked to user_id)
+    const userId = req.user.userId;
+    const data = await this.hubsService.getHubManagerFinanceOverview(userId);
     return { success: true, data };
   }
 

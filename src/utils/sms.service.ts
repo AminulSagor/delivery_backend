@@ -14,6 +14,7 @@ interface SmsResponse {
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
   private readonly smsEnabled: boolean;
+  private smsActive: boolean = true; // Runtime toggle for SMS
   private readonly apiKey: string;
   private readonly apiUrl: string;
   private readonly senderId: string;
@@ -41,6 +42,55 @@ export class SmsService {
         '⚠️  SMS service running in STUB mode - No API key configured',
       );
     }
+  }
+
+  /**
+   * Check if SMS is operational (configured AND active)
+   */
+  private isSmsOperational(): boolean {
+    return this.smsEnabled && this.smsActive;
+  }
+
+  /**
+   * Get SMS service status
+   */
+  getSmsStatus(): {
+    configured: boolean;
+    active: boolean;
+    operational: boolean;
+  } {
+    return {
+      configured: this.smsEnabled,
+      active: this.smsActive,
+      operational: this.isSmsOperational(),
+    };
+  }
+
+  /**
+   * Toggle SMS service active/inactive
+   */
+  toggleSms(active: boolean): { success: boolean; message: string; status: ReturnType<typeof this.getSmsStatus> } {
+    if (active && !this.smsEnabled) {
+      return {
+        success: false,
+        message: 'Cannot activate SMS - service not configured (missing API key)',
+        status: this.getSmsStatus(),
+      };
+    }
+    
+    this.smsActive = active;
+    
+    if (active) {
+      this.logger.log('✅ SMS service activated');
+    } else {
+      this.logger.log('⚠️ SMS service deactivated');
+    }
+    
+    return {
+      success: true,
+      message: active ? 'SMS service activated successfully' : 'SMS service deactivated successfully',
+      status: this.getSmsStatus(),
+    };
   }
 
   /**
@@ -99,6 +149,14 @@ export class SmsService {
       return {
         success: true,
         message: '[STUB] SMS would be sent in production mode',
+      };
+    }
+
+    if (!this.smsActive) {
+      this.logger.log(`[DEACTIVATED] SMS to ${to} skipped - SMS service is deactivated`);
+      return {
+        success: false,
+        message: 'SMS service is currently deactivated by admin',
       };
     }
 
@@ -194,6 +252,18 @@ export class SmsService {
       };
     }
 
+    // If SMS is deactivated by admin
+    if (!this.smsActive) {
+      this.logger.log(
+        `[DEACTIVATED] Approval SMS to ${merchant.user.phone} skipped - SMS service is deactivated`,
+      );
+      return {
+        success: false,
+        stub: true,
+        message: 'SMS service is currently deactivated by admin',
+      };
+    }
+
     // Prepare SMS message
     const message = this.getApprovalSmsMessage(merchant);
 
@@ -224,6 +294,15 @@ export class SmsService {
         success: true,
         stub: true,
         message: `[STUB] Test SMS would be sent to ${to}`,
+      };
+    }
+
+    if (!this.smsActive) {
+      this.logger.log(`[DEACTIVATED] Test SMS to ${to} skipped - SMS service is deactivated`);
+      return {
+        success: false,
+        stub: true,
+        message: 'SMS service is currently deactivated by admin',
       };
     }
 

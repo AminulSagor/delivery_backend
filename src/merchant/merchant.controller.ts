@@ -307,4 +307,14 @@ export class MerchantController {
   updateBin(@Request() req, @Body() dto: UpdateBinDto) {
     return this.merchantService.updateBin(req.user.merchantId, dto);
   }
+
+  @Get('parcel-summary/lifetime')
+  @Roles(UserRole.MERCHANT)
+  async getLifetimeParcelSummary(@Request() req) {
+    const summary = await this.merchantService.getLifetimeParcelSummary(req.user.merchantId);
+    return {
+      success: true,
+      data: summary,
+    };
+  }
 }

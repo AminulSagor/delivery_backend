@@ -1,0 +1,309 @@
+### Carrybee Integration Testing
+### Use REST Client extension in VS Code or import to Postman
+
+@baseUrl = http://localhost:3000/api
+@merchantToken = your-merchant-token-here
+@hubManagerToken = your-hub-manager-token-here
+@carrybeeProviderId = your-carrybee-provider-uuid
+
+### ============================================
+### SETUP: Get Authentication Tokens
+### ============================================
+
+### 1. Register Merchant (or login if exists)
+POST {{baseUrl}}/auth/register/merchant
+Content-Type: application/json
+
+{
+  "email": "testmerchant@carrybee.test",
+  "password": "Test1234!",
+  "full_name": "Carrybee Test Merchant",
+  "phone": "01712345678"
+}
+
+### 2. Login Hub Manager
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "hubmanager@example.com",
+  "password": "your-password"
+}
+
+### ============================================
+### CARRYBEE LOCATIONS
+### ============================================
+
+### 3. Get Cities
+GET {{baseUrl}}/carrybee/locations/cities
+
+### 4. Get Zones for Dhaka (city_id = 1)
+GET {{baseUrl}}/carrybee/locations/cities/1/zones
+
+### 5. Get Areas for Dhaka/Uttara (city_id=1, zone_id=5)
+GET {{baseUrl}}/carrybee/locations/cities/1/zones/5/areas
+
+### 6. Search Area
+GET {{baseUrl}}/carrybee/locations/search?query=uttara
+
+### ============================================
+### STORE MANAGEMENT
+### ============================================
+
+### 7. Create Store with Carrybee IDs
+POST {{baseUrl}}/stores
+Authorization: Bearer {{merchantToken}}
+Content-Type: application/json
+
+{
+  "business_name": "Test Shop Carrybee",
+  "business_address": "123 Test Street, Dhaka 1230",
+  "phone_number": "01712345678",
+  "district": "Dhaka",
+  "thana": "Uttara",
+  "area": "Sector 3",
+  "carrybee_city_id": 1,
+  "carrybee_zone_id": 5,
+  "carrybee_area_id": 23
+}
+
+### 8. Get Carrybee Stores (from Carrybee API)
+GET {{baseUrl}}/carrybee/stores
+Authorization: Bearer {{merchantToken}}
+
+### ============================================
+### PARCEL CREATION
+### ============================================
+
+### 9. Create Test Parcel
+POST {{baseUrl}}/parcels
+Authorization: Bearer {{merchantToken}}
+Content-Type: application/json
+
+{
+  "store_id": "your-store-id-here",
+  "delivery_coverage_area_id": "your-coverage-area-id",
+  "customer_name": "Test Customer",
+  "customer_phone": "01798765432",
+  "customer_address": "456 Customer Street, Dhaka 1230",
+  "product_price": 1000,
+  "product_weight": 0.5,
+  "product_description": "Test Electronics"
+}
+
+### ============================================
+### CARRYBEE ASSIGNMENT
+### ============================================
+
+### 10. Assign Parcel to Carrybee
+POST {{baseUrl}}/carrybee/parcels/your-parcel-id/assign
+Authorization: Bearer {{hubManagerToken}}
+Content-Type: application/json
+
+{
+  "provider_id": "{{carrybeeProviderId}}",
+  "notes": "Test assignment to Carrybee"
+}
+
+### 11. Bulk Assign Parcels to Carrybee
+POST {{baseUrl}}/carrybee/parcels/assign/carrybee
+Authorization: Bearer {{hubManagerToken}}
+Content-Type: application/json
+
+{
+  "parcel_ids": ["parcel-id-1", "parcel-id-2"],
+  "provider_id": "{{carrybeeProviderId}}",
+  "notes": "Bulk test assignment"
+}
+
+### ============================================
+### WEBHOOK TESTING (Simulate Carrybee Events)
+### NOTE: Webhooks do NOT require JWT token, only signature header
+### Replace "your-carrybee-consignment-id" with actual consignment_id
+### ============================================
+
+### 12. Test Webhook: Order Picked
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.picked",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T10:00:00Z"
+}
+
+### 13. Test Webhook: Order At Sorting Hub
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.at-the-sorting-hub",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T11:00:00Z"
+}
+
+### 14. Test Webhook: Order In Transit
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.in-transit",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T12:00:00Z"
+}
+
+### 15. Test Webhook: Order Out for Delivery
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.assigned-for-delivery",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T13:00:00Z"
+}
+
+### 16. Test Webhook: Order Delivered (with COD)
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.delivered",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T14:00:00Z",
+  "collectable_amount": "1000.00",
+  "collected_amount": "1000.00",
+  "cod_fee": 10,
+  "delivery_fee": "60.00"
+}
+
+### 17. Test Webhook: Delivery Failed
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.delivery-failed",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T14:30:00Z",
+  "reason": "Customer not available",
+  "attempt": 1
+}
+
+### 18. Test Webhook: Order Returned
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.returned",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T15:00:00Z",
+  "reason": "Customer refused delivery",
+  "delivery_fee": "60.00"
+}
+
+### 19. Test Webhook: Returned to Merchant
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.returned-to-merchant",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T16:00:00Z",
+  "reason": "Return completed"
+}
+
+### 20. Test Webhook: Pickup Cancelled
+POST http://localhost:3000/webhooks/carrybee
+Content-Type: application/json
+X-Carrybee-Webhook-Signature: carrybee-webhook-secret-change-in-production
+
+{
+  "event": "order.pickup-cancelled",
+  "store_id": "CSTORE-123456",
+  "consignment_id": "your-carrybee-consignment-id",
+  "merchant_order_id": "TRK-001",
+  "timestamptz": "2026-02-06T09:30:00Z",
+  "reason": "Merchant cancelled"
+}
+
+### ============================================
+### COD COLLECTION
+### ============================================
+
+### 21. View Carrybee Cleared Deliveries
+GET {{baseUrl}}/hubs/parcels/carrybee-cleared-deliveries
+Authorization: Bearer {{hubManagerToken}}
+
+### 22. Collect COD from Carrybee
+POST {{baseUrl}}/hubs/finance/collect-cod-carrybee/{{carrybeeProviderId}}
+Authorization: Bearer {{hubManagerToken}}
+Content-Type: application/json
+
+{
+  "counted_amount": 1000,
+  "collection_notes": "Cash collected from Carrybee representative"
+}
+
+### ============================================
+### MERCHANT SETTLEMENT
+### ============================================
+
+### 23. Generate Invoice (Including Carrybee Parcels)
+POST {{baseUrl}}/merchant-invoices/generate
+Authorization: Bearer {{hubManagerToken}}
+Content-Type: application/json
+
+{
+  "merchant_id": "your-merchant-id",
+  "parcel_ids": ["parcel-1", "parcel-2", "parcel-3"]
+}
+
+### 24. Pay Merchant Invoice
+POST {{baseUrl}}/merchant-invoices/your-invoice-id/pay
+Authorization: Bearer {{hubManagerToken}}
+Content-Type: application/json
+
+{
+  "payment_method": "BANK_TRANSFER",
+  "payment_reference": "TXN-TEST-12345",
+  "paid_amount": 4400
+}
+
+### ============================================
+### VERIFICATION QUERIES
+### ============================================
+
+### 25. Get Parcel Details
+GET {{baseUrl}}/parcels/your-parcel-id
+Authorization: Bearer {{merchantToken}}
+
+### 26. Get Hub Finance Summary
+GET {{baseUrl}}/hubs/statistics
+Authorization: Bearer {{hubManagerToken}}
+
+### 27. Get Merchant Dashboard
+GET {{baseUrl}}/parcels/merchant-dashboard
+Authorization: Bearer {{merchantToken}}
