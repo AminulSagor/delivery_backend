@@ -11,9 +11,11 @@ import { User } from '../users/entities/user.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { PickupRequest } from '../pickup-requests/entities/pickup-request.entity';
 import { Hub } from '../hubs/entities/hub.entity';
+import { Staff } from '../staff/entities/staff.entity';
 import { CreateRiderDto } from './dto/create-rider.dto';
 import { UpdateRiderDto } from './dto/update-rider.dto';
 import { UserRole } from '../common/enums/user-role.enum';
+import { StaffPosition } from '../common/enums/staff-position.enum';
 import { ParcelStatus } from '../parcels/entities/parcel.entity';
 import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum';
 import * as bcrypt from 'bcrypt';
@@ -35,6 +37,8 @@ export class RidersService {
     private readonly pickupRequestRepository: Repository<PickupRequest>,
     @InjectRepository(Hub)
     private readonly hubRepository: Repository<Hub>,
+    @InjectRepository(Staff)
+    private readonly staffRepository: Repository<Staff>,
     @InjectRepository(EmergencyAlert)
     private readonly alertRepository: Repository<EmergencyAlert>,
     private readonly dataSource: DataSource,
@@ -141,6 +145,33 @@ export class RidersService {
       });
 
       const savedRider = await queryRunner.manager.save(Rider, rider);
+
+      // Create corresponding staff record with RIDER position
+      const staff = queryRunner.manager.create(Staff, {
+        user_id: savedUser.id,
+        hub_id: hubManagerHubId,
+        position: StaffPosition.RIDER,
+        photo: createRiderDto.photo,
+        guardian_mobile_no: createRiderDto.guardian_mobile_no,
+        bike_type: createRiderDto.bike_type,
+        nid_number: createRiderDto.nid_number,
+        license_no: createRiderDto.license_no,
+        present_address: createRiderDto.present_address,
+        permanent_address: createRiderDto.permanent_address,
+        fixed_salary: createRiderDto.fixed_salary,
+        bank_name: createRiderDto.bank_name,
+        bank_account_number: createRiderDto.bank_account_number,
+        bank_branch: createRiderDto.bank_branch,
+        nid_front_photo: createRiderDto.nid_front_photo,
+        nid_back_photo: createRiderDto.nid_back_photo,
+        license_front_photo: createRiderDto.license_front_photo,
+        license_back_photo: createRiderDto.license_back_photo,
+        parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
+        parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
+        is_active: true,
+      });
+
+      await queryRunner.manager.save(Staff, staff);
 
       // Commit transaction
       await queryRunner.commitTransaction();
@@ -259,6 +290,33 @@ export class RidersService {
       });
 
       const savedRider = await queryRunner.manager.save(Rider, rider);
+
+      // Create corresponding staff record with RIDER position
+      const staff = queryRunner.manager.create(Staff, {
+        user_id: savedUser.id,
+        hub_id: createRiderDto.hub_id,
+        position: StaffPosition.RIDER,
+        photo: createRiderDto.photo,
+        guardian_mobile_no: createRiderDto.guardian_mobile_no,
+        bike_type: createRiderDto.bike_type,
+        nid_number: createRiderDto.nid_number,
+        license_no: createRiderDto.license_no,
+        present_address: createRiderDto.present_address,
+        permanent_address: createRiderDto.permanent_address,
+        fixed_salary: createRiderDto.fixed_salary,
+        bank_name: createRiderDto.bank_name,
+        bank_account_number: createRiderDto.bank_account_number,
+        bank_branch: createRiderDto.bank_branch,
+        nid_front_photo: createRiderDto.nid_front_photo,
+        nid_back_photo: createRiderDto.nid_back_photo,
+        license_front_photo: createRiderDto.license_front_photo,
+        license_back_photo: createRiderDto.license_back_photo,
+        parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
+        parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
+        is_active: true,
+      });
+
+      await queryRunner.manager.save(Staff, staff);
 
       // Commit transaction
       await queryRunner.commitTransaction();

@@ -24,6 +24,7 @@ import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
 // import { BanksModule } from './banks/banks.module';
 import { AdvancePaymentsModule } from './advance-payments/advance-payments.module';
+import { StaffModule } from './staff/staff.module';
 
 // Synchronize is ALWAYS enabled - no manual migrations needed
 // TypeORM will auto-create/update all tables based on entities
@@ -47,6 +48,7 @@ import { AdvancePaymentsModule } from './advance-payments/advance-payments.modul
     UsersModule,
     HubsModule,
     RidersModule,
+    StaffModule,
     AuthModule,
     StoresModule,
     CoverageAreasModule,

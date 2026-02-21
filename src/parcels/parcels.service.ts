@@ -6,6 +6,8 @@ import {
   InternalServerErrorException,
   Logger,
   ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, FindOptionsWhere, In } from 'typeorm';
@@ -76,6 +78,7 @@ import {
   ResolveReportDto,
 } from 'src/hubs/dto/resolve-report.dto';
 import { BulkAcceptDto } from 'src/hubs/dto/bulk-accept-parcels.dto';
+import { CarrybeeService } from '../carrybee/carrybee.service';
 
 @Injectable()
 export class ParcelsService {
@@ -102,6 +105,8 @@ export class ParcelsService {
     private pricingService: PricingService,
     private customerService: CustomerService,
     private pickupRequestsService: PickupRequestsService,
+    @Inject(forwardRef(() => CarrybeeService))
+    private carrybeeService: CarrybeeService,
   ) {}
 
   /**
@@ -304,7 +309,7 @@ export class ParcelsService {
       out_for_delivery_at: Between(startOfDay, endOfDay),
     });
 
-    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE - delivered today)
+    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN - delivered today)
     const delivered = await calculateStats([
       {
         merchant_id: merchantId,
@@ -319,6 +324,11 @@ export class ParcelsService {
       {
         merchant_id: merchantId,
         status: ParcelStatus.EXCHANGE,
+        delivered_at: Between(startOfDay, endOfDay),
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PAID_RETURN,
         delivered_at: Between(startOfDay, endOfDay),
       },
     ]);
@@ -468,7 +478,7 @@ export class ParcelsService {
       status: ParcelStatus.OUT_FOR_DELIVERY,
     });
 
-    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE)
+    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN)
     const delivered = await calculateStats([
       {
         merchant_id: merchantId,
@@ -481,6 +491,10 @@ export class ParcelsService {
       {
         merchant_id: merchantId,
         status: ParcelStatus.EXCHANGE,
+      },
+      {
+        merchant_id: merchantId,
+        status: ParcelStatus.PAID_RETURN,
       },
     ]);
 
@@ -1187,6 +1201,55 @@ export class ParcelsService {
       this.logger.log(
         `[PARCEL CREATED] Tracking: ${trackingNumber}, Merchant: ${merchantId}, Charge: ${charges.total_charge} BDT`,
       );
+
+      // ===== AUTO-ASSIGN TO CARRYBEE (If Enabled) =====
+      if (store && store.auto_assign_to_carrybee) {
+        try {
+          // Validate parcel has required Carrybee location IDs
+          if (
+            savedParcel.recipient_carrybee_city_id &&
+            savedParcel.recipient_carrybee_zone_id &&
+            savedParcel.recipient_carrybee_area_id &&
+            store.hub_id // Store must be assigned to a hub
+          ) {
+            this.logger.log(
+              `[AUTO-ASSIGN CARRYBEE] Attempting auto-assignment for parcel ${savedParcel.tracking_number}`,
+            );
+            
+            // Trigger Carrybee assignment asynchronously (don't block parcel creation)
+            // Note: carrybeeService.assignParcelToCarrybee will auto-fetch the provider
+            this.carrybeeService
+              .assignParcelToCarrybee(
+                savedParcel.id,
+                { provider_id: null, notes: 'Auto-assigned by system' } as any,
+                store.hub_id,
+              )
+              .then(() => {
+                this.logger.log(
+                  `[AUTO-ASSIGN SUCCESS] Parcel ${savedParcel.tracking_number} assigned to Carrybee`,
+                );
+              })
+              .catch((error) => {
+                this.logger.error(
+                  `[AUTO-ASSIGN FAILED] Could not auto-assign parcel ${savedParcel.tracking_number} to Carrybee: ${error.message}`,
+                  error.stack,
+                );
+                // Don't throw error - parcel creation should succeed even if auto-assignment fails
+              });
+          } else {
+            this.logger.warn(
+              `[AUTO-ASSIGN SKIPPED] Parcel ${savedParcel.tracking_number} missing Carrybee location IDs or hub assignment`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `[AUTO-ASSIGN ERROR] ${error.message}`,
+            error.stack,
+          );
+          // Don't throw - parcel creation succeeded
+        }
+      }
+
       return savedParcel;
     } catch (error) {
       if (
@@ -1317,6 +1380,50 @@ export class ParcelsService {
       this.logger.log(
         `[HUB PARCEL CREATE] ${trackingNumber} created by Hub ${hubId} for Merchant ${merchantId}`,
       );
+
+      // ===== AUTO-ASSIGN TO CARRYBEE (If Enabled) =====
+      if (store.auto_assign_to_carrybee) {
+        try {
+          // Validate parcel has required Carrybee location IDs
+          if (
+            savedParcel.recipient_carrybee_city_id &&
+            savedParcel.recipient_carrybee_zone_id &&
+            savedParcel.recipient_carrybee_area_id
+          ) {
+            this.logger.log(
+              `[AUTO-ASSIGN CARRYBEE] Hub Manager - Attempting auto-assignment for parcel ${savedParcel.tracking_number}`,
+            );
+            
+            // Trigger Carrybee assignment asynchronously
+            this.carrybeeService
+              .assignParcelToCarrybee(
+                savedParcel.id,
+                { provider_id: null, notes: 'Auto-assigned by hub manager' } as any,
+                hubId,
+              )
+              .then(() => {
+                this.logger.log(
+                  `[AUTO-ASSIGN SUCCESS] Hub Manager - Parcel ${savedParcel.tracking_number} assigned to Carrybee`,
+                );
+              })
+              .catch((error) => {
+                this.logger.error(
+                  `[AUTO-ASSIGN FAILED] Hub Manager - Could not auto-assign parcel ${savedParcel.tracking_number}: ${error.message}`,
+                  error.stack,
+                );
+              });
+          } else {
+            this.logger.warn(
+              `[AUTO-ASSIGN SKIPPED] Hub Manager - Parcel ${savedParcel.tracking_number} missing Carrybee location IDs`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `[AUTO-ASSIGN ERROR] Hub Manager - ${error.message}`,
+            error.stack,
+          );
+        }
+      }
 
       return savedParcel;
     } catch (error) {
@@ -3269,13 +3376,13 @@ export class ParcelsService {
 
   /**
    * Get delivery outcomes for Hub Manager
-   * Shows parcels with: PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED
+   * Shows parcels with: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED
+   * AFTER COD has been collected from the rider (cod_cleared_at IS NOT NULL)
    *
-   * WHY: Hub managers need to track parcels that didn't complete normally
-   * - Partial deliveries may need follow-up
-   * - Exchanges need processing
-   * - Rescheduled deliveries need planning
-   * - Returns need to be received back at hub
+   * WHY: Hub managers need to track completed deliveries that have been settled
+   * - Track cleared deliveries for record keeping
+   * - Monitor completed transactions
+   * - View settled parcels that no longer need collection
    */
   async getDeliveryOutcomes(
     hubId: string,
@@ -3290,9 +3397,10 @@ export class ParcelsService {
     const { status, zone, merchantId, page = 1, limit = 10 } = options;
     const skip = (page - 1) * limit;
 
-    // Define delivery outcome statuses (for returns/exchanges)
-    // Note: DELIVERY_RESCHEDULED has separate endpoint
-    const outcomeStatuses = [
+    // Define all successful delivery statuses (parcels that have been completed)
+    // These are parcels that have gone through the delivery process and COD has been collected
+    const completedStatuses = [
+      ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
       ParcelStatus.PAID_RETURN,
@@ -3305,14 +3413,15 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
-      .where('parcel.current_hub_id = :hubId', { hubId });
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.cod_cleared_at IS NOT NULL'); // Only show parcels AFTER COD collection
 
-    // Filter by outcome statuses (or specific status if provided)
-    if (status && outcomeStatuses.includes(status)) {
+    // Filter by specific status if provided
+    if (status && completedStatuses.includes(status)) {
       queryBuilder.andWhere('parcel.status = :status', { status });
     } else {
       queryBuilder.andWhere('parcel.status IN (:...statuses)', {
-        statuses: outcomeStatuses,
+        statuses: completedStatuses,
       });
     }
 
@@ -3335,6 +3444,31 @@ export class ParcelsService {
     // Get total count for pagination
     const total = await queryBuilder.getCount();
 
+    // Calculate total collectable amount (COD collected from completed deliveries)
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+    ];
+
+    const collectableQuery = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .select('SUM(parcel.cod_collected_amount)', 'total')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: successfulStatuses,
+      })
+      .andWhere('parcel.cod_cleared_at IS NOT NULL'); // Only already-cleared parcels
+
+    if (merchantId) {
+      collectableQuery.andWhere('parcel.merchant_id = :merchantId', {
+        merchantId,
+      });
+    }
+
+    const collectableResult = await collectableQuery.getRawOne();
+    const totalCollectableAmount = Number(collectableResult?.total || 0);
+
     // Apply pagination
     queryBuilder.skip(skip).take(limit);
 
@@ -3350,6 +3484,185 @@ export class ParcelsService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+      },
+      summary: {
+        total_collectable_amount: totalCollectableAmount,
+      },
+    };
+  }
+
+  /**
+   * Get COD pending parcels for a rider
+   * Shows parcels BEFORE rider has cleared COD with hub manager (cod_cleared_at IS NULL)
+   * Returns total collectable amount from completed deliveries awaiting collection
+   */
+  async getRiderClearedParcels(
+    hubId: string,
+    riderId: string,
+    options: {
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page = 1, limit = 10 } = options;
+    const skip = (page - 1) * limit;
+
+    // Successful delivery statuses (completed deliveries with COD)
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    // Build query for cleared parcels
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
+      .andWhere('parcel.cod_cleared_at IS NULL') // Only not-yet-cleared parcels
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: successfulStatuses,
+      });
+
+    // Order by delivery date (most recent first)
+    queryBuilder.orderBy('parcel.delivered_at', 'DESC');
+
+    // Get total count for pagination
+    const total = await queryBuilder.getCount();
+
+    // Calculate total collectable amount (all not-yet-cleared parcels for this rider)
+    const collectableQuery = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .select('SUM(parcel.cod_collected_amount)', 'total')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
+      .andWhere('parcel.cod_cleared_at IS NULL')
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: successfulStatuses,
+      });
+
+    const collectableResult = await collectableQuery.getRawOne();
+    const totalCollectableAmount = Number(collectableResult?.total || 0);
+
+    // Apply pagination
+    queryBuilder.skip(skip).take(limit);
+
+    const parcels = await queryBuilder.getMany();
+
+    // Transform parcels to response format
+    const items = parcels.map((parcel) => this.toDeliveryOutcomeItem(parcel));
+
+    return {
+      parcels: items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      summary: {
+        total_collectable_amount: totalCollectableAmount,
+        total_cleared_parcels: total,
+      },
+    };
+  }
+
+  /**
+   * Get COD pending parcels for Carrybee (third-party provider)
+   * Shows parcels BEFORE hub has cleared COD with Carrybee (cod_cleared_at IS NULL)
+   * Returns total collectable amount from completed deliveries awaiting collection
+   */
+  async getCarrybeeClearedParcels(
+    hubId: string,
+    providerId: string,
+    options: {
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page = 1, limit = 10 } = options;
+    const skip = (page - 1) * limit;
+
+    // Successful delivery statuses (completed deliveries with COD)
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    // Build query for cleared parcels from Carrybee
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'provider')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.delivery_provider = :deliveryProvider', {
+        deliveryProvider: 'THIRD_PARTY',
+      })
+      .andWhere('parcel.third_party_provider_id = :providerId', { providerId })
+      .andWhere('parcel.cod_cleared_at IS NULL') // Only not-yet-cleared parcels
+      .andWhere('parcel.payment_status = :paymentStatus', {
+        paymentStatus: PaymentStatus.COD_COLLECTED,
+      })
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: successfulStatuses,
+      });
+
+    // Order by delivery date (most recent first)
+    queryBuilder.orderBy('parcel.delivered_at', 'DESC');
+
+    // Get total count for pagination
+    const total = await queryBuilder.getCount();
+
+    // Calculate total collectable amount
+    const collectableQuery = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .select('SUM(parcel.cod_collected_amount)', 'total')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.delivery_provider = :deliveryProvider', {
+        deliveryProvider: 'THIRD_PARTY',
+      })
+      .andWhere('parcel.third_party_provider_id = :providerId', { providerId })
+      .andWhere('parcel.cod_cleared_at IS NULL')
+      .andWhere('parcel.payment_status = :paymentStatus', {
+        paymentStatus: PaymentStatus.COD_COLLECTED,
+      })
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: successfulStatuses,
+      });
+
+    const collectableResult = await collectableQuery.getRawOne();
+    const totalCollectableAmount = Number(collectableResult?.total || 0);
+
+    // Apply pagination
+    queryBuilder.skip(skip).take(limit);
+
+    const parcels = await queryBuilder.getMany();
+
+    // Transform parcels to response format
+    const items = parcels.map((parcel) => this.toDeliveryOutcomeItem(parcel));
+
+    return {
+      parcels: items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      summary: {
+        total_collectable_amount: totalCollectableAmount,
+        total_cleared_parcels: total,
+        provider_name: parcels[0]?.thirdPartyProvider?.provider_name || 'Carrybee',
       },
     };
   }

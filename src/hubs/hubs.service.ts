@@ -13,6 +13,7 @@ import {
   MoreThanOrEqual,
   Between,
   In,
+  IsNull,
   DataSource,
 } from 'typeorm';
 import { Hub } from './entities/hub.entity';
@@ -47,6 +48,8 @@ import {
   ReportPeriod,
 } from './dto/financial-report-query.dto';
 import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
+import { ThirdPartyProvider } from '../third-party-providers/entities/third-party-provider.entity';
+import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 
@@ -1300,7 +1303,11 @@ export class HubsService {
   }
 
   // 1. COLLECT CASH FROM RIDER (Balance: +)
-  async collectCashFromRider(hubManagerId: string, dto: CollectCodDto) {
+  async collectCashFromRider(
+    hubManagerId: string,
+    riderId: string,
+    dto: CollectCodDto,
+  ) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -1316,16 +1323,27 @@ export class HubsService {
       if (!managerFinance)
         throw new NotFoundException('Hub Finance record not found');
 
+      // Get all pending parcels for this rider (completed deliveries not yet cleared)
+      const successfulStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+        ParcelStatus.PAID_RETURN,
+      ];
+
       const parcels = await queryRunner.manager.find(Parcel, {
         where: {
-          id: In(dto.parcel_ids),
-          assigned_rider_id: dto.rider_id, // Ensure parcels belong to this rider
+          assigned_rider_id: riderId,
+          current_hub_id: managerFinance.hub_id,
+          status: In(successfulStatuses),
+          payment_status: PaymentStatus.COD_COLLECTED, // Rider collected from customer
+          cod_cleared_at: IsNull(), // But hasn't cleared with hub yet
         },
       });
 
-      if (parcels.length !== dto.parcel_ids.length) {
+      if (parcels.length === 0) {
         throw new BadRequestException(
-          'Some parcels were not found or do not belong to this rider',
+          'No pending deliveries found for this rider',
         );
       }
 
@@ -1341,12 +1359,6 @@ export class HubsService {
       let returnedCount = 0;
 
       for (const parcel of parcels) {
-        // Validation: Only settle parcels that are effectively "Done" but unpaid to hub
-        if (parcel.payment_status === PaymentStatus.COD_COLLECTED) {
-          throw new BadRequestException(
-            `Parcel ${parcel.tracking_number} is already settled.`,
-          );
-        }
 
         // Add to total
         // We use 'cod_collected_amount' which is what the rider actually took from customer
@@ -1362,94 +1374,142 @@ export class HubsService {
         else if (parcel.status === ParcelStatus.RETURNED) returnedCount++;
       }
 
-      // 4. Financial Calculations
-      const cashReceived = dto.cash_received;
-      const totalShortage = totalExpectedAmount - cashReceived;
+      // 4. Financial Calculations - Only add counted amount to balance
+      const countedAmount = dto.counted_amount;
+      const codClearedAt = new Date();
 
-      // Determine Discrepancy vs Due
-      // If DTO provides explicit breakdown, use it. Otherwise, assume shortage is Due.
-      let discrepancyAmount = 0;
-      let newDueAmount = 0;
-
-      if (
-        dto.discrepancy_amount !== undefined ||
-        dto.due_amount !== undefined
-      ) {
-        discrepancyAmount = dto.discrepancy_amount || 0;
-        newDueAmount = dto.due_amount || 0;
-      } else {
-        // Default Logic: If shortage > 0, treat as discrepancy or due?
-        // Usually, shortage is a discrepancy until proven as a "Due/Loan".
-        // Let's set it as discrepancy by default as per common safety rules.
-        discrepancyAmount = totalShortage > 0 ? totalShortage : 0;
-      }
-
-      // Fetch previous due (if any) to carry forward (Optional logic)
-      const lastSettlement = await queryRunner.manager.findOne(
-        RiderSettlement,
-        {
-          where: { rider_id: dto.rider_id },
-          order: { created_at: 'DESC' },
-        },
-      );
-      const previousDue = lastSettlement
-        ? Number(lastSettlement.new_due_amount)
-        : 0;
-      const totalDue = previousDue + newDueAmount;
-
-      // 5. Create Settlement Record
-      const settlement = queryRunner.manager.create(RiderSettlement, {
-        hub_id: managerFinance.hub_id,
-        hub_manager_id: hubManagerId,
-        rider_id: dto.rider_id,
-
-        total_collected_amount: totalExpectedAmount,
-        cash_received: cashReceived,
-        discrepancy_amount: discrepancyAmount,
-        previous_due_amount: previousDue,
-        new_due_amount: totalDue, // Current due + previous
-
-        // Stats
-        completed_deliveries: parcels.length,
-        delivered_count: deliveredCount,
-        partial_delivery_count: partialCount,
-        exchange_count: exchangeCount,
-        paid_return_count: paidReturnCount,
-        returned_count: returnedCount,
-
-        settlement_status:
-          discrepancyAmount > 0 || totalDue > 0
-            ? SettlementStatus.PARTIAL
-            : SettlementStatus.COMPLETED,
-      });
-
-      await queryRunner.manager.save(settlement);
-
-      // 6. Update Parcels Status
-      // Mark as settled so they aren't picked up again
+      // 5. Update Parcels Status
+      // Mark as COD cleared and set timestamp
       await queryRunner.manager.update(
         Parcel,
         { id: In(settledParcelIds) },
         {
           payment_status: PaymentStatus.COD_COLLECTED,
-          // Link to a settlement ID if you add that column to parcel later
+          cod_cleared_at: codClearedAt,
         },
       );
 
-      // 7. Update Hub Finance (Add Cash)
+      // 6. Update Hub Finance (Add Counted Cash to Available Balance)
       managerFinance.current_balance =
-        Number(managerFinance.current_balance) + cashReceived;
+        Number(managerFinance.current_balance) + countedAmount;
       managerFinance.total_collected_from_riders =
-        Number(managerFinance.total_collected_from_riders) + cashReceived;
-      managerFinance.last_collection_at = new Date();
+        Number(managerFinance.total_collected_from_riders) + countedAmount;
+      managerFinance.last_collection_at = codClearedAt;
 
       await queryRunner.manager.save(managerFinance);
 
       await queryRunner.commitTransaction();
 
       return {
-        ...settlement,
-        message: 'Settlement processed successfully',
+        rider_id: riderId,
+        parcel_count: settledParcelIds.length,
+        counted_amount: countedAmount,
+        cod_cleared_at: codClearedAt,
+        current_balance: Number(managerFinance.current_balance),
+        message: 'COD collection processed successfully',
+      };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // 1B. COLLECT CASH FROM CARRYBEE (Third-Party Provider)
+  async collectCashFromCarrybee(
+    hubManagerId: string,
+    providerId: string,
+    dto: CollectCodDto,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Get Hub Manager Info
+      const managerFinance = await queryRunner.manager.findOne(
+        HubManagerFinance,
+        {
+          where: { hub_manager_id: hubManagerId },
+        },
+      );
+      if (!managerFinance)
+        throw new NotFoundException('Hub Finance record not found');
+
+      // Get third-party provider info
+      const provider = await queryRunner.manager.findOne(ThirdPartyProvider, {
+        where: { id: providerId },
+      });
+      if (!provider)
+        throw new NotFoundException('Third-party provider not found');
+
+      // Get all pending parcels from Carrybee (completed deliveries not yet cleared)
+      const successfulStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+        ParcelStatus.PAID_RETURN,
+      ];
+
+      const parcels = await queryRunner.manager.find(Parcel, {
+        where: {
+          delivery_provider: DeliveryProvider.CARRYBEE,
+          third_party_provider_id: providerId,
+          current_hub_id: managerFinance.hub_id,
+          status: In(successfulStatuses),
+          payment_status: PaymentStatus.COD_COLLECTED,
+          cod_cleared_at: IsNull(),
+        },
+      });
+
+      if (parcels.length === 0) {
+        throw new BadRequestException(
+          `No pending deliveries found for ${provider.provider_name}`,
+        );
+      }
+
+      // Calculate total expected amount
+      let totalExpectedAmount = 0;
+      const settledParcelIds: string[] = [];
+
+      for (const parcel of parcels) {
+        totalExpectedAmount += Number(parcel.cod_collected_amount || 0);
+        settledParcelIds.push(parcel.id);
+      }
+
+      const countedAmount = dto.counted_amount;
+      const codClearedAt = new Date();
+
+      // Update parcels - mark as COD cleared
+      await queryRunner.manager.update(
+        Parcel,
+        { id: In(settledParcelIds) },
+        {
+          cod_cleared_at: codClearedAt,
+        },
+      );
+
+      // Update Hub Finance (Add Counted Cash to Available Balance)
+      managerFinance.current_balance =
+        Number(managerFinance.current_balance) + countedAmount;
+      
+      managerFinance.last_collection_at = codClearedAt;
+
+      await queryRunner.manager.save(managerFinance);
+
+      await queryRunner.commitTransaction();
+
+      return {
+        provider_id: providerId,
+        provider_name: provider.provider_name,
+        parcel_count: settledParcelIds.length,
+        total_expected_amount: totalExpectedAmount,
+        counted_amount: countedAmount,
+        discrepancy: countedAmount - totalExpectedAmount,
+        cod_cleared_at: codClearedAt,
+        current_balance: Number(managerFinance.current_balance),
+        message: `COD collected from ${provider.provider_name} successfully`,
       };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -1535,7 +1595,7 @@ export class HubsService {
       const transfer = queryRunner.manager.create(HubTransferRecord, {
         hub_manager_id: hubManagerId,
         hub_id: managerFinance.hub_id,
-        status: TransferRecordStatus.PENDING,
+        status: TransferRecordStatus.IN_REVIEW,
         transferred_amount: dto.transferred_amount,
         admin_account_id: adminAccount.id,
         // Snapshot Bank Details
@@ -1973,5 +2033,117 @@ export class HubsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Get Hub Manager Finance Overview
+   * Returns: Available Balance, Transferred This Month, Expenses This Month,
+   * Pending Transfer, Lifetime Expenses, Lifetime Transferred
+   */
+  async getHubManagerFinanceOverview(userId: string) {
+    // Validate userId
+    if (!userId) {
+      throw new BadRequestException('User ID is required');
+    }
+
+    // First, find the hub manager record by user_id
+    const hubManager = await this.hubManagerRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!hubManager) {
+      throw new NotFoundException('Hub Manager not found for this user');
+    }
+
+    const hubManagerId = hubManager.id;
+
+    // Get or create the finance record
+    let finance = await this.financeRepository.findOne({
+      where: { hub_manager_id: hubManagerId },
+    });
+
+    // If finance record doesn't exist, create it
+    if (!finance) {
+      // Create finance record with zero balances
+      finance = this.financeRepository.create({
+        hub_manager_id: hubManagerId,
+        hub_id: hubManager.hub_id,
+        current_balance: 0,
+        total_collected_from_riders: 0,
+        total_transferred_to_admin: 0,
+      });
+
+      finance = await this.financeRepository.save(finance);
+    }
+
+    // Calculate date range for "this month"
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // Get lifetime transferred (APPROVED transfers only - all time)
+    const lifetimeTransferred = await this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
+      .andWhere('transfer.status = :status', { status: TransferRecordStatus.APPROVED })
+      .select('COALESCE(SUM(transfer.transferred_amount), 0)', 'total')
+      .getRawOne();
+
+    // Get lifetime expenses (APPROVED expenses only - all time)
+    const lifetimeExpenses = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
+      .andWhere('expense.status = :status', { status: TransferRecordStatus.APPROVED })
+      .select('COALESCE(SUM(expense.amount), 0)', 'total')
+      .getRawOne();
+
+    // Calculate Available Balance
+    // = Total collected from rider settlements - Total approved transfers to admin
+    const totalCollectedFromRiders = Number(finance.total_collected_from_riders || 0);
+    const totalApprovedTransfers = Number(lifetimeTransferred.total || 0);
+    const availableBalance = totalCollectedFromRiders - totalApprovedTransfers;
+
+    // Get transferred this month (APPROVED transfers only)
+    const transferredThisMonth = await this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
+      .andWhere('transfer.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('transfer.transfer_date BETWEEN :start AND :end', {
+        start: startOfMonth,
+        end: endOfMonth,
+      })
+      .select('COALESCE(SUM(transfer.transferred_amount), 0)', 'total')
+      .getRawOne();
+
+    // Get expenses this month (APPROVED expenses only)
+    const expensesThisMonth = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
+      .andWhere('expense.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('expense.created_at BETWEEN :start AND :end', {
+        start: startOfMonth,
+        end: endOfMonth,
+      })
+      .select('COALESCE(SUM(expense.amount), 0)', 'total')
+      .getRawOne();
+
+    // Get pending transfer (PENDING + IN_REVIEW status - not yet approved)
+    const pendingTransfer = await this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
+      .andWhere('transfer.status IN (:...statuses)', {
+        statuses: [TransferRecordStatus.PENDING, TransferRecordStatus.IN_REVIEW],
+      })
+      .select('COALESCE(SUM(transfer.transferred_amount), 0)', 'total')
+      .getRawOne();
+
+    return {
+      available_balance: availableBalance,
+      transferred_this_month: Number(transferredThisMonth.total || 0),
+      expenses_this_month: Number(expensesThisMonth.total || 0),
+      pending_transfer: Number(pendingTransfer.total || 0),
+      lifetime_expenses: Number(lifetimeExpenses.total || 0),
+      lifetime_transferred: Number(lifetimeTransferred.total || 0),
+    };
   }
 }

@@ -258,6 +258,10 @@ export class Parcel {
   @Column({ type: 'timestamp', nullable: true })
   paid_to_merchant_at: Date | null;
 
+  // ===== COD CLEARANCE TRACKING =====
+  @Column({ type: 'timestamp', nullable: true })
+  cod_cleared_at: Date | null; // When rider cleared COD with hub manager
+
   @Column({ type: 'smallint', default: 1 })
   delivery_type: DeliveryType;
 

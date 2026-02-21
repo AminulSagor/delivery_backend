@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class TransferFundsDto {
   @IsNotEmpty()
@@ -14,11 +14,11 @@ export class TransferFundsDto {
   @Min(1)
   amount: number;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  reference_id: string;
+  reference_id?: string;
 }

@@ -6,5 +6,6 @@ export interface JwtPayload {
   role: UserRole;
   merchantId: string | null;
   hubId: string | null;
+  hubManagerId: string | null; // HubManager entity ID
   riderId: string | null;
 }

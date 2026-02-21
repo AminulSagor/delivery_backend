@@ -6,6 +6,7 @@ import { Merchant } from '../merchant/entities/merchant.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { ThirdPartyProvider } from '../third-party-providers/entities/third-party-provider.entity';
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
+import { ReturnChargeConfiguration } from '../pricing/entities/return-charge-configuration.entity';
 import { CarrybeeApiService } from './carrybee-api.service';
 import { CarrybeeService } from './carrybee.service';
 import { CarrybeeWebhookService } from './carrybee-webhook.service';
@@ -14,7 +15,14 @@ import { CarrybeeController, CarrybeeWebhookController } from './carrybee.contro
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([Store, Merchant, Parcel, ThirdPartyProvider, CoverageArea]),
+    TypeOrmModule.forFeature([
+      Store,
+      Merchant,
+      Parcel,
+      ThirdPartyProvider,
+      CoverageArea,
+      ReturnChargeConfiguration,
+    ]),
   ],
   controllers: [CarrybeeController, CarrybeeWebhookController],
   providers: [CarrybeeApiService, CarrybeeService, CarrybeeWebhookService],

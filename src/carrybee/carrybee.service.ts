@@ -335,13 +335,26 @@ export class CarrybeeService {
       throw new BadRequestException('Parcel is already assigned to Carrybee');
     }
 
-    // 5. Validate provider
-    const provider = await this.providerRepository.findOne({
-      where: { id: dto.provider_id, is_active: true },
-    });
-
-    if (!provider || provider.provider_code !== 'CARRYBEE') {
-      throw new BadRequestException('Invalid or inactive provider');
+    // 5. Validate provider (auto-fetch if not provided for auto-assignment)
+    let provider: ThirdPartyProvider | null;
+    
+    if (dto.provider_id) {
+      provider = await this.providerRepository.findOne({
+        where: { id: dto.provider_id, is_active: true },
+      });
+      
+      if (!provider || provider.provider_code !== 'CARRYBEE') {
+        throw new BadRequestException('Invalid or inactive provider');
+      }
+    } else {
+      // Auto-fetch Carrybee provider (for auto-assignment scenarios)
+      provider = await this.providerRepository.findOne({
+        where: { provider_code: 'CARRYBEE', is_active: true },
+      });
+      
+      if (!provider) {
+        throw new BadRequestException('Carrybee provider not found or inactive');
+      }
     }
 
     // 6. Check store and auto-sync if needed

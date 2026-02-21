@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseGuards,
   HttpCode,
@@ -20,11 +21,33 @@ class SmsReportDto {
   requestId: number;
 }
 
+class SmsToggleDto {
+  active: boolean;
+}
+
 @Controller('admin/sms')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminSmsTestController {
   constructor(private readonly smsService: SmsService) {}
+
+  /**
+   * Get SMS service status
+   */
+  @Get('status')
+  getSmsStatus() {
+    return this.smsService.getSmsStatus();
+  }
+
+  /**
+   * Toggle SMS service active/inactive
+   * Body: { "active": true } or { "active": false }
+   */
+  @Post('toggle')
+  @HttpCode(HttpStatus.OK)
+  toggleSms(@Body() body: SmsToggleDto) {
+    return this.smsService.toggleSms(body.active);
+  }
 
   /**
    * Check SMS balance
