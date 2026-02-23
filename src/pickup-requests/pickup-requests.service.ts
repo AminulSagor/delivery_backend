@@ -579,11 +579,11 @@ export class PickupRequestsService {
                   phone: pr.completedByRider.user?.phone || 'N/A',
                 }
               : null,
-            // riders: pr.completedByRider ? [{
-            //   id: pr.completedByRider.id,
-            //   name: pr.completedByRider.user?.full_name || 'Unknown',
-            //   phone: pr.completedByRider.user?.phone || 'N/A',
-            // }] : [],
+            riders: pr.completedByRider ? [{
+              id: pr.completedByRider.id,
+              name: pr.completedByRider.user?.full_name || 'Unknown',
+              phone: pr.completedByRider.user?.phone || 'N/A',
+            }] : [],
             completed_at: pr.picked_up_at,
             date: dateKey,
           });
