@@ -124,18 +124,12 @@ export class DeliveryVerificationsService {
     });
 
     if (existingVerification) {
-      // Block re-initiation if delivery is already completed or OTP failed
+      // Block re-initiation only if delivery is already completed
       if (
         existingVerification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
-        existingVerification.verification_status === DeliveryVerificationStatus.COMPLETED ||
-        existingVerification.verification_status === DeliveryVerificationStatus.OTP_FAILED
+        existingVerification.verification_status === DeliveryVerificationStatus.COMPLETED
       ) {
-        const statusMessages: Record<string, string> = {
-          [DeliveryVerificationStatus.OTP_VERIFIED]: 'Delivery has already been completed for this parcel',
-          [DeliveryVerificationStatus.COMPLETED]: 'Delivery has already been completed for this parcel',
-          [DeliveryVerificationStatus.OTP_FAILED]: 'Maximum OTP attempts exceeded. Please contact support.',
-        };
-        throw new BadRequestException(statusMessages[existingVerification.verification_status]);
+        throw new BadRequestException('Delivery has already been completed for this parcel');
       }
 
       // Retry scenario: rider could not obtain the OTP — update existing record and resend
