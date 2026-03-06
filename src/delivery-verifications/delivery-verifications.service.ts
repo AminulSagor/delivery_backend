@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { DeliveryVerification, DeliveryVerificationStatus, OtpRecipientType } from './entities/delivery-verification.entity';
 import { Parcel, ParcelStatus, PaymentStatus, REASON_REQUIRED_STATUSES } from '../parcels/entities/parcel.entity';
 import { ReturnChargeConfiguration, ReturnStatus } from '../pricing/entities/return-charge-configuration.entity';
@@ -27,6 +28,7 @@ export class DeliveryVerificationsService {
     @InjectRepository(ReturnChargeConfiguration)
     private readonly returnChargeConfigRepo: Repository<ReturnChargeConfiguration>,
     private readonly smsService: SmsService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -695,9 +697,16 @@ export class DeliveryVerificationsService {
   }
 
   /**
-   * Generate 4-digit OTP
+   * Generate 4-digit OTP.
+   * If OTP_DEFAULT_ENABLED=true, returns OTP_DEFAULT_VALUE for all requests (testing/dev only).
    */
   private generateOtp(): string {
+    const defaultEnabled = this.configService.get<string>('OTP_DEFAULT_ENABLED', 'false').toLowerCase() === 'true';
+    if (defaultEnabled) {
+      const defaultOtp = this.configService.get<string>('OTP_DEFAULT_VALUE', '1234');
+      this.logger.warn(`[DEFAULT OTP] Using default OTP: ${defaultOtp}. Disable OTP_DEFAULT_ENABLED in production!`);
+      return defaultOtp;
+    }
     return crypto.randomInt(1000, 9999).toString();
   }
 
