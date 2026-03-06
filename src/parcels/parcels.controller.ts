@@ -222,19 +222,29 @@ export class ParcelsController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.RIDER, UserRole.HUB_MANAGER)
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,
     @CurrentUser('merchantId') merchantId: string,
+    @CurrentUser('riderId') riderId: string,
+    @CurrentUser('hubId') hubId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
+    const isRider = role === UserRole.RIDER;
+    const isHubManager = role === UserRole.HUB_MANAGER;
 
-    if (!isAdmin && !merchantId) {
+    if (!isAdmin && !isRider && !isHubManager && !merchantId) {
       throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.findOne(id, merchantId, isAdmin);
+    const parcel = await this.parcelsService.findOne(
+      id,
+      merchantId,
+      isAdmin,
+      isRider ? riderId : null,
+      isHubManager ? hubId : null,
+    );
     return {
       parcel,
       message: 'Parcel retrieved successfully',
