@@ -71,15 +71,6 @@ export class DeliveryVerificationsService {
       );
     }
 
-    // Check if verification already exists
-    const existingVerification = await this.deliveryVerificationRepo.findOne({
-      where: { parcel_id: parcelId },
-    });
-
-    if (existingVerification) {
-      throw new BadRequestException('Delivery verification already exists for this parcel');
-    }
-
     // 2. Determine amounts
     const expectedAmount = Number(parcel.cod_amount) || 0;
     const hasDifference = Math.abs(collectedAmount - expectedAmount) > 0.01;
@@ -127,7 +118,81 @@ export class DeliveryVerificationsService {
       );
     }
 
-    // 6. Create verification record
+    // 6. Check if a verification already exists for this parcel
+    const existingVerification = await this.deliveryVerificationRepo.findOne({
+      where: { parcel_id: parcelId },
+    });
+
+    if (existingVerification) {
+      // Block re-initiation if delivery is already completed or OTP failed
+      if (
+        existingVerification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
+        existingVerification.verification_status === DeliveryVerificationStatus.COMPLETED ||
+        existingVerification.verification_status === DeliveryVerificationStatus.OTP_FAILED
+      ) {
+        const statusMessages: Record<string, string> = {
+          [DeliveryVerificationStatus.OTP_VERIFIED]: 'Delivery has already been completed for this parcel',
+          [DeliveryVerificationStatus.COMPLETED]: 'Delivery has already been completed for this parcel',
+          [DeliveryVerificationStatus.OTP_FAILED]: 'Maximum OTP attempts exceeded. Please contact support.',
+        };
+        throw new BadRequestException(statusMessages[existingVerification.verification_status]);
+      }
+
+      // Retry scenario: rider could not obtain the OTP — update existing record and resend
+      existingVerification.selected_status = selectedStatus;
+      existingVerification.expected_cod_amount = expectedAmount;
+      existingVerification.collected_amount = collectedAmount;
+      existingVerification.has_amount_difference = hasDifference;
+      existingVerification.difference_reason = reason || null;
+      existingVerification.otp_recipient_type = otpRecipientType;
+      existingVerification.otp_sent_to_phone = otpPhone;
+      existingVerification.merchant_phone_used = parcel.store?.merchant?.user?.phone || null;
+      existingVerification.customer_phone_used = parcel.customer_phone || null;
+      existingVerification.otp_attempts = 0;
+      existingVerification.delivery_attempted_at = new Date();
+
+      const retryOtp = this.generateOtp();
+      const retryHashedOtp = await bcrypt.hash(retryOtp, 10);
+      existingVerification.otp_code = retryHashedOtp;
+      existingVerification.otp_sent_at = new Date();
+      existingVerification.otp_expires_at = new Date(Date.now() + 5 * 60 * 1000);
+      existingVerification.verification_status = DeliveryVerificationStatus.OTP_SENT;
+
+      await this.deliveryVerificationRepo.save(existingVerification);
+
+      await this.sendOtpSms(
+        otpPhone,
+        retryOtp,
+        parcel.tracking_number,
+        selectedStatus,
+        expectedAmount,
+        collectedAmount,
+        reason,
+        otpRecipientType,
+      );
+
+      const retryRecipientLabel = otpRecipientType === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
+      this.logger.log(
+        `[DELIVERY RETRY] Parcel: ${parcel.tracking_number}, re-initiated by rider. OTP resent to: ${retryRecipientLabel}`,
+      );
+
+      return {
+        success: true,
+        verification_id: existingVerification.id,
+        selected_status: selectedStatus,
+        expected_amount: expectedAmount,
+        collected_amount: collectedAmount,
+        has_difference: hasDifference,
+        difference: amountDifference,
+        reason: reason || null,
+        otp_sent_to: otpRecipientType,
+        otp_phone: this.maskPhone(otpPhone),
+        otp_expires_at: existingVerification.otp_expires_at,
+        message: `OTP resent to ${retryRecipientLabel}. Please enter the 4-digit code to complete.`,
+      };
+    }
+
+    // 7. Create new verification record
     // Note: amount_difference is a GENERATED column (auto-calculated by DB)
     const verification = this.deliveryVerificationRepo.create({
       parcel_id: parcelId,
