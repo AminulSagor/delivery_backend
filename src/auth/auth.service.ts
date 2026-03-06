@@ -23,6 +23,7 @@ import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
 import { SmsService } from 'src/utils/sms.service';
 import { EmailService } from 'src/utils/email.service';
+import { ConfigService } from '@nestjs/config';
 import {
   ChangePasswordDto,
   ForgotPasswordDto,
@@ -45,6 +46,7 @@ export class AuthService {
     private riderRepository: Repository<Rider>,
     private smsService: SmsService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   async login(loginDto: AuthLoginDto): Promise<{
@@ -259,8 +261,11 @@ export class AuthService {
     const user = await this.usersService.findByPhoneOrEmail(identifier);
     if (!user) throw new NotFoundException('User not found');
 
-    // 2. Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // 2. Generate 6-digit OTP (or use default OTP if enabled)
+    const defaultEnabled = this.configService.get<string>('OTP_DEFAULT_ENABLED', 'false').toLowerCase() === 'true';
+    const otp = defaultEnabled
+      ? this.configService.get<string>('OTP_DEFAULT_VALUE', '1234')
+      : Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 5); // Expires in 5 minutes
 
