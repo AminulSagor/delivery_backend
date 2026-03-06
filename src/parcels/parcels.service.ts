@@ -1499,6 +1499,8 @@ export class ParcelsService {
     id: string,
     merchantId: string | null,
     isAdmin: boolean = false,
+    riderId: string | null = null,
+    hubId: string | null = null,
   ): Promise<Parcel> {
     try {
       const uuidRegex =
@@ -1510,6 +1512,22 @@ export class ParcelsService {
         relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
       });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
+      // Rider can only view parcels assigned to them
+      if (riderId) {
+        if (parcel.assigned_rider_id !== riderId)
+          throw new ForbiddenException(
+            'You do not have permission to view this parcel',
+          );
+        return parcel;
+      }
+      // Hub manager can only view parcels currently at their hub
+      if (hubId) {
+        if (parcel.current_hub_id !== hubId)
+          throw new ForbiddenException(
+            'You do not have permission to view this parcel',
+          );
+        return parcel;
+      }
       // merchant_id references merchants table, so compare with merchantId from JWT
       if (!isAdmin && merchantId && parcel.merchant_id !== merchantId)
         throw new ForbiddenException(
