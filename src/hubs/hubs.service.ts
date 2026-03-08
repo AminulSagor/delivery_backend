@@ -1313,15 +1313,41 @@ export class HubsService {
     await queryRunner.startTransaction();
 
     try {
-      // Get Hub Manager Info
-      const managerFinance = await queryRunner.manager.findOne(
+      // Get Hub Manager Info - Auto-create finance record if it doesn't exist
+      const hubManager = await queryRunner.manager.findOne(HubManager, {
+        where: { id: hubManagerId },
+      });
+      if (!hubManager) {
+        throw new NotFoundException('Hub Manager not found');
+      }
+
+      let managerFinance = await queryRunner.manager.findOne(
         HubManagerFinance,
         {
           where: { hub_manager_id: hubManagerId },
         },
       );
-      if (!managerFinance)
-        throw new NotFoundException('Hub Finance record not found');
+
+      // Auto-create finance record if missing
+      if (!managerFinance) {
+        this.logger.warn(
+          `[AUTO-CREATE] Finance record missing for Hub Manager ${hubManagerId}. Creating now...`,
+        );
+        managerFinance = queryRunner.manager.create(HubManagerFinance, {
+          hub_manager_id: hubManagerId,
+          hub_id: hubManager.hub_id,
+          current_balance: 0,
+          total_collected_from_riders: 0,
+          total_transferred_to_admin: 0,
+        });
+        managerFinance = await queryRunner.manager.save(
+          HubManagerFinance,
+          managerFinance,
+        );
+        this.logger.log(
+          `[AUTO-CREATE] Finance record created successfully for Hub Manager ${hubManagerId}`,
+        );
+      }
 
       // Get all pending parcels for this rider (completed deliveries not yet cleared)
       const successfulStatuses = [
@@ -1427,15 +1453,41 @@ export class HubsService {
     await queryRunner.startTransaction();
 
     try {
-      // Get Hub Manager Info
-      const managerFinance = await queryRunner.manager.findOne(
+      // Get Hub Manager Info - Auto-create finance record if it doesn't exist
+      const hubManager = await queryRunner.manager.findOne(HubManager, {
+        where: { id: hubManagerId },
+      });
+      if (!hubManager) {
+        throw new NotFoundException('Hub Manager not found');
+      }
+
+      let managerFinance = await queryRunner.manager.findOne(
         HubManagerFinance,
         {
           where: { hub_manager_id: hubManagerId },
         },
       );
-      if (!managerFinance)
-        throw new NotFoundException('Hub Finance record not found');
+
+      // Auto-create finance record if missing
+      if (!managerFinance) {
+        this.logger.warn(
+          `[AUTO-CREATE] Finance record missing for Hub Manager ${hubManagerId}. Creating now...`,
+        );
+        managerFinance = queryRunner.manager.create(HubManagerFinance, {
+          hub_manager_id: hubManagerId,
+          hub_id: hubManager.hub_id,
+          current_balance: 0,
+          total_collected_from_riders: 0,
+          total_transferred_to_admin: 0,
+        });
+        managerFinance = await queryRunner.manager.save(
+          HubManagerFinance,
+          managerFinance,
+        );
+        this.logger.log(
+          `[AUTO-CREATE] Finance record created successfully for Hub Manager ${hubManagerId}`,
+        );
+      }
 
       // Get third-party provider info
       const provider = await queryRunner.manager.findOne(ThirdPartyProvider, {
@@ -1526,14 +1578,41 @@ export class HubsService {
     await queryRunner.startTransaction();
 
     try {
-      const managerFinance = await queryRunner.manager.findOne(
+      // Get Hub Manager Info - Auto-create finance record if it doesn't exist
+      const hubManager = await queryRunner.manager.findOne(HubManager, {
+        where: { id: hubManagerId },
+      });
+      if (!hubManager) {
+        throw new NotFoundException('Hub Manager not found');
+      }
+
+      let managerFinance = await queryRunner.manager.findOne(
         HubManagerFinance,
         {
           where: { hub_manager_id: hubManagerId },
         },
       );
-      if (!managerFinance)
-        throw new NotFoundException('Hub Finance record not found');
+
+      // Auto-create finance record if missing
+      if (!managerFinance) {
+        this.logger.warn(
+          `[AUTO-CREATE] Finance record missing for Hub Manager ${hubManagerId}. Creating now...`,
+        );
+        managerFinance = queryRunner.manager.create(HubManagerFinance, {
+          hub_manager_id: hubManagerId,
+          hub_id: hubManager.hub_id,
+          current_balance: 0,
+          total_collected_from_riders: 0,
+          total_transferred_to_admin: 0,
+        });
+        managerFinance = await queryRunner.manager.save(
+          HubManagerFinance,
+          managerFinance,
+        );
+        this.logger.log(
+          `[AUTO-CREATE] Finance record created successfully for Hub Manager ${hubManagerId}`,
+        );
+      }
 
       // Check Balance
       if (Number(managerFinance.current_balance) < dto.amount) {
@@ -1573,14 +1652,41 @@ export class HubsService {
     await queryRunner.startTransaction();
 
     try {
-      const managerFinance = await queryRunner.manager.findOne(
+      // Get Hub Manager Info - Auto-create finance record if it doesn't exist
+      const hubManager = await queryRunner.manager.findOne(HubManager, {
+        where: { id: hubManagerId },
+      });
+      if (!hubManager) {
+        throw new NotFoundException('Hub Manager not found');
+      }
+
+      let managerFinance = await queryRunner.manager.findOne(
         HubManagerFinance,
         {
           where: { hub_manager_id: hubManagerId },
         },
       );
-      if (!managerFinance)
-        throw new NotFoundException('Hub Finance record not found');
+
+      // Auto-create finance record if missing
+      if (!managerFinance) {
+        this.logger.warn(
+          `[AUTO-CREATE] Finance record missing for Hub Manager ${hubManagerId}. Creating now...`,
+        );
+        managerFinance = queryRunner.manager.create(HubManagerFinance, {
+          hub_manager_id: hubManagerId,
+          hub_id: hubManager.hub_id,
+          current_balance: 0,
+          total_collected_from_riders: 0,
+          total_transferred_to_admin: 0,
+        });
+        managerFinance = await queryRunner.manager.save(
+          HubManagerFinance,
+          managerFinance,
+        );
+        this.logger.log(
+          `[AUTO-CREATE] Finance record created successfully for Hub Manager ${hubManagerId}`,
+        );
+      }
 
       if (Number(managerFinance.current_balance) < dto.transferred_amount) {
         throw new BadRequestException('Insufficient balance to transfer');
@@ -1630,10 +1736,35 @@ export class HubsService {
 
   // 4. FINANCIAL DASHBOARD (The Top Cards)
   async getFinanceDashboard(hubManagerId: string) {
-    const finance = await this.financeRepository.findOne({
+    // Get Hub Manager to fetch hub_id if finance record needs to be created
+    const hubManager = await this.hubManagerRepository.findOne({
+      where: { id: hubManagerId },
+    });
+    if (!hubManager) {
+      throw new NotFoundException('Hub Manager not found');
+    }
+
+    let finance = await this.financeRepository.findOne({
       where: { hub_manager_id: hubManagerId },
     });
-    if (!finance) return {}; // Handle empty state
+
+    // Auto-create finance record if missing
+    if (!finance) {
+      this.logger.warn(
+        `[AUTO-CREATE] Finance record missing for Hub Manager ${hubManagerId}. Creating now...`,
+      );
+      finance = this.financeRepository.create({
+        hub_manager_id: hubManagerId,
+        hub_id: hubManager.hub_id,
+        current_balance: 0,
+        total_collected_from_riders: 0,
+        total_transferred_to_admin: 0,
+      });
+      finance = await this.financeRepository.save(finance);
+      this.logger.log(
+        `[AUTO-CREATE] Finance record created successfully for Hub Manager ${hubManagerId}`,
+      );
+    }
 
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
