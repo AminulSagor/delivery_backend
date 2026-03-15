@@ -89,12 +89,12 @@ export class CreateRiderDto {
 
   // Documents
   @IsString()
-  @IsNotEmpty()
-  nid_front_photo: string;
+  @IsOptional()
+  nid_front_photo?: string;
 
   @IsString()
-  @IsNotEmpty()
-  nid_back_photo: string;
+  @IsOptional()
+  nid_back_photo?: string;
 
   @IsString()
   @IsOptional()
@@ -105,12 +105,12 @@ export class CreateRiderDto {
   license_back_photo?: string;
 
   @IsString()
-  @IsNotEmpty()
-  parent_nid_front_photo: string;
+  @IsOptional()
+  parent_nid_front_photo?: string;
 
   @IsString()
-  @IsNotEmpty()
-  parent_nid_back_photo: string;
+  @IsOptional()
+  parent_nid_back_photo?: string;
 
   // Hub assignment (only for Admin)
   @IsString()
