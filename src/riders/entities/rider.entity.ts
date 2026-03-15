@@ -90,10 +90,10 @@ export class Rider {
   bank_branch: string | null;
 
   // Documents
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   nid_front_photo: string;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   nid_back_photo: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
@@ -102,10 +102,10 @@ export class Rider {
   @Column({ type: 'varchar', length: 500, nullable: true })
   license_back_photo: string;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   parent_nid_front_photo: string;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   parent_nid_back_photo: string;
 
   @Column({ type: 'boolean', default: true })
