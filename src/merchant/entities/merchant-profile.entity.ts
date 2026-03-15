@@ -38,12 +38,18 @@ export class MerchantProfile {
   @Column({ type: 'text', nullable: true })
   nid_back_url: string;
 
+  @Column({ type: 'boolean', default: false })
+  nid_verified: boolean;
+
   // --- Trade License Section ---
   @Column({ type: 'varchar', length: 50, nullable: true })
   trade_license_number: string;
 
   @Column({ type: 'text', nullable: true })
   trade_license_url: string;
+
+  @Column({ type: 'boolean', default: false })
+  trade_license_verified: boolean;
 
   // --- TIN Section ---
   @Column({ type: 'varchar', length: 50, nullable: true })
@@ -52,12 +58,18 @@ export class MerchantProfile {
   @Column({ type: 'text', nullable: true })
   tin_certificate_url: string;
 
+  @Column({ type: 'boolean', default: false })
+  tin_verified: boolean;
+
   // --- BIN Section ---
   @Column({ type: 'varchar', length: 50, nullable: true })
   bin_number: string;
 
   @Column({ type: 'text', nullable: true })
   bin_certificate_url: string;
+
+  @Column({ type: 'boolean', default: false })
+  bin_verified: boolean;
 
   @CreateDateColumn()
   created_at: Date;

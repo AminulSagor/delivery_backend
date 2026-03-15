@@ -82,7 +82,7 @@ export class MerchantService {
       email: dto.email || undefined,
       password_hash: passwordHash,
       role: UserRole.MERCHANT,
-      is_active: false, // Not active until approved
+      is_active: true, // Active immediately so merchant can login
     });
 
     // Create merchant
@@ -504,18 +504,22 @@ export class MerchantService {
           number: merchant.merchant_profile?.nid_number,
           front: merchant.merchant_profile?.nid_front_url,
           back: merchant.merchant_profile?.nid_back_url,
+          verified: merchant.merchant_profile?.nid_verified || false,
         },
         trade_license: {
           number: merchant.merchant_profile?.trade_license_number,
           url: merchant.merchant_profile?.trade_license_url,
+          verified: merchant.merchant_profile?.trade_license_verified || false,
         },
         tin: {
           number: merchant.merchant_profile?.tin_number,
           url: merchant.merchant_profile?.tin_certificate_url,
+          verified: merchant.merchant_profile?.tin_verified || false,
         },
         bin: {
           number: merchant.merchant_profile?.bin_number,
           url: merchant.merchant_profile?.bin_certificate_url,
+          verified: merchant.merchant_profile?.bin_verified || false,
         },
       },
     };
@@ -615,6 +619,108 @@ export class MerchantService {
     profile.bin_number = dto.bin_number;
     profile.bin_certificate_url = dto.bin_certificate_url;
     return this.profileRepo.save(profile);
+  }
+
+  // --- API 7: Get Merchants with Pending Documents (Admin) ---
+  async findMerchantsWithPendingDocuments() {
+    const merchants = await this.merchantRepository
+      .createQueryBuilder('merchant')
+      .leftJoinAndSelect('merchant.user', 'user')
+      .leftJoinAndSelect('merchant.merchant_profile', 'profile')
+      .where('profile.id IS NOT NULL')
+      .andWhere(
+        '(' +
+          '(profile.nid_number IS NOT NULL AND profile.nid_verified = false) OR ' +
+          '(profile.trade_license_number IS NOT NULL AND profile.trade_license_verified = false) OR ' +
+          '(profile.tin_number IS NOT NULL AND profile.tin_verified = false) OR ' +
+          '(profile.bin_number IS NOT NULL AND profile.bin_verified = false)' +
+        ')',
+      )
+      .orderBy('merchant.created_at', 'DESC')
+      .getMany();
+
+    return merchants.map((merchant) => {
+      const profile = merchant.merchant_profile;
+      return {
+        merchant_id: merchant.id,
+        user_id: merchant.user_id,
+        full_name: merchant.user?.full_name,
+        phone: merchant.user?.phone,
+        email: merchant.user?.email,
+        merchant_status: merchant.status,
+        documents: {
+          nid: {
+            uploaded: !!profile?.nid_number,
+            number: profile?.nid_number || null,
+            front_url: profile?.nid_front_url || null,
+            back_url: profile?.nid_back_url || null,
+            verified: profile?.nid_verified || false,
+          },
+          trade_license: {
+            uploaded: !!profile?.trade_license_number,
+            number: profile?.trade_license_number || null,
+            url: profile?.trade_license_url || null,
+            verified: profile?.trade_license_verified || false,
+          },
+          tin: {
+            uploaded: !!profile?.tin_number,
+            number: profile?.tin_number || null,
+            url: profile?.tin_certificate_url || null,
+            verified: profile?.tin_verified || false,
+          },
+          bin: {
+            uploaded: !!profile?.bin_number,
+            number: profile?.bin_number || null,
+            url: profile?.bin_certificate_url || null,
+            verified: profile?.bin_verified || false,
+          },
+        },
+      };
+    });
+  }
+
+  // --- API 8: Approve Individual Document (Admin) ---
+  async approveDocument(
+    merchantId: string,
+    documentType: 'nid' | 'trade_license' | 'tin' | 'bin',
+  ) {
+    const profile = await this.profileRepo.findOne({
+      where: { merchant_id: merchantId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Merchant profile not found');
+    }
+
+    const docFieldMap = {
+      nid: { checkField: 'nid_number', verifiedField: 'nid_verified' },
+      trade_license: { checkField: 'trade_license_number', verifiedField: 'trade_license_verified' },
+      tin: { checkField: 'tin_number', verifiedField: 'tin_verified' },
+      bin: { checkField: 'bin_number', verifiedField: 'bin_verified' },
+    };
+
+    const { checkField, verifiedField } = docFieldMap[documentType];
+
+    if (!profile[checkField]) {
+      throw new BadRequestException(
+        `${documentType.toUpperCase()} document has not been uploaded yet`,
+      );
+    }
+
+    if (profile[verifiedField]) {
+      throw new BadRequestException(
+        `${documentType.toUpperCase()} document is already verified`,
+      );
+    }
+
+    profile[verifiedField] = true;
+    await this.profileRepo.save(profile);
+
+    return {
+      merchant_id: merchantId,
+      document_type: documentType,
+      verified: true,
+    };
   }
 
   /**

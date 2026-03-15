@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -62,8 +63,8 @@ export class StoresController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @Get('admin/all')
-  async findAllStores() {
-    const stores = await this.storesService.findAllStores();
+  async findAllStores(@Query('merchant_id') merchantId?: string) {
+    const stores = await this.storesService.findAllStores(merchantId);
     return {
       stores: stores.map(toStoreDetail),
       message: 'All stores retrieved successfully',

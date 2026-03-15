@@ -29,11 +29,9 @@ export class PricingController {
   constructor(private readonly pricingService: PricingService) {}
 
   // ===== PRICING CONFIGURATION ENDPOINTS =====
-  // Includes: delivery_charge, weight step settings, COD percentage
 
   /**
    * Create pricing configuration for a store + zone
-   * Weight step is configurable; free_weight (0.5kg) and charge_per_step (10/20 BDT) are fixed
    */
   @Post()
   @Roles(UserRole.ADMIN)
@@ -56,7 +54,6 @@ export class PricingController {
 
   /**
    * Get default pricing values for all zones (no database lookup)
-   * Returns delivery charge, weight step, charge per step, COD percentage per zone
    */
   @Get('defaults')
   @Roles(UserRole.ADMIN, UserRole.MERCHANT)
@@ -67,8 +64,7 @@ export class PricingController {
         config: this.pricingService.getDefaultPricingValues(zone),
       };
     }
-    
-    // Return all zone defaults
+
     return {
       [PricingZone.INSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(PricingZone.INSIDE_DHAKA),
       [PricingZone.SUB_DHAKA]: this.pricingService.getDefaultPricingValues(PricingZone.SUB_DHAKA),
@@ -85,51 +81,10 @@ export class PricingController {
     return this.pricingService.findAllForStore(storeId);
   }
 
-  /**
-   * Get single pricing configuration
-   */
-  @Get(':id')
-  @Roles(UserRole.ADMIN)
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.pricingService.findOne(id);
-  }
-
-  /**
-   * Update pricing configuration
-   */
-  @Patch(':id')
-  @Roles(UserRole.ADMIN)
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updatePricingConfigurationDto: UpdatePricingConfigurationDto,
-  ) {
-    await this.pricingService.update(id, updatePricingConfigurationDto);
-    return {
-      message: 'Pricing configuration updated successfully',
-    };
-  }
-
-  /**
-   * Delete pricing configuration
-   */
-  @Delete(':id')
-  @Roles(UserRole.ADMIN)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.pricingService.remove(id);
-    return {
-      message: 'Pricing configuration deleted successfully',
-    };
-  }
-
   // ===== WEIGHT CHARGE CALCULATION =====
 
   /**
    * Calculate weight charge for a parcel
-   * 
-   * Fixed values:
-   * - First 0.5 kg is FREE
-   * - INSIDE_DHAKA: 10 BDT/step
-   * - SUB_DHAKA / OUTSIDE_DHAKA: 20 BDT/step
    */
   @Post('calculate-weight-charge')
   @Roles(UserRole.ADMIN, UserRole.MERCHANT, UserRole.HUB_MANAGER)
@@ -145,6 +100,7 @@ export class PricingController {
   }
 
   // ===== RETURN CHARGE ENDPOINTS =====
+  // These MUST be declared before the :id wildcard routes
 
   /**
    * Create return charge configuration for a specific status
@@ -210,5 +166,43 @@ export class PricingController {
   @Roles(UserRole.ADMIN)
   deleteReturnCharge(@Param('id', ParseUUIDPipe) id: string) {
     return this.pricingService.deleteReturnCharge(id);
+  }
+
+  // ===== WILDCARD :id ROUTES (must be last) =====
+
+  /**
+   * Get single pricing configuration
+   */
+  @Get(':id')
+  @Roles(UserRole.ADMIN)
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.pricingService.findOne(id);
+  }
+
+  /**
+   * Update pricing configuration
+   */
+  @Patch(':id')
+  @Roles(UserRole.ADMIN)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updatePricingConfigurationDto: UpdatePricingConfigurationDto,
+  ) {
+    await this.pricingService.update(id, updatePricingConfigurationDto);
+    return {
+      message: 'Pricing configuration updated successfully',
+    };
+  }
+
+  /**
+   * Delete pricing configuration
+   */
+  @Delete(':id')
+  @Roles(UserRole.ADMIN)
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.pricingService.remove(id);
+    return {
+      message: 'Pricing configuration deleted successfully',
+    };
   }
 }

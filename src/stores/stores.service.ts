@@ -577,9 +577,11 @@ export class StoresService {
     return store;
   }
 
-  async findAllStores(): Promise<any[]> {
-    // 1. Fetch all stores with relations
+  async findAllStores(merchantId?: string): Promise<any[]> {
+    // 1. Fetch stores with relations, optionally filtered by merchant
+    const whereCondition = merchantId ? { merchant_id: merchantId } : {};
     const stores = await this.storesRepository.find({
+      where: whereCondition,
       relations: ['merchant', 'merchant.user', 'hub'],
       order: { created_at: 'DESC' },
     });
