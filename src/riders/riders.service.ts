@@ -18,6 +18,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { StaffPosition } from '../common/enums/staff-position.enum';
 import { ParcelStatus } from '../parcels/entities/parcel.entity';
 import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum';
+import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum';
 import * as bcrypt from 'bcrypt';
 import { CreateEmergencyDto } from './dto/create-emergency.dto';
 import { EmergencyAlert } from './entities/emergency-alert.entity';
@@ -107,19 +108,19 @@ export class RidersService {
       // Hash password
       const hashedPassword = await bcrypt.hash(createRiderDto.password, 10);
 
-      // Create user
+      // Create user (inactive until admin approves rider)
       const user = queryRunner.manager.create(User, {
         full_name: createRiderDto.full_name,
         phone: createRiderDto.phone,
         email: createRiderDto.email,
         password_hash: hashedPassword,
         role: UserRole.RIDER,
-        is_active: true,
+        is_active: false,
       });
 
       const savedUser = await queryRunner.manager.save(User, user);
 
-      // Create rider with hub auto-assigned
+      // Create rider with hub auto-assigned (pending admin approval)
       const rider = queryRunner.manager.create(Rider, {
         user_id: savedUser.id,
         hub_id: hubManagerHubId,
@@ -141,12 +142,13 @@ export class RidersService {
         license_back_photo: createRiderDto.license_back_photo,
         parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
         parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
-        is_active: true,
+        approval_status: RiderApprovalStatus.PENDING,
+        is_active: false,
       });
 
       const savedRider = await queryRunner.manager.save(Rider, rider);
 
-      // Create corresponding staff record with RIDER position
+      // Create corresponding staff record with RIDER position (inactive until approved)
       const staff = queryRunner.manager.create(Staff, {
         user_id: savedUser.id,
         hub_id: hubManagerHubId,
@@ -168,7 +170,7 @@ export class RidersService {
         license_back_photo: createRiderDto.license_back_photo,
         parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
         parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
-        is_active: true,
+        is_active: false,
       });
 
       await queryRunner.manager.save(Staff, staff);
@@ -264,7 +266,7 @@ export class RidersService {
 
       const savedUser = await queryRunner.manager.save(User, user);
 
-      // Create rider with specified hub
+      // Create rider with specified hub (auto-approved by admin)
       const rider = queryRunner.manager.create(Rider, {
         user_id: savedUser.id,
         hub_id: createRiderDto.hub_id,
@@ -286,6 +288,7 @@ export class RidersService {
         license_back_photo: createRiderDto.license_back_photo,
         parent_nid_front_photo: createRiderDto.parent_nid_front_photo,
         parent_nid_back_photo: createRiderDto.parent_nid_back_photo,
+        approval_status: RiderApprovalStatus.APPROVED,
         is_active: true,
       });
 
@@ -339,6 +342,87 @@ export class RidersService {
   }
 
   /**
+   * Approve rider (Admin only)
+   */
+  async approveRider(riderId: string, adminId: string): Promise<Rider> {
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+      relations: ['user'],
+    });
+
+    if (!rider) {
+      throw new NotFoundException(`Rider with ID ${riderId} not found`);
+    }
+
+    if (rider.approval_status === RiderApprovalStatus.APPROVED) {
+      throw new ConflictException('Rider is already approved');
+    }
+
+    rider.approval_status = RiderApprovalStatus.APPROVED;
+    rider.approved_at = new Date();
+    rider.approved_by = adminId;
+    rider.is_active = true;
+
+    // Activate the user account
+    const user = await this.userRepository.findOne({
+      where: { id: rider.user_id },
+    });
+    if (user) {
+      user.is_active = true;
+      await this.userRepository.save(user);
+    }
+
+    // Activate the staff record
+    const staff = await this.staffRepository.findOne({
+      where: { user_id: rider.user_id },
+    });
+    if (staff) {
+      staff.is_active = true;
+      await this.staffRepository.save(staff);
+    }
+
+    await this.riderRepository.save(rider);
+
+    return (await this.riderRepository.findOne({
+      where: { id: riderId },
+      relations: ['user', 'hub'],
+    }))!;
+  }
+
+  /**
+   * Reject rider (Admin only)
+   */
+  async rejectRider(riderId: string, adminId: string): Promise<Rider> {
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+      relations: ['user'],
+    });
+
+    if (!rider) {
+      throw new NotFoundException(`Rider with ID ${riderId} not found`);
+    }
+
+    if (rider.approval_status === RiderApprovalStatus.REJECTED) {
+      throw new ConflictException('Rider is already rejected');
+    }
+
+    if (rider.approval_status === RiderApprovalStatus.APPROVED) {
+      throw new ConflictException('Cannot reject an already approved rider');
+    }
+
+    rider.approval_status = RiderApprovalStatus.REJECTED;
+    rider.approved_by = adminId;
+    rider.is_active = false;
+
+    await this.riderRepository.save(rider);
+
+    return (await this.riderRepository.findOne({
+      where: { id: riderId },
+      relations: ['user', 'hub'],
+    }))!;
+  }
+
+  /**
    * Get all riders (with optional filters)
    */
   async findAll(
@@ -346,6 +430,7 @@ export class RidersService {
     isActive?: boolean,
     page: number = 1,
     limit: number = 20,
+    approvalStatus?: RiderApprovalStatus,
   ): Promise<{ riders: Rider[]; total: number }> {
     const query = this.riderRepository
       .createQueryBuilder('rider')
@@ -358,6 +443,10 @@ export class RidersService {
 
     if (isActive !== undefined) {
       query.andWhere('rider.is_active = :isActive', { isActive });
+    }
+
+    if (approvalStatus) {
+      query.andWhere('rider.approval_status = :approvalStatus', { approvalStatus });
     }
 
     query

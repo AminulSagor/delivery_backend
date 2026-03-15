@@ -12,6 +12,7 @@ import { User } from '../../users/entities/user.entity';
 import { Hub } from '../../hubs/entities/hub.entity';
 import { Parcel } from '../../parcels/entities/parcel.entity';
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
+import { RiderApprovalStatus } from '../../common/enums/rider-approval-status.enum';
 
 export enum BikeType {
   BICYCLE = 'BICYCLE',
@@ -107,6 +108,24 @@ export class Rider {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   parent_nid_back_photo: string;
+
+  // Approval
+  @Column({
+    type: 'enum',
+    enum: RiderApprovalStatus,
+    default: RiderApprovalStatus.PENDING,
+  })
+  approval_status: RiderApprovalStatus;
+
+  @Column({ type: 'timestamp', nullable: true })
+  approved_at: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  approved_by: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by' })
+  approver: User;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;

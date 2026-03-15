@@ -32,6 +32,7 @@ import {
   toParcelActionResponse,
   toPickupRequestListItem,
 } from '../common/interfaces/responses.interface';
+import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum';
 // import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
 import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
 import { CreateEmergencyDto } from './dto/create-emergency.dto';
@@ -74,7 +75,7 @@ export class RidersController {
         full_name: rider.user?.full_name,
         phone: rider.user?.phone,
       },
-      message: 'Rider created successfully',
+      message: 'Rider created successfully. Pending admin approval.',
     };
   }
 
@@ -122,6 +123,7 @@ export class RidersController {
   async findAll(
     @Query('hubId') hubId: string,
     @Query('isActive') isActive: string,
+    @Query('approval_status') approvalStatus: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
     @CurrentUser() user: any,
@@ -129,11 +131,18 @@ export class RidersController {
     const effectiveHubId =
       user.role === UserRole.HUB_MANAGER ? user.hubId : hubId;
 
+    const validApprovalStatus = Object.values(RiderApprovalStatus).includes(
+      approvalStatus as RiderApprovalStatus,
+    )
+      ? (approvalStatus as RiderApprovalStatus)
+      : undefined;
+
     const { riders, total } = await this.ridersService.findAll(
       effectiveHubId,
       isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       parseInt(page),
       parseInt(limit),
+      validApprovalStatus,
     );
 
     return {
@@ -148,6 +157,50 @@ export class RidersController {
         },
       },
       message: 'Riders retrieved successfully',
+    };
+  }
+
+  // ===== ADMIN APPROVAL ROUTES (must be before :id routes) =====
+
+  /**
+   * Approve rider (Admin only)
+   */
+  @Patch(':id/approve')
+  @Roles(UserRole.ADMIN)
+  async approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const rider = await this.ridersService.approveRider(id, user.userId);
+
+    return {
+      success: true,
+      data: {
+        id: rider.id,
+        approval_status: rider.approval_status,
+      },
+      message: 'Rider approved successfully',
+    };
+  }
+
+  /**
+   * Reject rider (Admin only)
+   */
+  @Patch(':id/reject')
+  @Roles(UserRole.ADMIN)
+  async reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const rider = await this.ridersService.rejectRider(id, user.userId);
+
+    return {
+      success: true,
+      data: {
+        id: rider.id,
+        approval_status: rider.approval_status,
+      },
+      message: 'Rider rejected',
     };
   }
 
