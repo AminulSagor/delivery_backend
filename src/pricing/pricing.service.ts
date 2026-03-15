@@ -156,22 +156,120 @@ export class PricingService {
   }
 
   /**
-   * Get all pricing configurations for a store
+   * Get all pricing configurations for a store, grouped by zone with 0-fill
    */
-  async findAllForStore(storeId: string): Promise<PricingConfiguration[]> {
-    return await this.pricingRepository.find({
+  async findAllForStore(storeId: string): Promise<Record<string, any>> {
+    const configs = await this.pricingRepository.find({
       where: { store_id: storeId },
       order: { zone: 'ASC', created_at: 'DESC' },
     });
+
+    // Keep only the most recent config per zone
+    const configMap: Record<string, PricingConfiguration> = {};
+    for (const config of configs) {
+      if (!configMap[config.zone]) {
+        configMap[config.zone] = config;
+      }
+    }
+
+    const result: Record<string, any> = {};
+    for (const zone of Object.values(PricingZone)) {
+      const config = configMap[zone];
+      if (config) {
+        result[zone] = {
+          id: config.id,
+          store_id: config.store_id,
+          zone: config.zone,
+          delivery_charge: Number(config.delivery_charge),
+          weight_step_kg: Number(config.weight_step_kg),
+          cod_percentage: Number(config.cod_percentage),
+          discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+          start_date: config.start_date,
+          end_date: config.end_date,
+          created_at: config.created_at,
+          updated_at: config.updated_at,
+        };
+      } else {
+        result[zone] = {
+          id: null,
+          store_id: storeId,
+          zone,
+          delivery_charge: 0,
+          weight_step_kg: 0,
+          cod_percentage: 0,
+          discount_percentage: 0,
+          start_date: null,
+          end_date: null,
+          created_at: null,
+          updated_at: null,
+        };
+      }
+    }
+
+    return result;
   }
 
   /**
-   * Get all pricing configurations (admin only)
+   * Get all pricing configurations (admin only), grouped by store then by zone with 0-fill
    */
-  async findAll(): Promise<PricingConfiguration[]> {
-    return await this.pricingRepository.find({
+  async findAll(): Promise<any[]> {
+    const configs = await this.pricingRepository.find({
       relations: ['store'],
       order: { created_at: 'DESC' },
+    });
+
+    // Group by store_id
+    const storeMap: Record<string, { store: any; configs: Record<string, PricingConfiguration> }> = {};
+
+    for (const config of configs) {
+      if (!storeMap[config.store_id]) {
+        storeMap[config.store_id] = {
+          store: config.store || { id: config.store_id },
+          configs: {},
+        };
+      }
+      // Keep only the most recent config per zone
+      if (!storeMap[config.store_id].configs[config.zone]) {
+        storeMap[config.store_id].configs[config.zone] = config;
+      }
+    }
+
+    // Build grouped result with 0-fill for missing zones
+    return Object.values(storeMap).map(({ store, configs: zoneConfigs }) => {
+      const zones: Record<string, any> = {};
+      for (const zone of Object.values(PricingZone)) {
+        const config = zoneConfigs[zone];
+        if (config) {
+          zones[zone] = {
+            id: config.id,
+            delivery_charge: Number(config.delivery_charge),
+            weight_step_kg: Number(config.weight_step_kg),
+            cod_percentage: Number(config.cod_percentage),
+            discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+            start_date: config.start_date,
+            end_date: config.end_date,
+            created_at: config.created_at,
+            updated_at: config.updated_at,
+          };
+        } else {
+          zones[zone] = {
+            id: null,
+            delivery_charge: 0,
+            weight_step_kg: 0,
+            cod_percentage: 0,
+            discount_percentage: 0,
+            start_date: null,
+            end_date: null,
+            created_at: null,
+            updated_at: null,
+          };
+        }
+      }
+      return {
+        store_id: store.id,
+        store,
+        zones,
+      };
     });
   }
 
@@ -331,22 +429,126 @@ export class PricingService {
   }
 
   /**
-   * Get all return charge configs for a store
+   * Get all return charge configs for a store, grouped by zone then return_status with 0-fill
    */
-  async getReturnChargesForStore(storeId: string): Promise<ReturnChargeConfiguration[]> {
-    return await this.returnChargeRepository.find({
+  async getReturnChargesForStore(storeId: string): Promise<Record<string, any>> {
+    const configs = await this.returnChargeRepository.find({
       where: { store_id: storeId },
       order: { zone: 'ASC', return_status: 'ASC' },
     });
+
+    // Build lookup map: zone -> return_status -> config
+    const configMap: Record<string, Record<string, ReturnChargeConfiguration>> = {};
+    for (const config of configs) {
+      if (!configMap[config.zone]) {
+        configMap[config.zone] = {};
+      }
+      configMap[config.zone][config.return_status] = config;
+    }
+
+    const result: Record<string, any> = {};
+    for (const zone of Object.values(PricingZone)) {
+      const statuses: Record<string, any> = {};
+      for (const status of Object.values(ReturnStatus)) {
+        const config = configMap[zone]?.[status];
+        if (config) {
+          statuses[status] = {
+            id: config.id,
+            return_delivery_charge: Number(config.return_delivery_charge),
+            return_weight_charge_per_kg: Number(config.return_weight_charge_per_kg),
+            return_cod_percentage: Number(config.return_cod_percentage),
+            discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+            start_date: config.start_date,
+            end_date: config.end_date,
+            created_at: config.created_at,
+            updated_at: config.updated_at,
+          };
+        } else {
+          statuses[status] = {
+            id: null,
+            return_delivery_charge: 0,
+            return_weight_charge_per_kg: 0,
+            return_cod_percentage: 0,
+            discount_percentage: 0,
+            start_date: null,
+            end_date: null,
+            created_at: null,
+            updated_at: null,
+          };
+        }
+      }
+      result[zone] = statuses;
+    }
+
+    return result;
   }
 
   /**
-   * Get all return charge configurations (admin only)
+   * Get all return charge configurations (admin only), grouped by store then zone then status with 0-fill
    */
-  async findAllReturnCharges(): Promise<ReturnChargeConfiguration[]> {
-    return await this.returnChargeRepository.find({
+  async findAllReturnCharges(): Promise<any[]> {
+    const configs = await this.returnChargeRepository.find({
       relations: ['store'],
       order: { created_at: 'DESC' },
+    });
+
+    // Group by store_id -> zone -> return_status
+    const storeMap: Record<string, { store: any; configs: Record<string, Record<string, ReturnChargeConfiguration>> }> = {};
+
+    for (const config of configs) {
+      if (!storeMap[config.store_id]) {
+        storeMap[config.store_id] = {
+          store: config.store || { id: config.store_id },
+          configs: {},
+        };
+      }
+      if (!storeMap[config.store_id].configs[config.zone]) {
+        storeMap[config.store_id].configs[config.zone] = {};
+      }
+      if (!storeMap[config.store_id].configs[config.zone][config.return_status]) {
+        storeMap[config.store_id].configs[config.zone][config.return_status] = config;
+      }
+    }
+
+    return Object.values(storeMap).map(({ store, configs: zoneConfigs }) => {
+      const zones: Record<string, any> = {};
+      for (const zone of Object.values(PricingZone)) {
+        const statuses: Record<string, any> = {};
+        for (const status of Object.values(ReturnStatus)) {
+          const config = zoneConfigs[zone]?.[status];
+          if (config) {
+            statuses[status] = {
+              id: config.id,
+              return_delivery_charge: Number(config.return_delivery_charge),
+              return_weight_charge_per_kg: Number(config.return_weight_charge_per_kg),
+              return_cod_percentage: Number(config.return_cod_percentage),
+              discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+              start_date: config.start_date,
+              end_date: config.end_date,
+              created_at: config.created_at,
+              updated_at: config.updated_at,
+            };
+          } else {
+            statuses[status] = {
+              id: null,
+              return_delivery_charge: 0,
+              return_weight_charge_per_kg: 0,
+              return_cod_percentage: 0,
+              discount_percentage: 0,
+              start_date: null,
+              end_date: null,
+              created_at: null,
+              updated_at: null,
+            };
+          }
+        }
+        zones[zone] = statuses;
+      }
+      return {
+        store_id: store.id,
+        store,
+        zones,
+      };
     });
   }
 

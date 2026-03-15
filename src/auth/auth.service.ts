@@ -17,7 +17,6 @@ import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { Rider } from '../riders/entities/rider.entity';
 import { UserRole } from '../common/enums/user-role.enum';
-import { MerchantStatus } from '../common/enums/merchant-status.enum';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
@@ -69,18 +68,6 @@ export class AuthService {
     );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Check if merchant is approved
-    if (user.role === UserRole.MERCHANT) {
-      const merchant = await this.merchantRepository.findOne({
-        where: { user_id: user.id },
-      });
-      if (!merchant || merchant.status !== MerchantStatus.APPROVED) {
-        throw new UnauthorizedException(
-          'Your account is pending approval. Please wait for admin approval.',
-        );
-      }
     }
 
     // Check if user is active
@@ -410,12 +397,16 @@ export class AuthService {
           nid_number: merchant.merchant_profile.nid_number,
           nid_front_url: merchant.merchant_profile.nid_front_url,
           nid_back_url: merchant.merchant_profile.nid_back_url,
+          nid_verified: merchant.merchant_profile.nid_verified || false,
           trade_license_number: merchant.merchant_profile.trade_license_number,
           trade_license_url: merchant.merchant_profile.trade_license_url,
+          trade_license_verified: merchant.merchant_profile.trade_license_verified || false,
           tin_number: merchant.merchant_profile.tin_number,
           tin_certificate_url: merchant.merchant_profile.tin_certificate_url,
+          tin_verified: merchant.merchant_profile.tin_verified || false,
           bin_number: merchant.merchant_profile.bin_number,
           bin_certificate_url: merchant.merchant_profile.bin_certificate_url,
+          bin_verified: merchant.merchant_profile.bin_verified || false,
         } : null,
       },
     };

@@ -56,6 +56,16 @@ export class MerchantController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Get('pending-documents')
+  async getPendingDocuments() {
+    const merchants = await this.merchantService.findMerchantsWithPendingDocuments();
+    return {
+      merchants,
+      message: 'Merchants with pending documents retrieved successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
   @Get()
   async findAll(
     @Query('status') status?: MerchantStatus,
@@ -112,6 +122,34 @@ export class MerchantController {
       status: merchant.status,
       message: 'Merchant approved successfully',
     };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/nid/approve')
+  async approveNid(@Param('id') id: string) {
+    const result = await this.merchantService.approveDocument(id, 'nid');
+    return { ...result, message: 'NID document approved successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/trade-license/approve')
+  async approveTradeLicense(@Param('id') id: string) {
+    const result = await this.merchantService.approveDocument(id, 'trade_license');
+    return { ...result, message: 'Trade license document approved successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/tin/approve')
+  async approveTin(@Param('id') id: string) {
+    const result = await this.merchantService.approveDocument(id, 'tin');
+    return { ...result, message: 'TIN document approved successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/bin/approve')
+  async approveBin(@Param('id') id: string) {
+    const result = await this.merchantService.approveDocument(id, 'bin');
+    return { ...result, message: 'BIN document approved successfully' };
   }
 
   // ===== PAYOUT METHOD ENDPOINTS (Merchant) =====
