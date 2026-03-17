@@ -603,6 +603,31 @@ export class RidersService {
   }
 
   /**
+   * Decline rider - Permanent deactivation (sets status to REJECTED)
+   */
+  async decline(id: string): Promise<Rider> {
+    const rider = await this.findOne(id);
+    
+    // Set rider status to REJECTED (permanent)
+    rider.approval_status = RiderApprovalStatus.REJECTED;
+    rider.is_active = false;
+
+    // Also deactivate user permanently
+    const user = await this.userRepository.findOne({
+      where: { id: rider.user_id },
+    });
+
+    if (user) {
+      user.is_active = false;
+      await this.userRepository.save(user);
+    }
+
+    console.log(`[RIDER DECLINED] Rider permanently declined: ${rider.user?.full_name} (${rider.id})`);
+
+    return await this.riderRepository.save(rider);
+  }
+
+  /**
    * Get rider dashboard statistics
    *
    * Rider Workflow:

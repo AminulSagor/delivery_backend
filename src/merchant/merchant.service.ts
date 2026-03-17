@@ -805,4 +805,58 @@ export class MerchantService {
 
     return summary;
   }
+
+  /**
+   * Deactivate merchant - sets both merchant user and merchant as inactive
+   */
+  async deactivate(id: string): Promise<Merchant> {
+    const merchant = await this.findOne(id);
+
+    // Deactivate the user account
+    if (merchant.user) {
+      merchant.user.is_active = false;
+      await this.userRepo.save(merchant.user);
+    }
+
+    console.log(`[MERCHANT DEACTIVATED] Merchant deactivated: ${merchant.user?.full_name} (${merchant.id})`);
+
+    return merchant;
+  }
+
+  /**
+   * Activate merchant - sets both merchant user and merchant as active
+   */
+  async activate(id: string): Promise<Merchant> {
+    const merchant = await this.findOne(id);
+
+    // Activate the user account
+    if (merchant.user) {
+      merchant.user.is_active = true;
+      await this.userRepo.save(merchant.user);
+    }
+
+    console.log(`[MERCHANT ACTIVATED] Merchant activated: ${merchant.user?.full_name} (${merchant.id})`);
+
+    return merchant;
+  }
+
+  /**
+   * Decline merchant - Permanent deactivation (sets status to REJECTED)
+   */
+  async decline(id: string): Promise<Merchant> {
+    const merchant = await this.findOne(id);
+
+    // Set merchant status to REJECTED (permanent)
+    merchant.status = MerchantStatus.REJECTED;
+
+    // Also deactivate user permanently
+    if (merchant.user) {
+      merchant.user.is_active = false;
+      await this.userRepo.save(merchant.user);
+    }
+
+    console.log(`[MERCHANT DECLINED] Merchant permanently declined: ${merchant.user?.full_name} (${merchant.id})`);
+
+    return merchant;
+  }
 }

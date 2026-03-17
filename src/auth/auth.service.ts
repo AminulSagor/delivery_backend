@@ -72,7 +72,27 @@ export class AuthService {
 
     // Check if user is active
     if (!user.is_active) {
-      throw new UnauthorizedException('Your account is not active');
+      // Check if permanently declined (merchant)
+      if (user.role === UserRole.MERCHANT) {
+        const merchant = await this.merchantRepository.findOne({
+          where: { user_id: user.id },
+        });
+        if (merchant?.status === 'REJECTED') {
+          throw new UnauthorizedException('Your account has been permanently declined');
+        }
+      }
+      
+      // Check if permanently declined (rider)
+      if (user.role === UserRole.RIDER) {
+        const rider = await this.riderRepository.findOne({
+          where: { user_id: user.id },
+        });
+        if (rider?.approval_status === 'REJECTED') {
+          throw new UnauthorizedException('Your account has been permanently declined');
+        }
+      }
+      
+      throw new UnauthorizedException('Your account has been deactivated by admin');
     }
 
     // Generate tokens

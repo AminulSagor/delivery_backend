@@ -152,6 +152,42 @@ export class MerchantController {
     return { ...result, message: 'BIN document approved successfully' };
   }
 
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/deactivate')
+  async deactivate(@Param('id') id: string) {
+    const merchant = await this.merchantService.deactivate(id);
+    return {
+      id: merchant.id,
+      status: merchant.status,
+      is_active: merchant.user?.is_active,
+      message: 'Merchant deactivated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/activate')
+  async activate(@Param('id') id: string) {
+    const merchant = await this.merchantService.activate(id);
+    return {
+      id: merchant.id,
+      status: merchant.status,
+      is_active: merchant.user?.is_active,
+      message: 'Merchant activated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/decline')
+  async decline(@Param('id') id: string) {
+    const merchant = await this.merchantService.decline(id);
+    return {
+      id: merchant.id,
+      status: merchant.status,
+      is_active: merchant.user?.is_active,
+      message: 'Merchant declined permanently',
+    };
+  }
+
   // ===== PAYOUT METHOD ENDPOINTS (Merchant) =====
 
   /**

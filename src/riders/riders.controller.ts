@@ -137,9 +137,13 @@ export class RidersController {
       ? (approvalStatus as RiderApprovalStatus)
       : undefined;
 
+    // Default to showing only active riders unless explicitly set to 'false' or 'all'
+    const parsedIsActive =
+      isActive === 'false' ? false : isActive === 'all' ? undefined : true;
+
     const { riders, total } = await this.ridersService.findAll(
       effectiveHubId,
-      isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+      parsedIsActive,
       parseInt(page),
       parseInt(limit),
       validApprovalStatus,
@@ -399,6 +403,21 @@ export class RidersController {
       success: true,
       data: toRiderActionResponse(rider),
       message: 'Rider activated successfully',
+    };
+  }
+
+  /**
+   * Decline rider (Admin only) - Permanent deactivation
+   */
+  @Patch(':id/decline')
+  @Roles(UserRole.ADMIN)
+  async decline(@Param('id') id: string) {
+    const rider = await this.ridersService.decline(id);
+
+    return {
+      success: true,
+      data: toRiderActionResponse(rider),
+      message: 'Rider declined permanently',
     };
   }
 
