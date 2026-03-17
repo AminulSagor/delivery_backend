@@ -105,7 +105,7 @@ export class CoverageAreasController {
   @HttpCode(HttpStatus.OK)
   async suggestAddress(@Body() dto: SuggestAddressDto) {
     const suggestion = await this.coverageAreasService.suggestArea(dto.address);
-    // suggestion should be: CoverageSuggestion | null
+    // suggestion should be: CoverageArea | null
 
     return {
       status: suggestion ? 'SUCCESS' : 'FAILED',
@@ -120,6 +120,7 @@ export class CoverageAreasController {
 
       suggested_area: suggestion?.area ?? null,
       suggested_area_id: suggestion?.area_id ?? null,
+      coverage_area_uuid: suggestion?.id ?? null,
 
       inside_dhaka_flag: suggestion?.inside_dhaka_flag ?? null,
     };
