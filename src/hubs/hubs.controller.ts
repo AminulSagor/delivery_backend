@@ -1153,6 +1153,48 @@ export class HubsController {
     };
   }
 
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.deactivate(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub deactivated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  async activate(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.activate(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub activated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/decline')
+  @HttpCode(HttpStatus.OK)
+  async decline(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.decline(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub declined permanently',
+    };
+  }
+
   // ===== HUB TRANSFER RECORDS =====
 
   /**

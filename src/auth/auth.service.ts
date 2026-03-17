@@ -91,6 +91,16 @@ export class AuthService {
           throw new UnauthorizedException('Your account has been permanently declined');
         }
       }
+
+      // Check if permanently declined (hub manager)
+      if (user.role === UserRole.HUB_MANAGER) {
+        const hub = await this.hubRepository.findOne({
+          where: { manager_user_id: user.id },
+        });
+        if (hub?.status === 'REJECTED') {
+          throw new UnauthorizedException('Your account has been permanently declined');
+        }
+      }
       
       throw new UnauthorizedException('Your account has been deactivated by admin');
     }
