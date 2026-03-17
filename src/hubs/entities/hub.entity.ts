@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { User } from '../../users/entities/user.entity';
+import { HubStatus } from '../../common/enums/hub-status.enum';
 
 @Entity('hubs')
 export class Hub {
@@ -45,6 +46,15 @@ export class Hub {
   @JoinColumn({ name: 'manager_user_id' })
   manager_user: User;
 
+  @Column({
+    type: 'enum',
+    enum: HubStatus,
+    default: HubStatus.ACTIVE,
+  })
+  status: HubStatus;
+
+  @Column({ type: 'boolean', default: true })
+  is_active: boolean;
 
   @CreateDateColumn()
   created_at: Date;

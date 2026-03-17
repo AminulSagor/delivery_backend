@@ -31,6 +31,7 @@ import { User } from '../users/entities/user.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { SettlementStatus } from '../common/enums/settlement-status.enum';
 import { TransferRecordStatus } from '../common/enums/transfer-record-status.enum';
+import { HubStatus } from '../common/enums/hub-status.enum';
 import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -2276,5 +2277,64 @@ export class HubsService {
       lifetime_expenses: Number(lifetimeExpenses.total || 0),
       lifetime_transferred: Number(lifetimeTransferred.total || 0),
     };
+  }
+
+  /**
+   * Deactivate hub - Temporary deactivation
+   */
+  async deactivate(id: string): Promise<Hub> {
+    const hub = await this.findOne(id);
+    
+    // Also deactivate hub manager user if exists
+    if (hub.manager_user) {
+      hub.manager_user.is_active = false;
+      await this.userRepository.save(hub.manager_user);
+    }
+
+    hub.is_active = false;
+    
+    console.log(`[HUB DEACTIVATED] Hub deactivated: ${hub.hub_code} (${hub.id})`);
+
+    return await this.hubRepository.save(hub);
+  }
+
+  /**
+   * Activate hub - Reactivate temporarily deactivated hub
+   */
+  async activate(id: string): Promise<Hub> {
+    const hub = await this.findOne(id);
+    
+    // Also activate hub manager user if exists
+    if (hub.manager_user) {
+      hub.manager_user.is_active = true;
+      await this.userRepository.save(hub.manager_user);
+    }
+
+    hub.is_active = true;
+    
+    console.log(`[HUB ACTIVATED] Hub activated: ${hub.hub_code} (${hub.id})`);
+
+    return await this.hubRepository.save(hub);
+  }
+
+  /**
+   * Decline hub - Permanent deactivation
+   */
+  async decline(id: string): Promise<Hub> {
+    const hub = await this.findOne(id);
+    
+    // Also deactivate hub manager user permanently if exists
+    if (hub.manager_user) {
+      hub.manager_user.is_active = false;
+      await this.userRepository.save(hub.manager_user);
+    }
+
+    // Set hub status to REJECTED (permanent)
+    hub.status = HubStatus.REJECTED;
+    hub.is_active = false;
+    
+    console.log(`[HUB DECLINED] Hub permanently declined: ${hub.hub_code} (${hub.id})`);
+
+    return await this.hubRepository.save(hub);
   }
 }
