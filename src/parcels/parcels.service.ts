@@ -4614,22 +4614,37 @@ export class ParcelsService {
   ): Promise<Parcel> {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
+      relations: ['store'],
     });
 
     if (!parcel) {
       throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
     }
 
-    // Hub Manager can only edit parcels that are IN_HUB at their hub
+    // Hub Manager Ownership Check
     if (role !== UserRole.ADMIN) {
-      if (parcel.status !== ParcelStatus.IN_HUB) {
-        throw new BadRequestException(
-          `Parcel must be IN_HUB status to modify charges. Current status: ${parcel.status}`,
-        );
-      }
-      if (parcel.current_hub_id !== hubId) {
+      // Allow if:
+      // 1. Physically at this hub (current_hub_id)
+      // 2. Logically belongs to this hub (store.hub_id)
+      const isPhysicallyAtHub = parcel.current_hub_id === hubId;
+      const belongsToHubStore = parcel.store?.hub_id === hubId;
+
+      if (!isPhysicallyAtHub && !belongsToHubStore) {
         throw new ForbiddenException(
           `This parcel does not belong to your hub`,
+        );
+      }
+
+      // Status check: Allow editing when pending, picked up (awaiting reception), or already in hub
+      const allowedStatuses = [
+        ParcelStatus.PENDING,
+        ParcelStatus.PICKED_UP,
+        ParcelStatus.IN_HUB,
+      ];
+
+      if (!allowedStatuses.includes(parcel.status)) {
+        throw new BadRequestException(
+          `Parcel must be in PENDING, PICKED_UP or IN_HUB status to modify charges. Current status: ${parcel.status}`,
         );
       }
     }
