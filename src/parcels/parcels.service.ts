@@ -3034,8 +3034,11 @@ export class ParcelsService {
     }
 
     // Verify parcel is in current hub
-    if (parcel.current_hub_id && parcel.current_hub_id !== currentHubId) {
-      throw new ForbiddenException('This parcel is not in your hub');
+    const belongsToHubStore = parcel.store?.hub_id === currentHubId;
+    const isPhysicallyAtHub = parcel.current_hub_id === currentHubId;
+
+    if (!isPhysicallyAtHub && !belongsToHubStore) {
+      throw new ForbiddenException('This parcel does not belong to your hub');
     }
 
     // Verify parcel status allows transfer
@@ -3119,6 +3122,7 @@ export class ParcelsService {
     // 2. Fetch all requested parcels
     const parcels = await this.parcelRepository.find({
       where: { id: In(parcel_ids) },
+      relations: ['store'],
     });
 
     // 3. Process each parcel
@@ -3136,11 +3140,14 @@ export class ParcelsService {
         continue;
       }
 
-      if (parcel.current_hub_id !== currentHubId) {
+      const isPhysicallyAtHub = parcel.current_hub_id === currentHubId;
+      const belongsToHubStore = parcel.store?.hub_id === currentHubId;
+
+      if (!isPhysicallyAtHub && !belongsToHubStore) {
         errors.push({
           id,
           tracking_number: parcel.tracking_number,
-          error: 'Parcel is not in your hub',
+          error: 'Parcel does not belong to your hub',
         });
         continue;
       }
@@ -4614,22 +4621,37 @@ export class ParcelsService {
   ): Promise<Parcel> {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
+      relations: ['store'],
     });
 
     if (!parcel) {
       throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
     }
 
-    // Hub Manager can only edit parcels that are IN_HUB at their hub
+    // Hub Manager Ownership Check
     if (role !== UserRole.ADMIN) {
-      if (parcel.status !== ParcelStatus.IN_HUB) {
-        throw new BadRequestException(
-          `Parcel must be IN_HUB status to modify charges. Current status: ${parcel.status}`,
-        );
-      }
-      if (parcel.current_hub_id !== hubId) {
+      // Allow if:
+      // 1. Physically at this hub (current_hub_id)
+      // 2. Logically belongs to this hub (store.hub_id)
+      const isPhysicallyAtHub = parcel.current_hub_id === hubId;
+      const belongsToHubStore = parcel.store?.hub_id === hubId;
+
+      if (!isPhysicallyAtHub && !belongsToHubStore) {
         throw new ForbiddenException(
           `This parcel does not belong to your hub`,
+        );
+      }
+
+      // Status check: Allow editing when pending, picked up (awaiting reception), or already in hub
+      const allowedStatuses = [
+        ParcelStatus.PENDING,
+        ParcelStatus.PICKED_UP,
+        ParcelStatus.IN_HUB,
+      ];
+
+      if (!allowedStatuses.includes(parcel.status)) {
+        throw new BadRequestException(
+          `Parcel must be in PENDING, PICKED_UP or IN_HUB status to modify charges. Current status: ${parcel.status}`,
         );
       }
     }
