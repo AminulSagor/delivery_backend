@@ -28,25 +28,29 @@ const FIXED_CHARGE_PER_STEP: Record<PricingZone, number> = {
  * Admin can configure: delivery_charge, weight_step_kg, cod_percentage
  * Fixed values: free_weight_kg (0.5), charge_per_step (10/20)
  */
-const DEFAULT_PRICING_CONFIGS: Record<PricingZone, { 
+const DEFAULT_PRICING_CONFIGS: Record<PricingZone, {
   delivery_charge: number;
-  weight_step_kg: number; 
+  weight_step_kg: number;
   cod_percentage: number;
+  discount_percentage: number;
 }> = {
   [PricingZone.INSIDE_DHAKA]: {
-    delivery_charge: 60,
+    delivery_charge: 70,
     weight_step_kg: 0.5,
-    cod_percentage: 1.0,
+    cod_percentage: 0.0,
+    discount_percentage: 0,
   },
   [PricingZone.SUB_DHAKA]: {
-    delivery_charge: 80,
-    weight_step_kg: 2.0,
-    cod_percentage: 2.0,
+    delivery_charge: 90,
+    weight_step_kg: 1.0,
+    cod_percentage: 1.0,
+    discount_percentage: 0,
   },
   [PricingZone.OUTSIDE_DHAKA]: {
-    delivery_charge: 120,
+    delivery_charge: 110,
     weight_step_kg: 1.0,
-    cod_percentage: 2.5,
+    cod_percentage: 1.0,
+    discount_percentage: 0,
   },
 };
 
@@ -59,7 +63,7 @@ export class PricingService {
     private pricingRepository: Repository<PricingConfiguration>,
     @InjectRepository(ReturnChargeConfiguration)
     private returnChargeRepository: Repository<ReturnChargeConfiguration>,
-  ) {}
+  ) { }
 
   /**
    * Get active pricing configuration for a store and zone
@@ -115,7 +119,7 @@ export class PricingService {
   async create(
     createDto: CreatePricingConfigurationDto,
   ): Promise<PricingConfiguration> {
-    // Check for duplicate (same store + zone)
+    // Check for duplicate (same store + zone) - Upsert behavior
     const existing = await this.pricingRepository.findOne({
       where: {
         store_id: createDto.store_id,
@@ -124,12 +128,28 @@ export class PricingService {
     });
 
     if (existing) {
-      throw new ConflictException(
-        `Pricing configuration already exists for this store and zone ${createDto.zone}. ` +
-        `Use update endpoint to modify it.`,
+      // Update existing configuration instead of throwing ConflictException
+      Object.assign(existing, {
+        delivery_charge: createDto.delivery_charge,
+        weight_step_kg: createDto.weight_step_kg,
+        cod_percentage: createDto.cod_percentage,
+        discount_percentage: createDto.discount_percentage ?? null,
+        start_date: createDto.start_date ? new Date(createDto.start_date) : null,
+        end_date: createDto.end_date ? new Date(createDto.end_date) : null,
+      });
+
+      const updated = await this.pricingRepository.save(existing);
+
+      this.logger.log(
+        `[PRICING UPDATED (UPSERT)] Store: ${updated.store_id}, Zone: ${updated.zone}, ` +
+        `Delivery: ${updated.delivery_charge} BDT, Step: ${updated.weight_step_kg}kg, ` +
+        `COD: ${updated.cod_percentage}%`,
       );
+
+      return updated;
     }
 
+    // Create new configuration
     const pricing = this.pricingRepository.create({
       store_id: createDto.store_id,
       zone: createDto.zone,
@@ -155,6 +175,8 @@ export class PricingService {
     return saved;
   }
 
+
+
   /**
    * Get all pricing configurations for a store, grouped by zone with 0-fill
    */
@@ -172,6 +194,9 @@ export class PricingService {
       }
     }
 
+    // Fetch return charges to merge them into the result
+    const returnCharges = await this.getReturnChargesForStore(storeId);
+
     const result: Record<string, any> = {};
     for (const zone of Object.values(PricingZone)) {
       const config = configMap[zone];
@@ -188,6 +213,7 @@ export class PricingService {
           end_date: config.end_date,
           created_at: config.created_at,
           updated_at: config.updated_at,
+          return_charges: returnCharges[zone],
         };
       } else {
         result[zone] = {
@@ -202,6 +228,7 @@ export class PricingService {
           end_date: null,
           created_at: null,
           updated_at: null,
+          return_charges: returnCharges[zone],
         };
       }
     }
@@ -371,7 +398,44 @@ export class PricingService {
   async createReturnCharge(
     dto: CreateReturnChargeConfigDto,
   ): Promise<ReturnChargeConfiguration> {
-    const config = this.returnChargeRepository.create(dto);
+    const existing = await this.returnChargeRepository.findOne({
+      where: {
+        store_id: dto.store_id,
+        zone: dto.zone,
+        return_status: dto.return_status,
+      },
+    });
+
+    if (existing) {
+      Object.assign(existing, {
+        return_delivery_charge: dto.return_delivery_charge || 0,
+        return_weight_charge_per_kg: dto.return_weight_charge_per_kg || 0,
+        return_cod_percentage: dto.return_cod_percentage || 0,
+        discount_percentage: dto.discount_percentage || 0,
+        start_date: dto.start_date ? new Date(dto.start_date) : null,
+        end_date: dto.end_date ? new Date(dto.end_date) : null,
+      });
+
+      const updated = await this.returnChargeRepository.save(existing);
+      console.log(
+        `[RETURN CHARGE UPSERTED] Store: ${updated.store_id}, Status: ${updated.return_status}, ` +
+        `Zone: ${updated.zone}, Delivery: ${updated.return_delivery_charge} BDT`,
+      );
+      return updated;
+    }
+
+    const config = this.returnChargeRepository.create({
+      store_id: dto.store_id,
+      zone: dto.zone,
+      return_status: dto.return_status,
+      return_delivery_charge: dto.return_delivery_charge || 0,
+      return_weight_charge_per_kg: dto.return_weight_charge_per_kg || 0,
+      return_cod_percentage: dto.return_cod_percentage || 0,
+      discount_percentage: dto.discount_percentage || 0,
+      start_date: dto.start_date ? new Date(dto.start_date) : null,
+      end_date: dto.end_date ? new Date(dto.end_date) : null,
+    });
+    
     const saved = await this.returnChargeRepository.save(config);
 
     console.log(
@@ -388,44 +452,53 @@ export class PricingService {
   async bulkCreateReturnCharges(
     dto: BulkCreateReturnChargesDto,
   ): Promise<ReturnChargeConfiguration[]> {
-    const configs: ReturnChargeConfiguration[] = [];
+    const savedConfigs: ReturnChargeConfiguration[] = [];
 
     for (const statusCharge of dto.status_charges) {
-      // Skip if all charges are 0 or undefined
-      const hasCharges = 
-        (statusCharge.return_delivery_charge > 0) ||
-        (statusCharge.return_weight_charge_per_kg > 0) ||
-        (statusCharge.return_cod_percentage && statusCharge.return_cod_percentage > 0);
-
-      if (!hasCharges) {
-        console.log(
-          `[RETURN CHARGE] Skipping ${statusCharge.return_status} - no charges configured`,
-        );
-        continue;
-      }
-
-      const config = this.returnChargeRepository.create({
-        store_id: dto.store_id,
-        zone: dto.zone,
-        return_status: statusCharge.return_status,
-        return_delivery_charge: statusCharge.return_delivery_charge || 0,
-        return_weight_charge_per_kg: statusCharge.return_weight_charge_per_kg || 0,
-        return_cod_percentage: statusCharge.return_cod_percentage || 0,
-        discount_percentage: statusCharge.discount_percentage || null,
-        start_date: dto.start_date ? new Date(dto.start_date) : null,
-        end_date: dto.end_date ? new Date(dto.end_date) : null,
+      // Find existing config for this store, zone, and status
+      const existing = await this.returnChargeRepository.findOne({
+        where: {
+          store_id: dto.store_id,
+          zone: dto.zone,
+          return_status: statusCharge.return_status,
+        },
       });
 
-      configs.push(config);
+      if (existing) {
+        // Upsert behavior
+        Object.assign(existing, {
+          return_delivery_charge: statusCharge.return_delivery_charge || 0,
+          return_weight_charge_per_kg: statusCharge.return_weight_charge_per_kg || 0,
+          return_cod_percentage: statusCharge.return_cod_percentage || 0,
+          discount_percentage: statusCharge.discount_percentage || 0,
+          start_date: dto.start_date ? new Date(dto.start_date) : null,
+          end_date: dto.end_date ? new Date(dto.end_date) : null,
+        });
+        const updated = await this.returnChargeRepository.save(existing);
+        savedConfigs.push(updated);
+      } else {
+        // Create new
+        const config = this.returnChargeRepository.create({
+          store_id: dto.store_id,
+          zone: dto.zone,
+          return_status: statusCharge.return_status,
+          return_delivery_charge: statusCharge.return_delivery_charge || 0,
+          return_weight_charge_per_kg: statusCharge.return_weight_charge_per_kg || 0,
+          return_cod_percentage: statusCharge.return_cod_percentage || 0,
+          discount_percentage: statusCharge.discount_percentage || 0,
+          start_date: dto.start_date ? new Date(dto.start_date) : null,
+          end_date: dto.end_date ? new Date(dto.end_date) : null,
+        });
+        const saved = await this.returnChargeRepository.save(config);
+        savedConfigs.push(saved);
+      }
     }
 
-    const saved = await this.returnChargeRepository.save(configs);
-
     console.log(
-      `[RETURN CHARGES BULK CREATED] Store: ${dto.store_id}, Zone: ${dto.zone}, Count: ${saved.length}`,
+      `[RETURN CHARGES BULK UPSERTED] Store: ${dto.store_id}, Zone: ${dto.zone}, Count: ${savedConfigs.length}`,
     );
 
-    return saved;
+    return savedConfigs;
   }
 
   /**
@@ -732,6 +805,7 @@ export class PricingService {
     delivery_charge: number;
     weight_step_kg: number;
     cod_percentage: number;
+    discount_percentage: number;
     // Fixed values (not configurable)
     free_weight_kg: number;
     charge_per_step: number;
@@ -741,6 +815,7 @@ export class PricingService {
       delivery_charge: defaults.delivery_charge,
       weight_step_kg: defaults.weight_step_kg,
       cod_percentage: defaults.cod_percentage,
+      discount_percentage: defaults.discount_percentage,
       // Fixed values
       free_weight_kg: FIXED_FREE_WEIGHT_KG,
       charge_per_step: FIXED_CHARGE_PER_STEP[zone],
