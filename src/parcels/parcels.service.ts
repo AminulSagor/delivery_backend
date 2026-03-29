@@ -3034,8 +3034,11 @@ export class ParcelsService {
     }
 
     // Verify parcel is in current hub
-    if (parcel.current_hub_id && parcel.current_hub_id !== currentHubId) {
-      throw new ForbiddenException('This parcel is not in your hub');
+    const belongsToHubStore = parcel.store?.hub_id === currentHubId;
+    const isPhysicallyAtHub = parcel.current_hub_id === currentHubId;
+
+    if (!isPhysicallyAtHub && !belongsToHubStore) {
+      throw new ForbiddenException('This parcel does not belong to your hub');
     }
 
     // Verify parcel status allows transfer
@@ -3119,6 +3122,7 @@ export class ParcelsService {
     // 2. Fetch all requested parcels
     const parcels = await this.parcelRepository.find({
       where: { id: In(parcel_ids) },
+      relations: ['store'],
     });
 
     // 3. Process each parcel
@@ -3136,11 +3140,14 @@ export class ParcelsService {
         continue;
       }
 
-      if (parcel.current_hub_id !== currentHubId) {
+      const isPhysicallyAtHub = parcel.current_hub_id === currentHubId;
+      const belongsToHubStore = parcel.store?.hub_id === currentHubId;
+
+      if (!isPhysicallyAtHub && !belongsToHubStore) {
         errors.push({
           id,
           tracking_number: parcel.tracking_number,
-          error: 'Parcel is not in your hub',
+          error: 'Parcel does not belong to your hub',
         });
         continue;
       }
