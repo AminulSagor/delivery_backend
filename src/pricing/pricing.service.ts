@@ -194,14 +194,14 @@ export class PricingService {
       }
     }
 
-    // Fetch return charges to merge them into the result
+    // Fetch all return charges for this store
     const returnCharges = await this.getReturnChargesForStore(storeId);
 
-    const result: Record<string, any> = {};
+    const deliveryCharges: Record<string, any> = {};
     for (const zone of Object.values(PricingZone)) {
       const config = configMap[zone];
       if (config) {
-        result[zone] = {
+        deliveryCharges[zone] = {
           id: config.id,
           store_id: config.store_id,
           zone: config.zone,
@@ -213,10 +213,9 @@ export class PricingService {
           end_date: config.end_date,
           created_at: config.created_at,
           updated_at: config.updated_at,
-          return_charges: returnCharges[zone],
         };
       } else {
-        result[zone] = {
+        deliveryCharges[zone] = {
           id: null,
           store_id: storeId,
           zone,
@@ -228,12 +227,14 @@ export class PricingService {
           end_date: null,
           created_at: null,
           updated_at: null,
-          return_charges: returnCharges[zone],
         };
       }
     }
 
-    return result;
+    return {
+      delivery_charges: deliveryCharges,
+      return_charges: returnCharges,
+    };
   }
 
   /**
