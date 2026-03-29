@@ -22,7 +22,7 @@ import { PayoutMethodStatus } from '../common/enums/payout-method-status.enum';
 import { AddPayoutMethodDto } from './dto/add-payout-method.dto';
 import { UpdatePayoutMethodDto } from './dto/update-payout-method.dto';
 import { MerchantProfile } from './entities/merchant-profile.entity';
-import { Store } from 'src/stores/entities/store.entity';
+import { Store, StoreStatus } from 'src/stores/entities/store.entity';
 import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import {
   UpdateBinDto,
@@ -90,17 +90,76 @@ export class MerchantService {
     merchant.user_id = user.id;
     merchant.thana = dto.thana;
     merchant.district = dto.district;
-    merchant.full_address = dto.full_address || null;
+    merchant.full_address = dto.full_address || dto.business_address;
     merchant.secondary_number = dto.secondary_number || null;
     merchant.status = MerchantStatus.PENDING;
 
     await this.merchantRepository.save(merchant);
 
+    // === AUTO-CREATE DEFAULT STORE ===
+    const storeCode = await this.generateStoreCode(dto.business_name);
+    
+    // Convert phone from +8801... to 01... format for store
+    const storePhone = dto.phone.replace('+88', '');
+
+    const store = new Store();
+    store.merchant_id = merchant.id;
+    store.store_code = storeCode;
+    store.business_name = dto.business_name;
+    store.business_address = dto.business_address;
+    store.district = dto.district;
+    store.thana = dto.thana;
+    store.area = dto.area || null;
+    store.phone_number = storePhone;
+    store.email = dto.email || null;
+    store.is_default = true; // First store is default
+    store.status = StoreStatus.PENDING; // Requires admin approval
+    store.carrybee_city_id = dto.carrybee_city_id;
+    store.carrybee_zone_id = dto.carrybee_zone_id;
+    store.carrybee_area_id = dto.carrybee_area_id;
+
+    await this.storeRepo.save(store);
+
     console.log(
       `[MERCHANT SIGNUP] New merchant registered: ${user.full_name} (${user.phone}) - Status: PENDING`,
     );
+    console.log(
+      `[DEFAULT STORE CREATED] Store: ${store.business_name} (${store.store_code}) - Status: PENDING`,
+    );
 
     return merchant;
+  }
+
+  /**
+   * Generate unique store code from business name
+   * Format: First 3 letters + 3 digit number (e.g., TSH001)
+   */
+  private async generateStoreCode(businessName: string): Promise<string> {
+    // Extract first 3 letters from business name (uppercase)
+    const prefix = businessName
+      .replace(/[^A-Za-z]/g, '') // Remove non-letters
+      .substring(0, 3)
+      .toUpperCase()
+      .padEnd(3, 'X'); // Ensure 3 characters
+
+    // Find the highest number for this prefix
+    const existingStores = await this.storeRepo
+      .createQueryBuilder('store')
+      .where('store.store_code LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('store.store_code', 'DESC')
+      .getMany();
+
+    let nextNumber = 1;
+    if (existingStores.length > 0) {
+      const lastCode = existingStores[0].store_code;
+      if (lastCode) {
+        const lastNumber = parseInt(lastCode.substring(3)) || 0;
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    // Format: PREFIX + 3-digit number (e.g., TSH001)
+    return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
   }
 
   async approveMerchant(

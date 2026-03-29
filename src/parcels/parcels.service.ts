@@ -19,6 +19,8 @@ import { Parcel, ParcelStatus, PaymentStatus } from './entities/parcel.entity';
 import { FinancialStatus } from '../common/enums/financial-status.enum';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
+import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
+import { UserRole } from '../common/enums/user-role.enum';
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
@@ -4595,5 +4597,78 @@ export class ParcelsService {
     }
 
     return await this.parcelRepository.save(parcels);
+  }
+
+  /**
+   * Hub Manager manually override delivery_charge and/or weight_charge for a received parcel
+   * Only allowed when parcel is IN_HUB at the hub manager's hub.
+   * Recalculates total_charge and receivable_amount using the existing formula:
+   *   total_charge = delivery_charge + weight_charge + cod_charge - discount
+   *   receivable_amount = cod_amount - total_charge
+   */
+  async updateHubCharges(
+    parcelId: string,
+    dto: UpdateParcelChargesDto,
+    role: UserRole,
+    hubId: string | null,
+  ): Promise<Parcel> {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId },
+    });
+
+    if (!parcel) {
+      throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
+    }
+
+    // Hub Manager can only edit parcels that are IN_HUB at their hub
+    if (role !== UserRole.ADMIN) {
+      if (parcel.status !== ParcelStatus.IN_HUB) {
+        throw new BadRequestException(
+          `Parcel must be IN_HUB status to modify charges. Current status: ${parcel.status}`,
+        );
+      }
+      if (parcel.current_hub_id !== hubId) {
+        throw new ForbiddenException(
+          `This parcel does not belong to your hub`,
+        );
+      }
+    }
+
+    // Apply overrides (only fields provided in the DTO)
+    if (dto.product_weight !== undefined) {
+      parcel.product_weight = dto.product_weight;
+    }
+    if (dto.delivery_charge !== undefined) {
+      parcel.delivery_charge = dto.delivery_charge;
+    }
+    if (dto.weight_charge !== undefined) {
+      parcel.weight_charge = dto.weight_charge;
+    }
+
+    // Recalculate total_charge and receivable_amount using existing formula:
+    // total_charge = delivery_charge + weight_charge + cod_charge
+    const newTotalCharge = Math.round(
+      (Number(parcel.delivery_charge) +
+        Number(parcel.weight_charge) +
+        Number(parcel.cod_charge)) *
+        100,
+    ) / 100;
+
+    // receivable_amount = cod_amount - total_charge
+    const newReceivableAmount =
+      Math.round((Number(parcel.cod_amount) - newTotalCharge) * 100) / 100;
+
+    parcel.total_charge = newTotalCharge;
+    parcel.receivable_amount = newReceivableAmount;
+
+    const updated = await this.parcelRepository.save(parcel);
+
+    this.logger.log(
+      `[HUB CHARGE OVERRIDE] Parcel: ${parcelId}, ` +
+        `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
+        `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
+    );
+
+    return updated;
   }
 }

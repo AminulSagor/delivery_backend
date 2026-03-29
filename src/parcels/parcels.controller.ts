@@ -23,6 +23,7 @@ import {
 } from './parcels.service';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
+import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
 import { CalculatePricingDto } from './dto/calculate-pricing.dto';
 import { CalculateTotalPricingDto } from './dto/calculate-total-pricing.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -277,6 +278,37 @@ export class ParcelsController {
       parcel_tx_id: parcel.parcel_tx_id,
       tracking_number: parcel.tracking_number,
       message: 'Parcel updated successfully',
+    };
+  }
+
+  @Patch(':id/hub-charges')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  async updateHubCharges(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateChargesDto: UpdateParcelChargesDto,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('hubId') hubId: string,
+  ) {
+    const isAdmin = role === UserRole.ADMIN;
+
+    if (!isAdmin && !hubId) {
+      throw new ForbiddenException('hubId missing in auth token');
+    }
+
+    const parcel = await this.parcelsService.updateHubCharges(
+      id,
+      updateChargesDto,
+      role,
+      isAdmin ? null : hubId,
+    );
+
+    return {
+      id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id,
+      tracking_number: parcel.tracking_number,
+      total_charge: parcel.total_charge,
+      message: 'Parcel charges updated successfully',
     };
   }
 
