@@ -2370,7 +2370,10 @@ export class ParcelsService {
     const skip = (page - 1) * limit;
 
     // Get parcels that are IN_HUB status and not assigned to any rider
-    // Filter by hub through pickup request relation OR store relation
+    // Filter by hub through:
+    // 1. pickup request relation (original pickup hub)
+    // 2. store relation (store's assigned hub)
+    // 3. current_hub_id (for inter-hub transferred parcels)
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
@@ -2383,9 +2386,10 @@ export class ParcelsService {
       )
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
       .andWhere('parcel.assigned_rider_id IS NULL')
-      .andWhere('(pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)', {
-        hubId,
-      })
+      .andWhere(
+        '(pickupRequest.hub_id = :hubId OR store.hub_id = :hubId OR parcel.current_hub_id = :hubId)',
+        { hubId },
+      )
       .orderBy('parcel.created_at', 'DESC')
       .skip(skip)
       .take(limit);
