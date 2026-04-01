@@ -34,6 +34,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
 import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
+import { toParcelListItem } from '../common/interfaces/responses.interface';
 
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -168,6 +169,36 @@ export class ParcelsController {
       parcels: result.items,
       pagination: result.pagination,
       message: 'Parcels retrieved successfully',
+    };
+  }
+
+  @Get('hub/in-hub')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async getHubParcelsInHubStatuses(
+    @CurrentUser('hubId') hubId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @Query('sortBy') sortBy: string = 'created_at',
+    @Query('order') order: 'ASC' | 'DESC' = 'DESC',
+  ) {
+    if (!hubId) {
+      throw new ForbiddenException('hubId missing in auth token');
+    }
+
+    const result = await this.parcelsService.findInHubStatusesForHub(
+      hubId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+      sortBy,
+      order,
+    );
+
+    return {
+      success: true,
+      data: result.items.map(toParcelListItem),
+      pagination: result.pagination,
+      message: 'Hub parcels in IN_HUB/RETURNED_TO_HUB retrieved successfully',
     };
   }
 
