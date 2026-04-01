@@ -2028,6 +2028,60 @@ export class ParcelsService {
     }
   }
 
+  async findInHubStatusesForHub(
+    hubId: string,
+    page: number = 1,
+    limit: number = 20,
+    sortBy: string = 'created_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+  ): Promise<PaginatedResponse<Parcel>> {
+    // Get all stores assigned to this hub
+    const stores = await this.storeRepository.find({
+      where: { hub_id: hubId },
+      select: ['id'],
+    });
+
+    const storeIds = stores.map((store) => store.id);
+
+    if (storeIds.length === 0) {
+      return {
+        items: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+    }
+
+    const [items, total] = await this.parcelRepository.findAndCount({
+      where: {
+        store_id: In(storeIds),
+        status: In([ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB]),
+      },
+      relations: ['store', 'delivery_coverage_area', 'assignedRider'],
+      order: { [sortBy]: order },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const totalPages = Math.ceil(total / limit);
+
+    const pagination: PaginationMeta = {
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
+
+    return { items, pagination };
+  }
+
   /**
    * Mark parcel as received by hub (PENDING/PICKED_UP → IN_HUB)
    */
