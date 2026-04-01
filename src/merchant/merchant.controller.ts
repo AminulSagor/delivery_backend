@@ -113,6 +113,25 @@ export class MerchantController {
   }
 
   @Roles(UserRole.HUB_MANAGER)
+  @Get('hub/assigned')
+  async getMerchantsAssignedToHub(@CurrentUser() user: any) {
+    if (!user.hubId) {
+      throw new ForbiddenException('hubId missing in auth token');
+    }
+
+    const merchants = await this.merchantService.findMerchantsAssignedToHub(
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: merchants.map(toMerchantListItem),
+      count: merchants.length,
+      message: 'Merchants assigned to your hub retrieved successfully',
+    };
+  }
+
+  @Roles(UserRole.HUB_MANAGER)
   @Get(':id/hub-parcels')
   async getHubParcelsInHubStatus(
     @Param('id') id: string,
