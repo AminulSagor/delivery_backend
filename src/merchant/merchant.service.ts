@@ -399,6 +399,21 @@ export class MerchantService {
     };
   }
 
+  async findMerchantsAssignedToHub(hubId: string) {
+    const qb = this.merchantRepository
+      .createQueryBuilder('merchant')
+      .leftJoinAndSelect('merchant.user', 'user')
+      .innerJoin('stores', 'store', 'store.merchant_id = merchant.id AND store.hub_id = :hubId', {
+        hubId,
+      })
+      .groupBy('merchant.id')
+      .addGroupBy('user.id')
+      .orderBy('merchant.created_at', 'DESC');
+
+    const merchants = await qb.getMany();
+    return merchants;
+  }
+
   async getHubParcelsInHubStatus(merchantId: string, hubId: string) {
     const storeCount = await this.storeRepo.count({ where: { merchant_id: merchantId, hub_id: hubId } });
 
