@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Request,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MerchantService } from './merchant.service';
 import { MerchantSignupDto } from './dto/create-merchant.dto';
@@ -35,6 +36,7 @@ import {
   UpdateTinDto,
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
+import { MerchantOverviewQueryDto } from './dto/merchant-overview.dto';
 
 @Controller('merchants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -87,6 +89,49 @@ export class MerchantController {
         limit: result.limit,
       },
       message: 'Merchants retrieved successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  @Get(':id/overview')
+  async getOverview(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Query() query: MerchantOverviewQueryDto,
+  ) {
+    const data = await this.merchantService.getMerchantOverview(id, {
+      hubId: user.role === UserRole.HUB_MANAGER ? user.hubId : null,
+      range: query.range,
+      month: query.month,
+    });
+
+    return {
+      success: true,
+      data,
+      message: 'Merchant overview retrieved successfully',
+    };
+  }
+
+  @Roles(UserRole.HUB_MANAGER)
+  @Get(':id/hub-parcels')
+  async getHubParcelsInHubStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    if (!user.hubId) {
+      throw new ForbiddenException('hubId missing in auth token');
+    }
+
+    const parcels = await this.merchantService.getHubParcelsInHubStatus(
+      id,
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: parcels,
+      count: parcels.length,
+      message: 'Parcels in hub retrieved successfully',
     };
   }
 

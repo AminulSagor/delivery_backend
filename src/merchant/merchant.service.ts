@@ -3,9 +3,10 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Merchant } from './entities/merchant.entity';
 import { User } from '../users/entities/user.entity';
 import { MerchantSignupDto } from './dto/create-merchant.dto';
@@ -24,6 +25,7 @@ import { UpdatePayoutMethodDto } from './dto/update-payout-method.dto';
 import { MerchantProfile } from './entities/merchant-profile.entity';
 import { Store, StoreStatus } from 'src/stores/entities/store.entity';
 import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
+import { toParcelListItem } from '../common/interfaces/responses.interface';
 import {
   UpdateBinDto,
   UpdateNidDto,
@@ -281,6 +283,144 @@ export class MerchantService {
     return merchant;
   }
 
+  async getMerchantOverview(
+    merchantId: string,
+    options: { hubId?: string | null; range?: 'last7d' | 'month'; month?: string },
+  ) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+      relations: ['user'],
+    });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${merchantId} not found`);
+    }
+
+    const range: 'last7d' | 'month' = options.range === 'month' ? 'month' : 'last7d';
+    const { start, end } = this.getDateRange(range, options.month);
+
+    const storeScope: any = { merchant_id: merchantId };
+    if (options.hubId) {
+      storeScope.hub_id = options.hubId;
+    }
+
+    const storeCount = await this.storeRepo.count({ where: storeScope });
+
+    if (options.hubId && storeCount === 0) {
+      throw new ForbiddenException('Merchant has no stores in your hub');
+    }
+
+    const defaultStore =
+      (await this.storeRepo.findOne({
+        where: { ...storeScope, is_default: true },
+        order: { created_at: 'ASC' },
+      })) ||
+      (await this.storeRepo.findOne({
+        where: storeScope,
+        order: { created_at: 'ASC' },
+      }));
+
+    const baseQb = this.parcelRepo
+      .createQueryBuilder('parcel')
+      .leftJoin('parcel.store', 'store')
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .andWhere('parcel.created_at >= :start', { start })
+      .andWhere('parcel.created_at < :end', { end });
+
+    if (options.hubId) {
+      baseQb.andWhere('store.hub_id = :hubId', { hubId: options.hubId });
+    }
+
+    const deliveredStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+    ];
+
+    const returnedStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    const [
+      totalParcels,
+      deliveredParcels,
+      returnedParcels,
+      reportedParcels,
+      graphRows,
+    ] = await Promise.all([
+      baseQb.clone().getCount(),
+      baseQb
+        .clone()
+        .andWhere('parcel.status IN (:...deliveredStatuses)', { deliveredStatuses })
+        .getCount(),
+      baseQb
+        .clone()
+        .andWhere('parcel.status IN (:...returnedStatuses)', { returnedStatuses })
+        .getCount(),
+      baseQb.clone().andWhere('parcel.issue_reported_at IS NOT NULL').getCount(),
+      baseQb
+        .clone()
+        .select("DATE_TRUNC('day', parcel.created_at)", 'bucket')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('bucket')
+        .orderBy('bucket', 'ASC')
+        .getRawMany(),
+    ]);
+
+    const graph = graphRows.map((row: any) => ({
+      bucket: new Date(row.bucket).toISOString().substring(0, 10),
+      count: Number(row.count),
+    }));
+
+    return {
+      merchant: {
+        id: merchant.id,
+        full_name: merchant.user?.full_name || null,
+        phone: merchant.user?.phone || null,
+        email: merchant.user?.email || null,
+        business_name: defaultStore?.business_name || null,
+        address: merchant.full_address || defaultStore?.business_address || null,
+        status: merchant.status,
+      },
+      store_count: storeCount,
+      parcel_totals: {
+        total: totalParcels,
+        delivered: deliveredParcels,
+        returned: returnedParcels,
+        reported: reportedParcels,
+      },
+      graph,
+      range,
+      range_start: start,
+      range_end: end,
+    };
+  }
+
+  async getHubParcelsInHubStatus(merchantId: string, hubId: string) {
+    const storeCount = await this.storeRepo.count({ where: { merchant_id: merchantId, hub_id: hubId } });
+
+    if (storeCount === 0) {
+      throw new ForbiddenException('Merchant has no stores in your hub');
+    }
+
+    const parcels = await this.parcelRepo.find({
+      where: {
+        merchant_id: merchantId,
+        status: In([ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB]),
+      },
+      relations: ['store', 'delivery_coverage_area', 'assignedRider'],
+      order: { created_at: 'DESC' },
+    });
+
+    // Restrict to parcels whose store is in the hub to avoid leakage
+    const scopedParcels = parcels.filter((p) => p.store?.hub_id === hubId);
+
+    return scopedParcels.map(toParcelListItem);
+  }
+
   async update(id: string, dto: UpdateMerchantDto): Promise<Merchant> {
     const merchant = await this.findOne(id);
 
@@ -534,6 +674,30 @@ export class MerchantService {
       await this.profileRepo.save(profile);
     }
     return profile;
+  }
+
+  private getDateRange(range: 'last7d' | 'month', month?: string) {
+    if (range === 'month') {
+      const monthString = month || `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+      const [yearStr, monthStr] = monthString.split('-');
+      const year = Number(yearStr);
+      const monthIndex = Number(monthStr) - 1;
+
+      if (!year || monthIndex < 0 || monthIndex > 11) {
+        throw new BadRequestException('month must be in YYYY-MM format');
+      }
+
+      const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0));
+
+      return { start, end };
+    }
+
+    const todayUtc = new Date();
+    const end = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() + 1));
+    const start = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() - 6));
+
+    return { start, end };
   }
 
   // --- API 1: Get All Settings ---
