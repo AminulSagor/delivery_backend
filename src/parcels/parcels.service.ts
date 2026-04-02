@@ -162,36 +162,39 @@ export class ParcelsService {
 
   /**
    * Generate unique parcel_tx_id for display purposes
-   * Format: #XXXXXX (e.g., #139679)
+   * Format: [PREFIX][DDMMYY][RANDOM4]
+   * Example: MF020426A9X2
    */
-  private async generateParcelTxId(retryCount = 0): Promise<string> {
-    // Get the highest existing parcel_tx_id number
-    const result = await this.parcelRepository
-      .createQueryBuilder('parcel')
-      .select(
-        'MAX(CAST(SUBSTRING(parcel.parcel_tx_id FROM 2) AS INTEGER))',
-        'maxId',
-      )
-      .where('parcel.parcel_tx_id IS NOT NULL')
-      .getRawOne();
+  private async generateParcelTxId(
+    prefix: 'MF' | 'ME' | 'MR',
+    date: Date = new Date(),
+    retryCount = 0,
+  ): Promise<string> {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const datePart = `${day}${month}${year}`;
 
-    const maxId = result?.maxId || 100000; // Start from 100001 if no parcels exist
-    const newId = maxId + 1 + retryCount;
-    const txId = `#${newId}`;
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let randomPart = '';
+    for (let i = 0; i < 4; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
 
-    // Check if tx_id already exists (race condition protection)
+    const txId = `${prefix}${datePart}${randomPart}`;
+
     const existing = await this.parcelRepository.findOne({
       where: { parcel_tx_id: txId },
       select: ['id'],
     });
 
     if (existing) {
-      if (retryCount >= 10) {
-        // Fallback to timestamp-based ID after 10 retries
-        const timestamp = Date.now().toString().slice(-6);
-        return `#${timestamp}`;
+      if (retryCount >= 20) {
+        throw new InternalServerErrorException(
+          'Unable to generate unique parcel display ID',
+        );
       }
-      return this.generateParcelTxId(retryCount + 1);
+      return this.generateParcelTxId(prefix, date, retryCount + 1);
     }
 
     return txId;
@@ -1096,7 +1099,8 @@ export class ParcelsService {
       let parcelTxId;
       try {
         trackingNumber = await this.generateTrackingNumber();
-        parcelTxId = await this.generateParcelTxId();
+        const parcelPrefix = createParcelDto.is_exchange ? 'ME' : 'MF';
+        parcelTxId = await this.generateParcelTxId(parcelPrefix);
       } catch (error) {
         this.logger.error(
           `[TRACKING/TX_ID ERROR] ${error.message}`,
@@ -3954,7 +3958,7 @@ export class ParcelsService {
     const returnTrackingNumber = await this.generateReturnTrackingNumber(
       originalParcel.tracking_number,
     );
-    const returnParcelTxId = await this.generateParcelTxId();
+    const returnParcelTxId = await this.generateParcelTxId('MR');
 
     const returnParcel = this.parcelRepository.create({
       // Tracking

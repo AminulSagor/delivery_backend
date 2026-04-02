@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Staff } from './entities/staff.entity';
 import { User } from '../users/entities/user.entity';
 import { Hub } from '../hubs/entities/hub.entity';
@@ -25,6 +25,31 @@ export class StaffService {
     private readonly hubRepository: Repository<Hub>,
     private readonly dataSource: DataSource,
   ) {}
+
+  private generateRandomDigits(length: number): string {
+    const chars = '0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  private async generateUniqueStaffCode(manager: EntityManager): Promise<string> {
+    const maxAttempts = 50;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const staffCode = `EMP${this.generateRandomDigits(5)}`;
+      const existing = await manager.findOne(Staff, {
+        where: { staff_code: staffCode },
+        select: ['id'],
+      });
+
+      if (!existing) return staffCode;
+    }
+
+    throw new ConflictException('Unable to generate unique staff code');
+  }
 
   /**
    * Create staff by Admin
@@ -91,9 +116,7 @@ export class StaffService {
 
       const savedUser = await queryRunner.manager.save(User, user);
 
-      // Generate staff code
-      const staffCount = await queryRunner.manager.count(Staff);
-      const staffCode = `STF${String(staffCount + 1).padStart(4, '0')}`;
+      const staffCode = await this.generateUniqueStaffCode(queryRunner.manager);
 
       // Create staff
       const staff = queryRunner.manager.create(Staff, {

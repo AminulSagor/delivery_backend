@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Rider } from './entities/rider.entity';
 import { User } from '../users/entities/user.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
@@ -44,6 +44,47 @@ export class RidersService {
     private readonly alertRepository: Repository<EmergencyAlert>,
     private readonly dataSource: DataSource,
   ) {}
+
+    private generateRandomDigits(length: number): string {
+      const chars = '0123456789';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    }
+
+    private async generateUniqueRiderCode(manager: EntityManager): Promise<string> {
+      const maxAttempts = 50;
+
+      for (let i = 0; i < maxAttempts; i++) {
+        const riderCode = `RDR${this.generateRandomDigits(5)}`;
+        const existing = await manager.findOne(Rider, {
+          where: { rider_code: riderCode },
+          select: ['id'],
+        });
+
+        if (!existing) return riderCode;
+      }
+
+      throw new ConflictException('Unable to generate unique rider code');
+    }
+
+    private async generateUniqueStaffCode(manager: EntityManager): Promise<string> {
+      const maxAttempts = 50;
+
+      for (let i = 0; i < maxAttempts; i++) {
+        const staffCode = `EMP${this.generateRandomDigits(5)}`;
+        const existing = await manager.findOne(Staff, {
+          where: { staff_code: staffCode },
+          select: ['id'],
+        });
+
+        if (!existing) return staffCode;
+      }
+
+      throw new ConflictException('Unable to generate unique staff code');
+    }
 
   /**
    * Create rider by Hub Manager (auto-assigns current hub)
@@ -120,8 +161,12 @@ export class RidersService {
 
       const savedUser = await queryRunner.manager.save(User, user);
 
+      const riderCode = await this.generateUniqueRiderCode(queryRunner.manager);
+      const staffCode = await this.generateUniqueStaffCode(queryRunner.manager);
+
       // Create rider with hub auto-assigned (pending admin approval)
       const rider = queryRunner.manager.create(Rider, {
+        rider_code: riderCode,
         user_id: savedUser.id,
         hub_id: hubManagerHubId,
         photo: createRiderDto.photo,
@@ -152,6 +197,7 @@ export class RidersService {
       const staff = queryRunner.manager.create(Staff, {
         user_id: savedUser.id,
         hub_id: hubManagerHubId,
+        staff_code: staffCode,
         position: StaffPosition.RIDER,
         photo: createRiderDto.photo,
         guardian_mobile_no: createRiderDto.guardian_mobile_no,
@@ -266,8 +312,12 @@ export class RidersService {
 
       const savedUser = await queryRunner.manager.save(User, user);
 
+      const riderCode = await this.generateUniqueRiderCode(queryRunner.manager);
+      const staffCode = await this.generateUniqueStaffCode(queryRunner.manager);
+
       // Create rider with specified hub (auto-approved by admin)
       const rider = queryRunner.manager.create(Rider, {
+        rider_code: riderCode,
         user_id: savedUser.id,
         hub_id: createRiderDto.hub_id,
         photo: createRiderDto.photo,
@@ -298,6 +348,7 @@ export class RidersService {
       const staff = queryRunner.manager.create(Staff, {
         user_id: savedUser.id,
         hub_id: createRiderDto.hub_id,
+        staff_code: staffCode,
         position: StaffPosition.RIDER,
         photo: createRiderDto.photo,
         guardian_mobile_no: createRiderDto.guardian_mobile_no,
