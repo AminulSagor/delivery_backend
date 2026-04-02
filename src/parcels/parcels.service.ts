@@ -200,6 +200,21 @@ export class ParcelsService {
     return txId;
   }
 
+  private getParcelIdPrefix(options: {
+    isExchange?: boolean;
+    isReturnParcel?: boolean;
+    status?: ParcelStatus;
+  }): 'MF' | 'ME' | 'MR' {
+    if (options.isReturnParcel) return 'MR';
+    if (options.status === ParcelStatus.RETURN_TO_MERCHANT) return 'MR';
+    if (options.status === ParcelStatus.RETURNED) return 'MR';
+    if (options.status === ParcelStatus.PAID_RETURN) return 'MR';
+    if (options.status === ParcelStatus.EXCHANGE || options.isExchange) {
+      return 'ME';
+    }
+    return 'MF';
+  }
+
   private determinePricingZone(coverageArea: CoverageArea | null): PricingZone {
     if (!coverageArea) return PricingZone.OUTSIDE_DHAKA;
     if (coverageArea.division === 'Dhaka') {
@@ -1099,7 +1114,9 @@ export class ParcelsService {
       let parcelTxId;
       try {
         trackingNumber = await this.generateTrackingNumber();
-        const parcelPrefix = createParcelDto.is_exchange ? 'ME' : 'MF';
+        const parcelPrefix = this.getParcelIdPrefix({
+          isExchange: createParcelDto.is_exchange,
+        });
         parcelTxId = await this.generateParcelTxId(parcelPrefix);
       } catch (error) {
         this.logger.error(
@@ -1341,6 +1358,10 @@ export class ParcelsService {
 
       // 5. Generate Tracking Number
       const trackingNumber = await this.generateTrackingNumber();
+      const parcelPrefix = this.getParcelIdPrefix({
+        isExchange: createParcelDto.is_exchange,
+      });
+      const parcelTxId = await this.generateParcelTxId(parcelPrefix);
 
       // 6. Carrybee Mapping (Optional/Existing logic)
       const deliveryArea = createParcelDto.delivery_coverage_area_id
@@ -1355,6 +1376,7 @@ export class ParcelsService {
         merchant_id: merchantId,
         customer_id: customer.id,
         tracking_number: trackingNumber,
+        parcel_tx_id: parcelTxId,
 
         // --- KEY DIFFERENCES FOR HUB MANAGER ---
         status: ParcelStatus.IN_HUB, // Directly Received
@@ -3958,7 +3980,12 @@ export class ParcelsService {
     const returnTrackingNumber = await this.generateReturnTrackingNumber(
       originalParcel.tracking_number,
     );
-    const returnParcelTxId = await this.generateParcelTxId('MR');
+    const returnParcelTxId = await this.generateParcelTxId(
+      this.getParcelIdPrefix({
+        isReturnParcel: true,
+        status: ParcelStatus.RETURN_TO_MERCHANT,
+      }),
+    );
 
     const returnParcel = this.parcelRepository.create({
       // Tracking

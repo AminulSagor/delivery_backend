@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -42,6 +43,64 @@ export class DeliveryVerificationsService {
     private readonly smsService: SmsService,
     private readonly configService: ConfigService,
   ) {}
+
+  private getParcelTxPrefixForCompletedStatus(
+    status: ParcelStatus,
+  ): 'MF' | 'ME' | 'MR' | null {
+    switch (status) {
+      case ParcelStatus.DELIVERED:
+        return 'MF';
+      case ParcelStatus.EXCHANGE:
+        return 'ME';
+      case ParcelStatus.RETURNED:
+      case ParcelStatus.PAID_RETURN:
+        return 'MR';
+      default:
+        return null;
+    }
+  }
+
+  private async generateParcelTxIdForCompletion(
+    prefix: 'MF' | 'ME' | 'MR',
+    date: Date,
+    currentParcelId: string,
+    retryCount = 0,
+  ): Promise<string> {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const datePart = `${day}${month}${year}`;
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let randomPart = '';
+    for (let i = 0; i < 4; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const txId = `${prefix}${datePart}${randomPart}`;
+
+    const existing = await this.parcelRepo.findOne({
+      where: { parcel_tx_id: txId },
+      select: ['id'],
+    });
+
+    if (existing && existing.id !== currentParcelId) {
+      if (retryCount >= 20) {
+        throw new InternalServerErrorException(
+          'Unable to generate unique parcel display ID',
+        );
+      }
+
+      return this.generateParcelTxIdForCompletion(
+        prefix,
+        date,
+        currentParcelId,
+        retryCount + 1,
+      );
+    }
+
+    return txId;
+  }
 
   /**
    * Initiate delivery status update - Step 1
@@ -742,6 +801,18 @@ export class DeliveryVerificationsService {
     // Update parcel status
     parcel.status = selectedStatus;
     parcel.delivered_at = new Date();
+
+    // Regenerate parcel display ID for delivery/exchange/return outcomes.
+    // Uses original parcel create date in DDMMYY format.
+    const txPrefix = this.getParcelTxPrefixForCompletedStatus(selectedStatus);
+    if (txPrefix) {
+      const idDate = parcel.created_at ? new Date(parcel.created_at) : new Date();
+      parcel.parcel_tx_id = await this.generateParcelTxIdForCompletion(
+        txPrefix,
+        idDate,
+        parcel.id,
+      );
+    }
 
     // ✅ Copy delivery reason from verification to parcel
     if (verification.difference_reason) {
