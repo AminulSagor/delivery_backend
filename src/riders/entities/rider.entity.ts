@@ -26,6 +26,9 @@ export class Rider {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', length: 20, unique: true, nullable: true })
+  rider_code: string | null;
+
   @Column({ type: 'uuid' })
   user_id: string;
 

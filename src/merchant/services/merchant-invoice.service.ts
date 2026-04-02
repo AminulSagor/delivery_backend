@@ -273,20 +273,36 @@ export class MerchantInvoiceService {
   /**
    * Generate invoice number
    */
-  private async generateInvoiceNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const month = String(new Date().getMonth() + 1).padStart(2, '0');
-    const prefix = `INV-${year}-${month}`;
+  private async generateInvoiceNumber(
+    date: Date = new Date(),
+    retryCount = 0,
+  ): Promise<string> {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const datePart = `${day}${month}${year}`;
 
-    // Get count of invoices this month using LIKE query
-    const count = await this.merchantInvoiceRepository.count({
-      where: {
-        invoice_no: Like(`${prefix}-%`),
-      },
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let randomPart = '';
+    for (let i = 0; i < 4; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const invoiceNo = `MI${datePart}${randomPart}`;
+
+    const existing = await this.merchantInvoiceRepository.findOne({
+      where: { invoice_no: invoiceNo },
+      select: ['id'],
     });
 
-    const sequence = String(count + 1).padStart(4, '0');
-    return `${prefix}-${sequence}`;
+    if (existing) {
+      if (retryCount >= 20) {
+        throw new BadRequestException('Unable to generate unique invoice ID');
+      }
+      return this.generateInvoiceNumber(date, retryCount + 1);
+    }
+
+    return invoiceNo;
   }
 
   /**
