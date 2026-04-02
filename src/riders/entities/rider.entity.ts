@@ -74,7 +74,7 @@ export class Rider {
    * Commission per delivered parcel (flat rate in BDT)
    * This is NOT a percentage - it's a fixed amount per delivery
    * e.g., 20 means rider gets 20 BDT for each delivered parcel
-   * 
+   *
    * "Delivered" includes: DELIVERED, PARTIAL_DELIVERY, EXCHANGE
    */
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })

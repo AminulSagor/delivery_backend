@@ -106,4 +106,3 @@ export interface MerchantFinanceSummaryItem {
   total_parcels_delivered: number;
   last_transaction_at: Date | null;
 }
-

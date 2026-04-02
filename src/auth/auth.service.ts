@@ -78,17 +78,21 @@ export class AuthService {
           where: { user_id: user.id },
         });
         if (merchant?.status === 'REJECTED') {
-          throw new UnauthorizedException('Your account has been permanently declined');
+          throw new UnauthorizedException(
+            'Your account has been permanently declined',
+          );
         }
       }
-      
+
       // Check if permanently declined (rider)
       if (user.role === UserRole.RIDER) {
         const rider = await this.riderRepository.findOne({
           where: { user_id: user.id },
         });
         if (rider?.approval_status === 'REJECTED') {
-          throw new UnauthorizedException('Your account has been permanently declined');
+          throw new UnauthorizedException(
+            'Your account has been permanently declined',
+          );
         }
       }
 
@@ -98,11 +102,15 @@ export class AuthService {
           where: { manager_user_id: user.id },
         });
         if (hub?.status === 'REJECTED') {
-          throw new UnauthorizedException('Your account has been permanently declined');
+          throw new UnauthorizedException(
+            'Your account has been permanently declined',
+          );
         }
       }
-      
-      throw new UnauthorizedException('Your account has been deactivated by admin');
+
+      throw new UnauthorizedException(
+        'Your account has been deactivated by admin',
+      );
     }
 
     // Generate tokens
@@ -279,7 +287,10 @@ export class AuthService {
     if (!user) throw new NotFoundException('User not found');
 
     // 2. Generate 6-digit OTP (or use default OTP if enabled)
-    const defaultEnabled = this.configService.get<string>('OTP_DEFAULT_ENABLED', 'false').toLowerCase() === 'true';
+    const defaultEnabled =
+      this.configService
+        .get<string>('OTP_DEFAULT_ENABLED', 'false')
+        .toLowerCase() === 'true';
     const otp = defaultEnabled
       ? this.configService.get<string>('OTP_DEFAULT_VALUE', '1234')
       : Math.floor(100000 + Math.random() * 900000).toString();
@@ -422,22 +433,28 @@ export class AuthService {
         secondary_number: merchant.secondary_number,
         status: merchant.status,
         approved_at: merchant.approved_at,
-        profile: merchant.merchant_profile ? {
-          profile_img_url: merchant.merchant_profile.profile_img_url,
-          nid_number: merchant.merchant_profile.nid_number,
-          nid_front_url: merchant.merchant_profile.nid_front_url,
-          nid_back_url: merchant.merchant_profile.nid_back_url,
-          nid_verified: merchant.merchant_profile.nid_verified || false,
-          trade_license_number: merchant.merchant_profile.trade_license_number,
-          trade_license_url: merchant.merchant_profile.trade_license_url,
-          trade_license_verified: merchant.merchant_profile.trade_license_verified || false,
-          tin_number: merchant.merchant_profile.tin_number,
-          tin_certificate_url: merchant.merchant_profile.tin_certificate_url,
-          tin_verified: merchant.merchant_profile.tin_verified || false,
-          bin_number: merchant.merchant_profile.bin_number,
-          bin_certificate_url: merchant.merchant_profile.bin_certificate_url,
-          bin_verified: merchant.merchant_profile.bin_verified || false,
-        } : null,
+        profile: merchant.merchant_profile
+          ? {
+              profile_img_url: merchant.merchant_profile.profile_img_url,
+              nid_number: merchant.merchant_profile.nid_number,
+              nid_front_url: merchant.merchant_profile.nid_front_url,
+              nid_back_url: merchant.merchant_profile.nid_back_url,
+              nid_verified: merchant.merchant_profile.nid_verified || false,
+              trade_license_number:
+                merchant.merchant_profile.trade_license_number,
+              trade_license_url: merchant.merchant_profile.trade_license_url,
+              trade_license_verified:
+                merchant.merchant_profile.trade_license_verified || false,
+              tin_number: merchant.merchant_profile.tin_number,
+              tin_certificate_url:
+                merchant.merchant_profile.tin_certificate_url,
+              tin_verified: merchant.merchant_profile.tin_verified || false,
+              bin_number: merchant.merchant_profile.bin_number,
+              bin_certificate_url:
+                merchant.merchant_profile.bin_certificate_url,
+              bin_verified: merchant.merchant_profile.bin_verified || false,
+            }
+          : null,
       },
     };
   }
@@ -461,13 +478,15 @@ export class AuthService {
       ...baseProfile,
       hub_manager_id: hubManager.id,
       hub_id: hubManager.hub_id,
-      hub: hubManager.hub ? {
-        id: hubManager.hub.id,
-        hub_code: hubManager.hub.hub_code,
-        branch_name: hubManager.hub.branch_name,
-        area: hubManager.hub.area,
-        address: hubManager.hub.address,
-      } : null,
+      hub: hubManager.hub
+        ? {
+            id: hubManager.hub.id,
+            hub_code: hubManager.hub.hub_code,
+            branch_name: hubManager.hub.branch_name,
+            area: hubManager.hub.area,
+            address: hubManager.hub.address,
+          }
+        : null,
     };
   }
 
@@ -507,13 +526,15 @@ export class AuthService {
         bank_branch: rider.bank_branch,
         is_active: rider.is_active,
       },
-      hub: rider.hub ? {
-        id: rider.hub.id,
-        hub_code: rider.hub.hub_code,
-        branch_name: rider.hub.branch_name,
-        area: rider.hub.area,
-        address: rider.hub.address,
-      } : null,
+      hub: rider.hub
+        ? {
+            id: rider.hub.id,
+            hub_code: rider.hub.hub_code,
+            branch_name: rider.hub.branch_name,
+            area: rider.hub.area,
+            address: rider.hub.address,
+          }
+        : null,
     };
   }
 }

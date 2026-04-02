@@ -38,4 +38,3 @@ export class CreateBankDto {
   @IsOptional()
   display_order?: number;
 }
-

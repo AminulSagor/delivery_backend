@@ -37,6 +37,7 @@ import {
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
 import { MerchantOverviewQueryDto } from './dto/merchant-overview.dto';
+import { UpdateAdvancePaymentToggleDto } from './dto/update-advance-payment-toggle.dto';
 
 @Controller('merchants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -60,7 +61,8 @@ export class MerchantController {
   @Roles(UserRole.ADMIN)
   @Get('pending-documents')
   async getPendingDocuments() {
-    const merchants = await this.merchantService.findMerchantsWithPendingDocuments();
+    const merchants =
+      await this.merchantService.findMerchantsWithPendingDocuments();
     return {
       merchants,
       message: 'Merchants with pending documents retrieved successfully',
@@ -109,6 +111,31 @@ export class MerchantController {
       success: true,
       data,
       message: 'Merchant overview retrieved successfully',
+    };
+  }
+
+  /**
+   * Toggle advance payment feature per merchant (Admin / Hub Manager)
+   * If enabled (flag=true), all advance payment actions are blocked for that merchant.
+   */
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  @Patch(':id/advance-payments/toggle')
+  async toggleAdvancePayments(
+    @Param('id') id: string,
+    @Body() dto: UpdateAdvancePaymentToggleDto,
+    @CurrentUser() user: any,
+  ) {
+    const updated = await this.merchantService.setAdvancePaymentDisabled(
+      id,
+      dto.is_advance_payment_disabled,
+      { hubId: user.role === UserRole.HUB_MANAGER ? user.hubId : null },
+    );
+
+    return {
+      success: true,
+      merchant_id: updated.id,
+      is_advance_payment_disabled: updated.is_advance_payment_disabled,
+      message: 'Advance payment toggle updated successfully',
     };
   }
 
@@ -198,8 +225,14 @@ export class MerchantController {
   @Roles(UserRole.ADMIN)
   @Patch(':id/documents/trade-license/approve')
   async approveTradeLicense(@Param('id') id: string) {
-    const result = await this.merchantService.approveDocument(id, 'trade_license');
-    return { ...result, message: 'Trade license document approved successfully' };
+    const result = await this.merchantService.approveDocument(
+      id,
+      'trade_license',
+    );
+    return {
+      ...result,
+      message: 'Trade license document approved successfully',
+    };
   }
 
   @Roles(UserRole.ADMIN)
@@ -449,7 +482,9 @@ export class MerchantController {
   @Get('parcel-summary/lifetime')
   @Roles(UserRole.MERCHANT)
   async getLifetimeParcelSummary(@Request() req) {
-    const summary = await this.merchantService.getLifetimeParcelSummary(req.user.merchantId);
+    const summary = await this.merchantService.getLifetimeParcelSummary(
+      req.user.merchantId,
+    );
     return {
       success: true,
       data: summary,

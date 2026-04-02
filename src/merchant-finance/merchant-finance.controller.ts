@@ -17,8 +17,15 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
-import { GetTransactionsQueryDto, GetAllMerchantsFinanceQueryDto } from './dto/get-transactions.dto';
-import { AdjustBalanceDto, HoldBalanceDto, ReleaseHoldDto } from './dto/adjust-balance.dto';
+import {
+  GetTransactionsQueryDto,
+  GetAllMerchantsFinanceQueryDto,
+} from './dto/get-transactions.dto';
+import {
+  AdjustBalanceDto,
+  HoldBalanceDto,
+  ReleaseHoldDto,
+} from './dto/adjust-balance.dto';
 
 @Controller('merchant-finance')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -147,11 +154,20 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getMerchantFinance(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
   ) {
     try {
-      const overview = await this.financeService.getMerchantFinanceOverview(merchantId);
+      const overview =
+        await this.financeService.getMerchantFinanceOverview(merchantId);
 
       return {
         success: true,
@@ -175,12 +191,23 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getMerchantTransactions(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
     @Query() query: GetTransactionsQueryDto,
   ) {
     try {
-      const result = await this.financeService.getTransactionHistory(merchantId, query);
+      const result = await this.financeService.getTransactionHistory(
+        merchantId,
+        query,
+      );
 
       return {
         success: true,
@@ -204,7 +231,15 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async adjustBalance(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
     @Body() dto: AdjustBalanceDto,
     @Req() req: any,
@@ -243,7 +278,15 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async holdBalance(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
     @Body() dto: HoldBalanceDto,
     @Req() req: any,
@@ -283,7 +326,15 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async releaseHold(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
     @Body() dto: ReleaseHoldDto,
     @Req() req: any,
@@ -323,7 +374,15 @@ export class MerchantFinanceController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async syncMerchantFinance(
-    @Param('merchantId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Invalid merchant ID format. Must be a valid UUID.') })) 
+    @Param(
+      'merchantId',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException(
+            'Invalid merchant ID format. Must be a valid UUID.',
+          ),
+      }),
+    )
     merchantId: string,
   ) {
     try {

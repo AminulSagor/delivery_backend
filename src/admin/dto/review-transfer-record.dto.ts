@@ -15,4 +15,3 @@ export class RejectTransferRecordDto {
   @IsString()
   admin_notes?: string;
 }
-

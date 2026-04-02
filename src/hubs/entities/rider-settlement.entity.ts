@@ -103,4 +103,3 @@ export class RiderSettlement {
   @UpdateDateColumn()
   updated_at: Date;
 }
-

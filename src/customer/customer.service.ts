@@ -138,24 +138,36 @@ export class CustomerService {
       // Update customer with new delivery info if provided
       let updated = false;
 
-      if (payload.delivery_coverage_area_id && existing.delivery_coverage_area_id !== payload.delivery_coverage_area_id) {
+      if (
+        payload.delivery_coverage_area_id &&
+        existing.delivery_coverage_area_id !== payload.delivery_coverage_area_id
+      ) {
         existing.delivery_coverage_area_id = payload.delivery_coverage_area_id;
         updated = true;
       }
 
-      if (payload.customer_secondary_phone && existing.secondary_number !== payload.customer_secondary_phone) {
+      if (
+        payload.customer_secondary_phone &&
+        existing.secondary_number !== payload.customer_secondary_phone
+      ) {
         existing.secondary_number = payload.customer_secondary_phone;
         updated = true;
       }
 
       // Update address if different
-      if (payload.customer_address && existing.customer_address !== payload.customer_address) {
+      if (
+        payload.customer_address &&
+        existing.customer_address !== payload.customer_address
+      ) {
         existing.customer_address = payload.customer_address;
         updated = true;
       }
 
       // Update name if different
-      if (payload.customer_name && existing.customer_name !== payload.customer_name) {
+      if (
+        payload.customer_name &&
+        existing.customer_name !== payload.customer_name
+      ) {
         existing.customer_name = payload.customer_name;
         updated = true;
       }
@@ -270,9 +282,7 @@ export class CustomerService {
     ];
 
     // Failure statuses (Returned/Rejected)
-    const cancelStatuses = [
-      ParcelStatus.CANCELLED,
-    ];
+    const cancelStatuses = [ParcelStatus.CANCELLED];
 
     // 3. Aggregate Stats for THIS Merchant only
     const history = await this.parcelsRepository
@@ -391,7 +401,8 @@ export class CustomerService {
           throw new BadRequestException('Invalid delivery coverage area');
         }
       }
-      customer.delivery_coverage_area_id = dto.delivery_coverage_area_id || null;
+      customer.delivery_coverage_area_id =
+        dto.delivery_coverage_area_id || null;
     }
 
     await this.customersRepository.save(customer);

@@ -33,9 +33,21 @@ export const ParcelTypeLabel: Record<ParcelType, string> = {
  */
 export function getAllParcelTypes() {
   return [
-    { id: ParcelType.PARCEL, value: ParcelType.PARCEL, label: ParcelTypeLabel[ParcelType.PARCEL] },
-    { id: ParcelType.BOOK, value: ParcelType.BOOK, label: ParcelTypeLabel[ParcelType.BOOK] },
-    { id: ParcelType.DOCUMENT, value: ParcelType.DOCUMENT, label: ParcelTypeLabel[ParcelType.DOCUMENT] },
+    {
+      id: ParcelType.PARCEL,
+      value: ParcelType.PARCEL,
+      label: ParcelTypeLabel[ParcelType.PARCEL],
+    },
+    {
+      id: ParcelType.BOOK,
+      value: ParcelType.BOOK,
+      label: ParcelTypeLabel[ParcelType.BOOK],
+    },
+    {
+      id: ParcelType.DOCUMENT,
+      value: ParcelType.DOCUMENT,
+      label: ParcelTypeLabel[ParcelType.DOCUMENT],
+    },
   ];
 }
 

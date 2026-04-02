@@ -121,4 +121,3 @@ export class MerchantInvoice {
   @UpdateDateColumn()
   updated_at: Date;
 }
-

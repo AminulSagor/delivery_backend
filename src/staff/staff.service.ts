@@ -151,10 +151,7 @@ export class StaffService {
   /**
    * Get all staff with filters
    */
-  async findAll(
-    hubId?: string,
-    isActive?: boolean,
-  ): Promise<Staff[]> {
+  async findAll(hubId?: string, isActive?: boolean): Promise<Staff[]> {
     const query = this.staffRepository
       .createQueryBuilder('staff')
       .leftJoinAndSelect('staff.user', 'user')
@@ -230,7 +227,10 @@ export class StaffService {
     }
 
     // If updating NID, check uniqueness
-    if (updateStaffDto.nid_number && updateStaffDto.nid_number !== staff.nid_number) {
+    if (
+      updateStaffDto.nid_number &&
+      updateStaffDto.nid_number !== staff.nid_number
+    ) {
       const existingNID = await this.staffRepository.findOne({
         where: { nid_number: updateStaffDto.nid_number },
       });
@@ -254,11 +254,15 @@ export class StaffService {
       ) {
         const userUpdate: any = {};
 
-        if (updateStaffDto.full_name) userUpdate.full_name = updateStaffDto.full_name;
+        if (updateStaffDto.full_name)
+          userUpdate.full_name = updateStaffDto.full_name;
         if (updateStaffDto.phone) userUpdate.phone = updateStaffDto.phone;
         if (updateStaffDto.email) userUpdate.email = updateStaffDto.email;
         if (updateStaffDto.password) {
-          userUpdate.password_hash = await bcrypt.hash(updateStaffDto.password, 10);
+          userUpdate.password_hash = await bcrypt.hash(
+            updateStaffDto.password,
+            10,
+          );
         }
 
         await queryRunner.manager.update(User, staff.user_id, userUpdate);
@@ -268,14 +272,18 @@ export class StaffService {
       const staffUpdate: any = {};
 
       if (updateStaffDto.hub_id) staffUpdate.hub_id = updateStaffDto.hub_id;
-      if (updateStaffDto.position) staffUpdate.position = updateStaffDto.position;
-      if (updateStaffDto.photo !== undefined) staffUpdate.photo = updateStaffDto.photo;
+      if (updateStaffDto.position)
+        staffUpdate.position = updateStaffDto.position;
+      if (updateStaffDto.photo !== undefined)
+        staffUpdate.photo = updateStaffDto.photo;
       if (updateStaffDto.secondary_phone !== undefined)
         staffUpdate.secondary_phone = updateStaffDto.secondary_phone;
       if (updateStaffDto.guardian_mobile_no)
         staffUpdate.guardian_mobile_no = updateStaffDto.guardian_mobile_no;
-      if (updateStaffDto.bike_type) staffUpdate.bike_type = updateStaffDto.bike_type;
-      if (updateStaffDto.nid_number) staffUpdate.nid_number = updateStaffDto.nid_number;
+      if (updateStaffDto.bike_type)
+        staffUpdate.bike_type = updateStaffDto.bike_type;
+      if (updateStaffDto.nid_number)
+        staffUpdate.nid_number = updateStaffDto.nid_number;
       if (updateStaffDto.license_no !== undefined)
         staffUpdate.license_no = updateStaffDto.license_no;
       if (updateStaffDto.present_address)
@@ -301,9 +309,11 @@ export class StaffService {
       if (updateStaffDto.license_back_photo !== undefined)
         staffUpdate.license_back_photo = updateStaffDto.license_back_photo;
       if (updateStaffDto.parent_nid_front_photo)
-        staffUpdate.parent_nid_front_photo = updateStaffDto.parent_nid_front_photo;
+        staffUpdate.parent_nid_front_photo =
+          updateStaffDto.parent_nid_front_photo;
       if (updateStaffDto.parent_nid_back_photo)
-        staffUpdate.parent_nid_back_photo = updateStaffDto.parent_nid_back_photo;
+        staffUpdate.parent_nid_back_photo =
+          updateStaffDto.parent_nid_back_photo;
       if (updateStaffDto.is_active !== undefined)
         staffUpdate.is_active = updateStaffDto.is_active;
 
@@ -349,7 +359,7 @@ export class StaffService {
     }
 
     await this.staffRepository.save(staff);
-    
+
     // Return with relations
     return await this.findOne(id);
   }
@@ -372,7 +382,7 @@ export class StaffService {
     }
 
     await this.staffRepository.save(staff);
-    
+
     // Return with relations
     return await this.findOne(id);
   }

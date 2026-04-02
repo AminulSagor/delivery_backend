@@ -10,9 +10,21 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { DeliveryVerification, DeliveryVerificationStatus, OtpRecipientType } from './entities/delivery-verification.entity';
-import { Parcel, ParcelStatus, PaymentStatus, REASON_REQUIRED_STATUSES } from '../parcels/entities/parcel.entity';
-import { ReturnChargeConfiguration, ReturnStatus } from '../pricing/entities/return-charge-configuration.entity';
+import {
+  DeliveryVerification,
+  DeliveryVerificationStatus,
+  OtpRecipientType,
+} from './entities/delivery-verification.entity';
+import {
+  Parcel,
+  ParcelStatus,
+  PaymentStatus,
+  REASON_REQUIRED_STATUSES,
+} from '../parcels/entities/parcel.entity';
+import {
+  ReturnChargeConfiguration,
+  ReturnStatus,
+} from '../pricing/entities/return-charge-configuration.entity';
 import { PricingZone } from '../common/enums/pricing-zone.enum';
 import { SmsService } from '../utils/sms.service';
 
@@ -33,19 +45,20 @@ export class DeliveryVerificationsService {
 
   /**
    * Initiate delivery status update - Step 1
-   * 
+   *
    * Rider selects a status and provides collected amount.
-   * 
+   *
    * Flow:
    * 1. Rider selects status (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED)
    * 2. Rider enters collected amount
    * 3. System determines if reason is required:
    *    - Amount differs from expected → reason required
    *    - Status is DELIVERY_RESCHEDULED, PAID_RETURN, or RETURNED → reason always required
-   * 4. System determines OTP recipient:
-   *    - If DELIVERED and expected amount = 0 (already paid) → OTP to Customer
-   *    - All other cases → OTP to Merchant
-   * 5. OTP is sent and must be verified to complete
+  * 4. System determines if OTP can be skipped:
+  *    - If DELIVERED and collected amount matches expected amount → no OTP required
+  * 5. If OTP required, determine recipient:
+  *    - If DELIVERED and expected amount = 0 (already paid) → OTP to Customer
+  *    - All other cases → OTP to Merchant
    */
   async initiateDelivery(
     parcelId: string,
@@ -75,6 +88,8 @@ export class DeliveryVerificationsService {
     const expectedAmount = Number(parcel.cod_amount) || 0;
     const hasDifference = Math.abs(collectedAmount - expectedAmount) > 0.01;
     const amountDifference = collectedAmount - expectedAmount;
+    const skipOtpVerification =
+      selectedStatus === ParcelStatus.DELIVERED && !hasDifference;
 
     // 3. Validate: Check if collected amount exceeds expected (potential over-collection)
     if (collectedAmount > expectedAmount) {
@@ -87,21 +102,26 @@ export class DeliveryVerificationsService {
     }
 
     // 4. Check if reason is required
-    const statusRequiresReason = (REASON_REQUIRED_STATUSES as readonly ParcelStatus[]).includes(selectedStatus);
+    const statusRequiresReason = (
+      REASON_REQUIRED_STATUSES as readonly ParcelStatus[]
+    ).includes(selectedStatus);
     const reasonRequired = hasDifference || statusRequiresReason;
 
     if (reasonRequired && !reason) {
       const reasonMessage = statusRequiresReason
         ? `Reason is required for status: ${selectedStatus}`
         : 'Amount differs from expected. Please provide a reason.';
-      
+
       throw new BadRequestException(reasonMessage);
     }
 
     // 5. Determine OTP recipient
     // Special case: If DELIVERED and expected = 0 (already paid), OTP goes to customer
-    const isAlreadyPaid = selectedStatus === ParcelStatus.DELIVERED && expectedAmount === 0;
-    const otpRecipientType = isAlreadyPaid ? OtpRecipientType.CUSTOMER : OtpRecipientType.MERCHANT;
+    const isAlreadyPaid =
+      selectedStatus === ParcelStatus.DELIVERED && expectedAmount === 0;
+    const otpRecipientType = isAlreadyPaid
+      ? OtpRecipientType.CUSTOMER
+      : OtpRecipientType.MERCHANT;
 
     // Get phone number for OTP recipient
     let otpPhone: string | null = null;
@@ -126,10 +146,14 @@ export class DeliveryVerificationsService {
     if (existingVerification) {
       // Block re-initiation only if delivery is already completed
       if (
-        existingVerification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
-        existingVerification.verification_status === DeliveryVerificationStatus.COMPLETED
+        existingVerification.verification_status ===
+          DeliveryVerificationStatus.OTP_VERIFIED ||
+        existingVerification.verification_status ===
+          DeliveryVerificationStatus.COMPLETED
       ) {
-        throw new BadRequestException('Delivery has already been completed for this parcel');
+        throw new BadRequestException(
+          'Delivery has already been completed for this parcel',
+        );
       }
 
       // Retry scenario: rider could not obtain the OTP — update existing record and resend
@@ -140,17 +164,56 @@ export class DeliveryVerificationsService {
       existingVerification.difference_reason = reason || null;
       existingVerification.otp_recipient_type = otpRecipientType;
       existingVerification.otp_sent_to_phone = otpPhone;
-      existingVerification.merchant_phone_used = parcel.store?.merchant?.user?.phone || null;
+      existingVerification.merchant_phone_used =
+        parcel.store?.merchant?.user?.phone || null;
       existingVerification.customer_phone_used = parcel.customer_phone || null;
+      existingVerification.requires_otp_verification = !skipOtpVerification;
       existingVerification.otp_attempts = 0;
       existingVerification.delivery_attempted_at = new Date();
+
+      if (skipOtpVerification) {
+        existingVerification.otp_code = null;
+        existingVerification.otp_sent_at = null;
+        existingVerification.otp_expires_at = null;
+        existingVerification.otp_verified_at = null;
+        existingVerification.otp_verified_by = null;
+        existingVerification.merchant_approved = false;
+        existingVerification.merchant_approved_at = null;
+        existingVerification.verification_status =
+          DeliveryVerificationStatus.PENDING;
+
+        await this.deliveryVerificationRepo.save(existingVerification);
+        await this.completeDelivery(existingVerification.id);
+
+        this.logger.log(
+          `[DELIVERY DIRECT COMPLETE] Parcel: ${parcel.tracking_number}, Status: ${selectedStatus}, ` +
+            `Expected: ${expectedAmount}, Collected: ${collectedAmount}`,
+        );
+
+        return {
+          success: true,
+          verification_id: existingVerification.id,
+          selected_status: selectedStatus,
+          expected_amount: expectedAmount,
+          collected_amount: collectedAmount,
+          has_difference: hasDifference,
+          difference: amountDifference,
+          reason: reason || null,
+          otp_required: false,
+          message:
+            'Delivery completed successfully. OTP verification was not required.',
+        };
+      }
 
       const retryOtp = this.generateOtp();
       const retryHashedOtp = await bcrypt.hash(retryOtp, 10);
       existingVerification.otp_code = retryHashedOtp;
       existingVerification.otp_sent_at = new Date();
-      existingVerification.otp_expires_at = new Date(Date.now() + 5 * 60 * 1000);
-      existingVerification.verification_status = DeliveryVerificationStatus.OTP_SENT;
+      existingVerification.otp_expires_at = new Date(
+        Date.now() + 5 * 60 * 1000,
+      );
+      existingVerification.verification_status =
+        DeliveryVerificationStatus.OTP_SENT;
 
       await this.deliveryVerificationRepo.save(existingVerification);
 
@@ -165,7 +228,10 @@ export class DeliveryVerificationsService {
         otpRecipientType,
       );
 
-      const retryRecipientLabel = otpRecipientType === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
+      const retryRecipientLabel =
+        otpRecipientType === OtpRecipientType.CUSTOMER
+          ? 'customer'
+          : 'merchant';
       this.logger.log(
         `[DELIVERY RETRY] Parcel: ${parcel.tracking_number}, re-initiated by rider. OTP resent to: ${retryRecipientLabel}`,
       );
@@ -197,7 +263,7 @@ export class DeliveryVerificationsService {
       // amount_difference is auto-calculated: collected_amount - expected_cod_amount
       has_amount_difference: hasDifference,
       difference_reason: reason || null,
-      requires_otp_verification: true,
+      requires_otp_verification: !skipOtpVerification,
       otp_recipient_type: otpRecipientType,
       otp_sent_to_phone: otpPhone,
       merchant_phone_used: parcel.store?.merchant?.user?.phone || null,
@@ -207,6 +273,29 @@ export class DeliveryVerificationsService {
     });
 
     await this.deliveryVerificationRepo.save(verification);
+
+    if (skipOtpVerification) {
+      await this.completeDelivery(verification.id);
+
+      this.logger.log(
+        `[DELIVERY DIRECT COMPLETE] Parcel: ${parcel.tracking_number}, Status: ${selectedStatus}, ` +
+          `Expected: ${expectedAmount}, Collected: ${collectedAmount}`,
+      );
+
+      return {
+        success: true,
+        verification_id: verification.id,
+        selected_status: selectedStatus,
+        expected_amount: expectedAmount,
+        collected_amount: collectedAmount,
+        has_difference: hasDifference,
+        difference: amountDifference,
+        reason: reason || null,
+        otp_required: false,
+        message:
+          'Delivery completed successfully. OTP verification was not required.',
+      };
+    }
 
     // 7. Generate and send OTP
     const otp = this.generateOtp();
@@ -232,10 +321,11 @@ export class DeliveryVerificationsService {
       otpRecipientType,
     );
 
-    const recipientLabel = otpRecipientType === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
+    const recipientLabel =
+      otpRecipientType === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
     this.logger.log(
       `[DELIVERY INIT] Parcel: ${parcel.tracking_number}, Status: ${selectedStatus}, ` +
-      `Expected: ${expectedAmount}, Collected: ${collectedAmount}, OTP sent to: ${recipientLabel}`,
+        `Expected: ${expectedAmount}, Collected: ${collectedAmount}, OTP sent to: ${recipientLabel}`,
     );
 
     return {
@@ -258,7 +348,11 @@ export class DeliveryVerificationsService {
    * Request OTP - Step 2
    * Rider provides reason for amount difference
    */
-  async requestOtp(verificationId: string, riderId: string, differenceReason: string) {
+  async requestOtp(
+    verificationId: string,
+    riderId: string,
+    differenceReason: string,
+  ) {
     const verification = await this.deliveryVerificationRepo.findOne({
       where: { id: verificationId },
       relations: ['parcel', 'parcel.store', 'parcel.assignedRider'],
@@ -270,18 +364,27 @@ export class DeliveryVerificationsService {
 
     // Verify rider owns this verification
     if (verification.parcel.assigned_rider_id !== riderId) {
-      throw new ForbiddenException('You are not authorized to request OTP for this delivery');
+      throw new ForbiddenException(
+        'You are not authorized to request OTP for this delivery',
+      );
     }
 
     // Check if already verified
-    if (verification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
-        verification.verification_status === DeliveryVerificationStatus.COMPLETED) {
+    if (
+      verification.verification_status ===
+        DeliveryVerificationStatus.OTP_VERIFIED ||
+      verification.verification_status === DeliveryVerificationStatus.COMPLETED
+    ) {
       throw new BadRequestException('Delivery already verified');
     }
 
     // Check if OTP failed
-    if (verification.verification_status === DeliveryVerificationStatus.OTP_FAILED) {
-      throw new BadRequestException('OTP verification failed. Please contact support.');
+    if (
+      verification.verification_status === DeliveryVerificationStatus.OTP_FAILED
+    ) {
+      throw new BadRequestException(
+        'OTP verification failed. Please contact support.',
+      );
     }
 
     // Generate 4-digit OTP
@@ -299,7 +402,8 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     // Send SMS to the appropriate recipient
-    const otpPhone = verification.otp_sent_to_phone || verification.merchant_phone_used;
+    const otpPhone =
+      verification.otp_sent_to_phone || verification.merchant_phone_used;
     if (otpPhone) {
       await this.sendOtpSms(
         otpPhone,
@@ -313,15 +417,21 @@ export class DeliveryVerificationsService {
       );
     }
 
-    const recipientLabel = verification.otp_recipient_type === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
-    this.logger.log(`OTP sent to ${recipientLabel} for parcel ${verification.parcel.tracking_number}`);
+    const recipientLabel =
+      verification.otp_recipient_type === OtpRecipientType.CUSTOMER
+        ? 'customer'
+        : 'merchant';
+    this.logger.log(
+      `OTP sent to ${recipientLabel} for parcel ${verification.parcel.tracking_number}`,
+    );
 
     return {
       success: true,
       otp_sent: true,
       merchant_phone: verification.merchant_phone_used,
       otp_expires_at: verification.otp_expires_at,
-      message: 'OTP sent to merchant. Please ask merchant for the 4-digit code.',
+      message:
+        'OTP sent to merchant. Please ask merchant for the 4-digit code.',
     };
   }
 
@@ -341,16 +451,25 @@ export class DeliveryVerificationsService {
 
     // Verify rider owns this verification
     if (verification.parcel.assigned_rider_id !== riderId) {
-      throw new ForbiddenException('You are not authorized to verify OTP for this delivery');
+      throw new ForbiddenException(
+        'You are not authorized to verify OTP for this delivery',
+      );
     }
 
     // Check if OTP was sent
-    if (verification.verification_status !== DeliveryVerificationStatus.OTP_SENT) {
-      throw new BadRequestException('OTP not sent yet. Please request OTP first.');
+    if (
+      verification.verification_status !== DeliveryVerificationStatus.OTP_SENT
+    ) {
+      throw new BadRequestException(
+        'OTP not sent yet. Please request OTP first.',
+      );
     }
 
     // Check expiry
-    if (!verification.otp_expires_at || new Date() > verification.otp_expires_at) {
+    if (
+      !verification.otp_expires_at ||
+      new Date() > verification.otp_expires_at
+    ) {
       throw new BadRequestException('OTP expired. Please request a new OTP.');
     }
 
@@ -358,7 +477,9 @@ export class DeliveryVerificationsService {
     if (verification.otp_attempts >= 3) {
       verification.verification_status = DeliveryVerificationStatus.OTP_FAILED;
       await this.deliveryVerificationRepo.save(verification);
-      throw new BadRequestException('Maximum OTP attempts exceeded. Please contact support.');
+      throw new BadRequestException(
+        'Maximum OTP attempts exceeded. Please contact support.',
+      );
     }
 
     // Verify OTP
@@ -370,7 +491,7 @@ export class DeliveryVerificationsService {
     if (!isValid) {
       verification.otp_attempts += 1;
       await this.deliveryVerificationRepo.save(verification);
-      
+
       const remainingAttempts = 3 - verification.otp_attempts;
       throw new BadRequestException(
         `Invalid OTP. ${remainingAttempts} attempt${remainingAttempts !== 1 ? 's' : ''} remaining.`,
@@ -387,10 +508,13 @@ export class DeliveryVerificationsService {
 
     await this.completeDelivery(verificationId);
 
-    const verifiedBy = verification.otp_recipient_type === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
+    const verifiedBy =
+      verification.otp_recipient_type === OtpRecipientType.CUSTOMER
+        ? 'customer'
+        : 'merchant';
     this.logger.log(
       `[OTP VERIFIED] Parcel: ${verification.parcel.tracking_number}, ` +
-      `Status: ${verification.selected_status}, Verified by: ${verifiedBy}`,
+        `Status: ${verification.selected_status}, Verified by: ${verifiedBy}`,
     );
 
     return {
@@ -415,17 +539,21 @@ export class DeliveryVerificationsService {
 
     // Verify rider owns this verification
     if (verification.parcel.assigned_rider_id !== riderId) {
-      throw new ForbiddenException('You are not authorized to resend OTP for this delivery');
+      throw new ForbiddenException(
+        'You are not authorized to resend OTP for this delivery',
+      );
     }
 
     // Check if can resend (1 minute cooldown)
     if (verification.otp_sent_at) {
       const timeSinceLastSend = Date.now() - verification.otp_sent_at.getTime();
       const cooldownMs = 60 * 1000; // 1 minute
-      
+
       if (timeSinceLastSend < cooldownMs) {
         const waitSeconds = Math.ceil((cooldownMs - timeSinceLastSend) / 1000);
-        throw new BadRequestException(`Please wait ${waitSeconds} seconds before resending OTP`);
+        throw new BadRequestException(
+          `Please wait ${waitSeconds} seconds before resending OTP`,
+        );
       }
     }
 
@@ -443,7 +571,8 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     // Resend SMS to the appropriate recipient
-    const otpPhone = verification.otp_sent_to_phone || verification.merchant_phone_used;
+    const otpPhone =
+      verification.otp_sent_to_phone || verification.merchant_phone_used;
     if (otpPhone) {
       await this.sendOtpSms(
         otpPhone,
@@ -457,7 +586,10 @@ export class DeliveryVerificationsService {
       );
     }
 
-    const recipientLabel = verification.otp_recipient_type === OtpRecipientType.CUSTOMER ? 'customer' : 'merchant';
+    const recipientLabel =
+      verification.otp_recipient_type === OtpRecipientType.CUSTOMER
+        ? 'customer'
+        : 'merchant';
     return {
       success: true,
       otp_sent: true,
@@ -470,15 +602,19 @@ export class DeliveryVerificationsService {
   /**
    * Get verification details
    */
-  async getVerification(verificationId: string, userId: string, userRole: string) {
+  async getVerification(
+    verificationId: string,
+    userId: string,
+    userRole: string,
+  ) {
     const verification = await this.deliveryVerificationRepo.findOne({
       where: { id: verificationId },
       relations: [
-        'parcel', 
-        'parcel.store', 
+        'parcel',
+        'parcel.store',
         'parcel.store.merchant',
         'parcel.store.merchant.user',
-        'parcel.assignedRider', 
+        'parcel.assignedRider',
         'parcel.assignedRider.user',
         'rider',
         'rider.user',
@@ -490,13 +626,16 @@ export class DeliveryVerificationsService {
     }
 
     // Authorization check - compare against USER IDs not entity IDs
-    const isRider = verification.rider?.user_id === userId || 
-                    verification.parcel?.assignedRider?.user_id === userId;
+    const isRider =
+      verification.rider?.user_id === userId ||
+      verification.parcel?.assignedRider?.user_id === userId;
     const isMerchant = verification.parcel?.store?.merchant?.user_id === userId;
     const isAdmin = userRole === 'ADMIN';
 
     if (!isRider && !isMerchant && !isAdmin) {
-      throw new ForbiddenException('You are not authorized to view this verification');
+      throw new ForbiddenException(
+        'You are not authorized to view this verification',
+      );
     }
 
     // Return different data based on role
@@ -511,8 +650,10 @@ export class DeliveryVerificationsService {
 
     // For Rider: Show relevant data based on verification state
     if (isRider) {
-      const isCompleted = verification.verification_status === DeliveryVerificationStatus.COMPLETED;
-      
+      const isCompleted =
+        verification.verification_status ===
+        DeliveryVerificationStatus.COMPLETED;
+
       // If completed, just show the result
       if (isCompleted) {
         return {
@@ -534,7 +675,9 @@ export class DeliveryVerificationsService {
           difference: Number(verification.amount_difference),
           reason: verification.difference_reason,
           otp_sent_to: verification.otp_recipient_type,
-          otp_phone: verification.otp_sent_to_phone ? this.maskPhone(verification.otp_sent_to_phone) : null,
+          otp_phone: verification.otp_sent_to_phone
+            ? this.maskPhone(verification.otp_sent_to_phone)
+            : null,
           otp_expires_at: verification.otp_expires_at,
         },
       };
@@ -599,12 +742,12 @@ export class DeliveryVerificationsService {
     // Update parcel status
     parcel.status = selectedStatus;
     parcel.delivered_at = new Date();
-    
+
     // ✅ Copy delivery reason from verification to parcel
     if (verification.difference_reason) {
       parcel.return_reason = verification.difference_reason;
     }
-    
+
     // ✅ FLAG: Mark parcel as UNPAID to merchant (will appear in clearance list)
     parcel.paid_to_merchant = false;
 
@@ -624,7 +767,10 @@ export class DeliveryVerificationsService {
         parcel.cod_collected_amount = collectedAmount;
         parcel.delivery_charge_applicable = true;
         parcel.return_charge_applicable = true;
-        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.PARTIAL_DELIVERY);
+        parcel.return_charge = await this.calculateReturnCharge(
+          parcel,
+          ReturnStatus.PARTIAL_DELIVERY,
+        );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
         break;
 
@@ -633,7 +779,10 @@ export class DeliveryVerificationsService {
         parcel.cod_collected_amount = collectedAmount;
         parcel.delivery_charge_applicable = true;
         parcel.return_charge_applicable = true;
-        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.EXCHANGE);
+        parcel.return_charge = await this.calculateReturnCharge(
+          parcel,
+          ReturnStatus.EXCHANGE,
+        );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
         break;
 
@@ -642,7 +791,10 @@ export class DeliveryVerificationsService {
         parcel.cod_collected_amount = collectedAmount; // Return fee collected
         parcel.delivery_charge_applicable = false;
         parcel.return_charge_applicable = true;
-        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.PAID_RETURN);
+        parcel.return_charge = await this.calculateReturnCharge(
+          parcel,
+          ReturnStatus.PAID_RETURN,
+        );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
         break;
 
@@ -651,7 +803,10 @@ export class DeliveryVerificationsService {
         parcel.cod_collected_amount = 0;
         parcel.delivery_charge_applicable = false;
         parcel.return_charge_applicable = true;
-        parcel.return_charge = await this.calculateReturnCharge(parcel, ReturnStatus.RETURNED);
+        parcel.return_charge = await this.calculateReturnCharge(
+          parcel,
+          ReturnStatus.RETURNED,
+        );
         parcel.payment_status = PaymentStatus.UNPAID; // No payment collected
         break;
 
@@ -680,16 +835,19 @@ export class DeliveryVerificationsService {
 
     this.logger.log(
       `[DELIVERY COMPLETED] Parcel: ${parcel.tracking_number}, ` +
-      `Status: ${selectedStatus}, Collected: ${collectedAmount}, ` +
-      `DeliveryCharge: ${parcel.delivery_charge_applicable}, ` +
-      `ReturnCharge: ${parcel.return_charge_applicable} (${parcel.return_charge})`,
+        `Status: ${selectedStatus}, Collected: ${collectedAmount}, ` +
+        `DeliveryCharge: ${parcel.delivery_charge_applicable}, ` +
+        `ReturnCharge: ${parcel.return_charge_applicable} (${parcel.return_charge})`,
     );
   }
 
   /**
    * Calculate return charge based on store configuration and parcel zone
    */
-  private async calculateReturnCharge(parcel: Parcel, returnStatus: ReturnStatus): Promise<number> {
+  private async calculateReturnCharge(
+    parcel: Parcel,
+    returnStatus: ReturnStatus,
+  ): Promise<number> {
     if (!parcel.store_id) {
       return 0;
     }
@@ -714,9 +872,26 @@ export class DeliveryVerificationsService {
       return 0;
     }
 
+    // Respect validity window
+    const now = new Date();
+    if (config.start_date && config.start_date > now) {
+      this.logger.warn(
+        `Return charge config not active yet for store ${parcel.store_id}, status ${returnStatus}, zone ${zone} (starts ${config.start_date.toISOString()})`,
+      );
+      return 0;
+    }
+    if (config.end_date && config.end_date < now) {
+      this.logger.warn(
+        `Return charge config expired for store ${parcel.store_id}, status ${returnStatus}, zone ${zone} (ended ${config.end_date.toISOString()})`,
+      );
+      return 0;
+    }
+
     // Calculate return charge
     const baseCharge = Number(config.return_delivery_charge) || 0;
-    const weightCharge = (Number(config.return_weight_charge_per_kg) || 0) * (Number(parcel.product_weight) || 0);
+    const weightCharge =
+      (Number(config.return_weight_charge_per_kg) || 0) *
+      (Number(parcel.product_weight) || 0);
     const codPercentage = Number(config.return_cod_percentage) || 0;
     const codCharge = (codPercentage / 100) * (Number(parcel.cod_amount) || 0);
 
@@ -735,23 +910,20 @@ export class DeliveryVerificationsService {
    * Determine pricing zone based on parcel's delivery area
    */
   private determinePricingZone(parcel: Parcel): PricingZone {
-    // Check if delivery coverage area has zone info
-    if (parcel.delivery_coverage_area) {
-      const division = parcel.delivery_coverage_area.division?.toLowerCase() || '';
-      const city = parcel.delivery_coverage_area.city?.toLowerCase() || '';
+    const area = parcel.delivery_coverage_area;
+    if (!area) return PricingZone.OUTSIDE_DHAKA;
 
-      // Dhaka divisions
-      if (division === 'dhaka' || city === 'dhaka') {
-        // Check if it's sub-dhaka (like Gazipur, Narayanganj, etc.)
-        const subDhakaAreas = ['gazipur', 'narayanganj', 'savar', 'tongi', 'keraniganj'];
-        if (subDhakaAreas.some(area => city.includes(area))) {
-          return PricingZone.SUB_DHAKA;
-        }
-        return PricingZone.INSIDE_DHAKA;
+    if (String(area.division || '').toLowerCase() === 'dhaka') {
+      // Prefer explicit flag if present
+      if (typeof (area as any).inside_dhaka_flag === 'boolean') {
+        return (area as any).inside_dhaka_flag
+          ? PricingZone.INSIDE_DHAKA
+          : PricingZone.SUB_DHAKA;
       }
+      // Fallback: treat Dhaka as inside
+      return PricingZone.INSIDE_DHAKA;
     }
 
-    // Default to outside Dhaka
     return PricingZone.OUTSIDE_DHAKA;
   }
 
@@ -760,10 +932,18 @@ export class DeliveryVerificationsService {
    * If OTP_DEFAULT_ENABLED=true, returns OTP_DEFAULT_VALUE for all requests (testing/dev only).
    */
   private generateOtp(): string {
-    const defaultEnabled = this.configService.get<string>('OTP_DEFAULT_ENABLED', 'false').toLowerCase() === 'true';
+    const defaultEnabled =
+      this.configService
+        .get<string>('OTP_DEFAULT_ENABLED', 'false')
+        .toLowerCase() === 'true';
     if (defaultEnabled) {
-      const defaultOtp = this.configService.get<string>('OTP_DEFAULT_VALUE', '1234');
-      this.logger.warn(`[DEFAULT OTP] Using default OTP: ${defaultOtp}. Disable OTP_DEFAULT_ENABLED in production!`);
+      const defaultOtp = this.configService.get<string>(
+        'OTP_DEFAULT_VALUE',
+        '1234',
+      );
+      this.logger.warn(
+        `[DEFAULT OTP] Using default OTP: ${defaultOtp}. Disable OTP_DEFAULT_ENABLED in production!`,
+      );
       return defaultOtp;
     }
     return crypto.randomInt(1000, 9999).toString();
@@ -794,7 +974,7 @@ export class DeliveryVerificationsService {
   ) {
     const difference = collectedAmount - expectedAmount;
     const hasDifference = Math.abs(difference) > 0.01;
-    
+
     let message: string;
 
     if (recipientType === OtpRecipientType.CUSTOMER) {
@@ -811,7 +991,8 @@ Share this code with the delivery rider to confirm receipt.
 - Courier Delivery`;
     } else if (hasDifference && reason) {
       // Merchant receives OTP with amount difference
-      const differenceText = difference > 0 ? `+৳${difference}` : `৳${difference}`;
+      const differenceText =
+        difference > 0 ? `+৳${difference}` : `৳${difference}`;
       message = `Delivery Verification Required!
 Parcel: ${trackingNumber}
 Status: ${this.formatStatus(selectedStatus)}
@@ -838,9 +1019,14 @@ Valid for 5 minutes.
     }
 
     try {
-      const sendSmsMethod = this.smsService['sendSms'] as (to: string, message: string) => Promise<any>;
+      const sendSmsMethod = this.smsService['sendSms'] as (
+        to: string,
+        message: string,
+      ) => Promise<any>;
       await sendSmsMethod.call(this.smsService, phone, message);
-      this.logger.log(`OTP SMS sent to ${this.maskPhone(phone)} (${recipientType})`);
+      this.logger.log(
+        `OTP SMS sent to ${this.maskPhone(phone)} (${recipientType})`,
+      );
     } catch (error) {
       this.logger.error(`Failed to send OTP SMS: ${error.message}`);
     }

@@ -289,7 +289,9 @@ export class AdminAccountsService {
       //   );
       // }
 
-      const transferId = dto.reference_id || `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const transferId =
+        dto.reference_id ||
+        `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const transferDescription = dto.description || 'Internal transfer';
 
       // Debit Sender
@@ -680,13 +682,22 @@ export class AdminAccountsService {
     // Calculate date range for "this month"
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
 
     // Get lifetime transferred (all-time CREDIT with HUB_TRANSFER type - APPROVED transfers only)
     const lifetimeTransferred = await this.statementRepo
       .createQueryBuilder('statement')
       .where('statement.type = :type', { type: 'CREDIT' })
-      .andWhere('statement.reference_type = :refType', { refType: 'HUB_TRANSFER' })
+      .andWhere('statement.reference_type = :refType', {
+        refType: 'HUB_TRANSFER',
+      })
       .select('COALESCE(SUM(statement.credit_amount), 0)', 'total')
       .getRawOne();
 
@@ -700,13 +711,17 @@ export class AdminAccountsService {
 
     // Calculate Available Balance
     // = Total approved hub transfers - Total approved expenses
-    const availableBalance = Number(lifetimeTransferred.total || 0) - Number(lifetimeExpenses.total || 0);
+    const availableBalance =
+      Number(lifetimeTransferred.total || 0) -
+      Number(lifetimeExpenses.total || 0);
 
     // Get all statements for this month with type CREDIT (incoming transfers)
     const transferredThisMonth = await this.statementRepo
       .createQueryBuilder('statement')
       .where('statement.type = :type', { type: 'CREDIT' })
-      .andWhere('statement.reference_type = :refType', { refType: 'HUB_TRANSFER' })
+      .andWhere('statement.reference_type = :refType', {
+        refType: 'HUB_TRANSFER',
+      })
       .andWhere('statement.created_at BETWEEN :start AND :end', {
         start: startOfMonth,
         end: endOfMonth,

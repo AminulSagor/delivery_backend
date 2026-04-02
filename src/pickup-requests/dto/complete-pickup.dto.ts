@@ -14,4 +14,3 @@ export class CompletePickupDto {
   @IsString()
   notes?: string;
 }
-

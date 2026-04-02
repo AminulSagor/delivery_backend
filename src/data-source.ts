@@ -13,10 +13,14 @@ const databaseUrl = process.env.DATABASE_URL;
 // Check if DATABASE_URL contains unresolved Railway template syntax
 if (databaseUrl && databaseUrl.includes('${{')) {
   console.error('');
-  console.error('❌ CRITICAL ERROR: DATABASE_URL contains unresolved Railway template syntax!');
+  console.error(
+    '❌ CRITICAL ERROR: DATABASE_URL contains unresolved Railway template syntax!',
+  );
   console.error('   Current value contains: ${{...}}');
   console.error('');
-  console.error('   This means the database is NOT properly linked to your web service.');
+  console.error(
+    '   This means the database is NOT properly linked to your web service.',
+  );
   console.error('');
   console.error('🔧 FIX in Railway Dashboard:');
   console.error('   1. Go to your web service → Variables tab');
@@ -25,7 +29,9 @@ if (databaseUrl && databaseUrl.includes('${{')) {
   console.error('   4. Select PostgreSQL service → DATABASE_URL');
   console.error('   5. Redeploy');
   console.error('');
-  console.error('📖 See RAILWAY_DATABASE_CONNECTION_FIX.md for detailed instructions');
+  console.error(
+    '📖 See RAILWAY_DATABASE_CONNECTION_FIX.md for detailed instructions',
+  );
   console.error('');
   throw new Error('DATABASE_URL contains unresolved Railway template syntax');
 }
@@ -56,22 +62,26 @@ const baseConfig = {
   // synchronize: Auto-creates/updates tables based on entities
   // Development: always enabled | Production: only with FORCE_SYNC
   synchronize: shouldSynchronize,
-  logging: (shouldSynchronize ? ['schema', 'error', 'warn'] : false) as LoggerOptions,
+  logging: (shouldSynchronize
+    ? ['schema', 'error', 'warn']
+    : false) as LoggerOptions,
 };
 
-// Railway/Production config: Use DATABASE_URL directly if available  
+// Railway/Production config: Use DATABASE_URL directly if available
 // Railway TCP Proxy: SSL configuration based on connection string or environment
 const productionConfig: DataSourceOptions = databaseUrl
   ? {
       ...baseConfig,
       url: databaseUrl,
       // Check if DATABASE_URL contains sslmode=disable
-      ssl: databaseUrl.includes('sslmode=disable') ? false : {
-        rejectUnauthorized: false,
-      },
+      ssl: databaseUrl.includes('sslmode=disable')
+        ? false
+        : {
+            rejectUnauthorized: false,
+          },
       extra: {
-        max: 5,                      // Small pool for Railway limits
-        idleTimeoutMillis: 30000,    // 30s idle timeout
+        max: 5, // Small pool for Railway limits
+        idleTimeoutMillis: 30000, // 30s idle timeout
         connectionTimeoutMillis: 10000, // 10s connection timeout
       },
     }
@@ -82,12 +92,15 @@ const productionConfig: DataSourceOptions = databaseUrl
       username: process.env.PGUSER || process.env.POSTGRES_USER || 'postgres',
       password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD,
       database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'railway',
-      ssl: process.env.PGSSLMODE === 'disable' ? false : {
-        rejectUnauthorized: false,
-      },
+      ssl:
+        process.env.PGSSLMODE === 'disable'
+          ? false
+          : {
+              rejectUnauthorized: false,
+            },
       extra: {
-        max: 5,                      // Small pool for Railway limits
-        idleTimeoutMillis: 30000,    // 30s idle timeout
+        max: 5, // Small pool for Railway limits
+        idleTimeoutMillis: 30000, // 30s idle timeout
         connectionTimeoutMillis: 10000, // 10s connection timeout
       },
     };
@@ -124,8 +137,12 @@ console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
 console.log(`Synchronize: ✅ ALWAYS ENABLED (auto-sync schema)`);
 console.log('');
-console.log('🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!');
-console.log('   ℹ️  No manual migrations needed. Schema syncs automatically on startup.');
+console.log(
+  '🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!',
+);
+console.log(
+  '   ℹ️  No manual migrations needed. Schema syncs automatically on startup.',
+);
 console.log('');
 
 // Show paths being used
@@ -144,7 +161,9 @@ if (databaseUrl) {
     console.error('⚠️  Failed to parse DATABASE_URL:', e.message);
   }
 } else if (isProductionEnv) {
-  console.warn('⚠️  WARNING: Running in production but DATABASE_URL is not set!');
+  console.warn(
+    '⚠️  WARNING: Running in production but DATABASE_URL is not set!',
+  );
 }
 
 console.log('='.repeat(60));

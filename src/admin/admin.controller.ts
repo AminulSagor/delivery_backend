@@ -65,9 +65,9 @@ export class AdminController {
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.adminService.remove(id);
-    return { 
+    return {
       deleted: true,
-      message: 'Admin user deleted successfully'
+      message: 'Admin user deleted successfully',
     };
   }
 
@@ -77,7 +77,7 @@ export class AdminController {
     const { password_hash, refresh_token, ...adminWithoutSensitive } = admin;
     return {
       ...adminWithoutSensitive,
-      message: 'Admin user deactivated successfully'
+      message: 'Admin user deactivated successfully',
     };
   }
 
@@ -87,7 +87,7 @@ export class AdminController {
     const { password_hash, refresh_token, ...adminWithoutSensitive } = admin;
     return {
       ...adminWithoutSensitive,
-      message: 'Admin user activated successfully'
+      message: 'Admin user activated successfully',
     };
   }
 

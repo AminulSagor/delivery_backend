@@ -254,7 +254,12 @@ export class ParcelsController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.RIDER, UserRole.HUB_MANAGER)
+  @Roles(
+    UserRole.MERCHANT,
+    UserRole.ADMIN,
+    UserRole.RIDER,
+    UserRole.HUB_MANAGER,
+  )
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: UserRole,

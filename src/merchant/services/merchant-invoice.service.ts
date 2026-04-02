@@ -71,7 +71,13 @@ export class MerchantInvoiceService {
         financial_status: FinancialStatus.PENDING,
         status: In(terminalStatuses), // Only terminal statuses
       },
-      relations: ['store', 'delivery_coverage_area', 'currentHub', 'merchant', 'merchant.user'],
+      relations: [
+        'store',
+        'delivery_coverage_area',
+        'currentHub',
+        'merchant',
+        'merchant.user',
+      ],
       order: {
         delivered_at: 'DESC',
       },
@@ -497,76 +503,82 @@ export class MerchantInvoiceService {
     const [invoices, total] = await queryBuilder.getManyAndCount();
 
     // Map and calculate payable amount for each invoice
-    const mappedInvoices = await Promise.all(invoices.map(async (invoice) => {
-      // Get amounts from invoice
-      const collectableAmount = Number(invoice.total_cod_amount) || 0;
-      const collectedAmount = Number(invoice.total_cod_collected) || 0;
+    const mappedInvoices = await Promise.all(
+      invoices.map(async (invoice) => {
+        // Get amounts from invoice
+        const collectableAmount = Number(invoice.total_cod_amount) || 0;
+        const collectedAmount = Number(invoice.total_cod_collected) || 0;
 
-      // Get parcels for this invoice to calculate detailed charges
-      const parcels = await this.parcelRepository.find({
-        where: { invoice_id: invoice.id },
-      });
+        // Get parcels for this invoice to calculate detailed charges
+        const parcels = await this.parcelRepository.find({
+          where: { invoice_id: invoice.id },
+        });
 
-      // Calculate charges from parcels
-      let deliveryCharge = 0;
-      let codCharge = 0;
-      let weightCharge = 0;
-      let returnCharge = 0;
-      let discount = 0;
+        // Calculate charges from parcels
+        let deliveryCharge = 0;
+        let codCharge = 0;
+        let weightCharge = 0;
+        let returnCharge = 0;
+        let discount = 0;
 
-      parcels.forEach((parcel) => {
-        deliveryCharge += Number(parcel.delivery_charge) || 0;
-        codCharge += Number(parcel.cod_charge) || 0;
-        weightCharge += Number(parcel.weight_charge) || 0;
-        returnCharge += parcel.return_charge_applicable ? Number(parcel.return_charge) || 0 : 0;
-        
-        // Calculate discount (if total_charge is less than sum of individual charges)
-        const calculatedTotal = (Number(parcel.delivery_charge) || 0) + 
-                                (Number(parcel.cod_charge) || 0) + 
-                                (Number(parcel.weight_charge) || 0);
-        const totalCharge = Number(parcel.total_charge) || 0;
-        if (calculatedTotal > totalCharge) {
-          discount += calculatedTotal - totalCharge;
+        parcels.forEach((parcel) => {
+          deliveryCharge += Number(parcel.delivery_charge) || 0;
+          codCharge += Number(parcel.cod_charge) || 0;
+          weightCharge += Number(parcel.weight_charge) || 0;
+          returnCharge += parcel.return_charge_applicable
+            ? Number(parcel.return_charge) || 0
+            : 0;
+
+          // Calculate discount (if total_charge is less than sum of individual charges)
+          const calculatedTotal =
+            (Number(parcel.delivery_charge) || 0) +
+            (Number(parcel.cod_charge) || 0) +
+            (Number(parcel.weight_charge) || 0);
+          const totalCharge = Number(parcel.total_charge) || 0;
+          if (calculatedTotal > totalCharge) {
+            discount += calculatedTotal - totalCharge;
+          }
+        });
+
+        // Total charges = delivery + cod + weight + return - discount
+        const totalCharges =
+          deliveryCharge + codCharge + weightCharge + returnCharge - discount;
+
+        // Payable amount = Collected Amount - Total Charges
+        const payableAmount = collectedAmount - totalCharges;
+
+        // Format payment method
+        let paymentMethod: any = null;
+        if (invoice.payoutMethod) {
+          paymentMethod = {
+            id: invoice.payoutMethod.id,
+            method_type: invoice.payoutMethod.method_type,
+          };
         }
-      });
 
-      // Total charges = delivery + cod + weight + return - discount
-      const totalCharges = deliveryCharge + codCharge + weightCharge + returnCharge - discount;
-
-      // Payable amount = Collected Amount - Total Charges
-      const payableAmount = collectedAmount - totalCharges;
-
-      // Format payment method
-      let paymentMethod: any = null;
-      if (invoice.payoutMethod) {
-        paymentMethod = {
-          id: invoice.payoutMethod.id,
-          method_type: invoice.payoutMethod.method_type,
-        };
-      }
-
-      return {
-        invoice_id: invoice.id,
-        invoice_no: invoice.invoice_no,
-        merchant_name: invoice.merchant?.user?.full_name || 'N/A',
-        merchant_phone: invoice.merchant?.user?.phone || 'N/A',
-        total_parcels: invoice.total_parcels,
-        financial_breakdown: {
-          collectable_amount: collectableAmount,
-          collected_amount: collectedAmount,
-          charges: {
-            delivery_charge: deliveryCharge,
-            cod_charge: codCharge,
-            weight_charge: weightCharge,
-            return_charge: returnCharge,
-            discount: discount,
-            total_charges: totalCharges,
+        return {
+          invoice_id: invoice.id,
+          invoice_no: invoice.invoice_no,
+          merchant_name: invoice.merchant?.user?.full_name || 'N/A',
+          merchant_phone: invoice.merchant?.user?.phone || 'N/A',
+          total_parcels: invoice.total_parcels,
+          financial_breakdown: {
+            collectable_amount: collectableAmount,
+            collected_amount: collectedAmount,
+            charges: {
+              delivery_charge: deliveryCharge,
+              cod_charge: codCharge,
+              weight_charge: weightCharge,
+              return_charge: returnCharge,
+              discount: discount,
+              total_charges: totalCharges,
+            },
           },
-        },
-        payable_amount: payableAmount,
-        payment_method: paymentMethod,
-      };
-    }));
+          payable_amount: payableAmount,
+          payment_method: paymentMethod,
+        };
+      }),
+    );
 
     return { invoices: mappedInvoices, total };
   }
@@ -673,7 +685,9 @@ export class MerchantInvoiceService {
       invoice.merchant?.user?.full_name ||
       'N/A';
     const merchantPhone =
-      invoice.merchantProfile?.user?.phone || invoice.merchant?.user?.phone || 'N/A';
+      invoice.merchantProfile?.user?.phone ||
+      invoice.merchant?.user?.phone ||
+      'N/A';
 
     // Determine invoice type based on parcel statuses
     const deliveredStatuses = ['DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE'];
@@ -1394,12 +1408,12 @@ export class MerchantInvoiceService {
 
         // Count delivered parcels
         const deliveredParcels = parcels.filter((p) =>
-          deliveredStatuses.includes(p.status as ParcelStatus),
+          deliveredStatuses.includes(p.status),
         );
 
         // Count returned parcels
         const returnedParcels = parcels.filter((p) =>
-          returnedStatuses.includes(p.status as ParcelStatus),
+          returnedStatuses.includes(p.status),
         );
 
         // Total parcel = Delivered + Returned
@@ -1856,7 +1870,7 @@ export class MerchantInvoiceService {
 
     // Get Real-Time Finance Record (The Source of Truth)
     // This record includes the negative balance from Advance Payments
-    let finance =
+    const finance =
       await this.merchantFinanceService.getOrCreateFinance(merchantUserId);
 
     // CURRENT LEDGER BALANCE

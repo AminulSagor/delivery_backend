@@ -446,7 +446,9 @@ export class RidersService {
     }
 
     if (approvalStatus) {
-      query.andWhere('rider.approval_status = :approvalStatus', { approvalStatus });
+      query.andWhere('rider.approval_status = :approvalStatus', {
+        approvalStatus,
+      });
     }
 
     query
@@ -607,7 +609,7 @@ export class RidersService {
    */
   async decline(id: string): Promise<Rider> {
     const rider = await this.findOne(id);
-    
+
     // Set rider status to REJECTED (permanent)
     rider.approval_status = RiderApprovalStatus.REJECTED;
     rider.is_active = false;
@@ -622,7 +624,9 @@ export class RidersService {
       await this.userRepository.save(user);
     }
 
-    console.log(`[RIDER DECLINED] Rider permanently declined: ${rider.user?.full_name} (${rider.id})`);
+    console.log(
+      `[RIDER DECLINED] Rider permanently declined: ${rider.user?.full_name} (${rider.id})`,
+    );
 
     return await this.riderRepository.save(rider);
   }

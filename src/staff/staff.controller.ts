@@ -63,7 +63,8 @@ export class StaffController {
     @Query('hubId') hubId?: string,
     @Query('isActive') isActive?: string,
   ) {
-    const isActiveBoolean = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    const isActiveBoolean =
+      isActive === 'true' ? true : isActive === 'false' ? false : undefined;
     const staff = await this.staffService.findAll(hubId, isActiveBoolean);
 
     return {

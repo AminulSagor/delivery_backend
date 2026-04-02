@@ -116,4 +116,3 @@ export class MerchantFinance {
   @UpdateDateColumn()
   updated_at: Date;
 }
-

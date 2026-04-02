@@ -7,13 +7,7 @@ import { User } from '../users/entities/user.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      Staff,
-      User,
-      Hub,
-    ]),
-  ],
+  imports: [TypeOrmModule.forFeature([Staff, User, Hub])],
   providers: [StaffService],
   controllers: [StaffController],
   exports: [StaffService],

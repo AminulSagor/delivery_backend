@@ -35,8 +35,12 @@ export class PricingController {
    */
   @Post()
   @Roles(UserRole.ADMIN)
-  async create(@Body() createPricingConfigurationDto: CreatePricingConfigurationDto) {
-    const pricing = await this.pricingService.create(createPricingConfigurationDto);
+  async create(
+    @Body() createPricingConfigurationDto: CreatePricingConfigurationDto,
+  ) {
+    const pricing = await this.pricingService.create(
+      createPricingConfigurationDto,
+    );
     return {
       id: pricing.id,
       message: 'Pricing configuration created successfully',
@@ -66,9 +70,15 @@ export class PricingController {
     }
 
     return {
-      [PricingZone.INSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(PricingZone.INSIDE_DHAKA),
-      [PricingZone.SUB_DHAKA]: this.pricingService.getDefaultPricingValues(PricingZone.SUB_DHAKA),
-      [PricingZone.OUTSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(PricingZone.OUTSIDE_DHAKA),
+      [PricingZone.INSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(
+        PricingZone.INSIDE_DHAKA,
+      ),
+      [PricingZone.SUB_DHAKA]: this.pricingService.getDefaultPricingValues(
+        PricingZone.SUB_DHAKA,
+      ),
+      [PricingZone.OUTSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(
+        PricingZone.OUTSIDE_DHAKA,
+      ),
     };
   }
 

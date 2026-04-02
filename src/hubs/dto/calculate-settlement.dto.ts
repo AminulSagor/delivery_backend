@@ -8,4 +8,3 @@ export class CalculateSettlementDto {
   @Min(0, { message: 'Cash received cannot be negative' })
   cash_received: number;
 }
-

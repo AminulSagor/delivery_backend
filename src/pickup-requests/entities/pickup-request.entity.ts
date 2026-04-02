@@ -53,7 +53,9 @@ export class PickupRequest {
   @Column({ type: 'uuid', nullable: true })
   assigned_rider_id: string | null;
 
-  @ManyToOne(() => Rider, (rider) => rider.assignedPickups, { onDelete: 'SET NULL' })
+  @ManyToOne(() => Rider, (rider) => rider.assignedPickups, {
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'assigned_rider_id' })
   assignedRider: Rider | null;
 

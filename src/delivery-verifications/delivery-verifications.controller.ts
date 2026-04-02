@@ -28,14 +28,14 @@ export class DeliveryVerificationsController {
 
   /**
    * Step 1: Initiate delivery status update
-   * 
+   *
    * Rider selects a status and provides collected amount.
-   * 
+   *
    * Request body:
    * - selected_status: DELIVERED | PARTIAL_DELIVERY | EXCHANGE | DELIVERY_RESCHEDULED | PAID_RETURN | RETURNED
    * - collected_amount: number (amount collected from customer)
    * - reason?: string (required when amount differs or for specific statuses)
-   * 
+   *
    * POST /delivery-verifications/parcels/:parcelId/initiate
    */
   @Post('parcels/:parcelId/initiate')

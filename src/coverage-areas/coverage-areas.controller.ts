@@ -7,7 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Body,
-  UseGuards
+  UseGuards,
 } from '@nestjs/common';
 
 import { CoverageAreasService } from './coverage-areas.service';
@@ -47,8 +47,9 @@ export class CoverageAreasController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async syncCoverageAreas() {
-    const result = await this.coverageAreasService.syncCoverageAreasFromCarrybee();
-    
+    const result =
+      await this.coverageAreasService.syncCoverageAreasFromCarrybee();
+
     const hasErrors = result.errors && result.errors.length > 0;
     const message = hasErrors
       ? `Sync completed with ${result.errors.length} error(s). Check logs for details.`

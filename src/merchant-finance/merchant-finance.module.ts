@@ -23,4 +23,3 @@ import { Parcel } from '../parcels/entities/parcel.entity';
   exports: [MerchantFinanceService],
 })
 export class MerchantFinanceModule {}
-

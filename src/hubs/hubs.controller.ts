@@ -209,9 +209,12 @@ export class HubsController {
     }
 
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(riderId.trim())) {
-      throw new BadRequestException('Invalid rider_id format. Must be a valid UUID');
+      throw new BadRequestException(
+        'Invalid rider_id format. Must be a valid UUID',
+      );
     }
 
     const result = await this.parcelsService.getRiderClearedParcels(
@@ -235,7 +238,7 @@ export class HubsController {
    *
    * PURPOSE: View completed Carrybee deliveries awaiting COD collection
    * Shows parcels where Carrybee collected COD but hub hasn't settled yet
-   * 
+   *
    * Query params:
    * - provider_id: UUID of the third-party provider (required)
    * - page: Page number (default 1)
@@ -255,9 +258,12 @@ export class HubsController {
     }
 
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(providerId.trim())) {
-      throw new BadRequestException('Invalid provider_id format. Must be a valid UUID');
+      throw new BadRequestException(
+        'Invalid provider_id format. Must be a valid UUID',
+      );
     }
 
     const result = await this.parcelsService.getCarrybeeClearedParcels(
@@ -1385,7 +1391,10 @@ export class HubsController {
     @CurrentUser() user: any,
     @Body() dto: CreateHubExpenseDto,
   ) {
-    const expense = await this.hubsService.createHubExpense(user.hubManagerId, dto);
+    const expense = await this.hubsService.createHubExpense(
+      user.hubManagerId,
+      dto,
+    );
     return {
       success: true,
       message: 'Expense recorded successfully',
@@ -1400,7 +1409,10 @@ export class HubsController {
     @CurrentUser() user: any,
     @Body() dto: CreateTransferRecordDto,
   ) {
-    const transfer = await this.hubsService.createTransfer(user.hubManagerId, dto);
+    const transfer = await this.hubsService.createTransfer(
+      user.hubManagerId,
+      dto,
+    );
     return {
       success: true,
       message: 'Transfer submitted successfully',

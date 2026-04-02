@@ -6,4 +6,3 @@ export enum FinancialStatus {
   CLEARANCE_INVOICED = 'CLEARANCE_INVOICED', // In clearance invoice
   SETTLED = 'SETTLED', // Fully settled (after clearance)
 }
-

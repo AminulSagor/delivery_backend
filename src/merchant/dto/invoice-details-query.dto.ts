@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsUUID, IsEnum, IsInt, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsEnum,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ParcelStatus } from '../../parcels/entities/parcel.entity';
 import { InvoiceStatus } from '../entities/merchant-invoice.entity';
@@ -44,68 +51,3 @@ export class InvoiceDetailsQueryDto {
   @IsString()
   sort_order?: 'ASC' | 'DESC' = 'DESC';
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

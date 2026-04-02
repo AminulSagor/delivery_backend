@@ -48,6 +48,13 @@ export class Merchant {
   })
   status: MerchantStatus;
 
+  /**
+   * If true, all advance payment actions (create/update/pay/approve) are disabled for this merchant.
+   * Normal finance flow continues.
+   */
+  @Column({ type: 'boolean', default: false })
+  is_advance_payment_disabled: boolean;
+
   @Column({ type: 'timestamp', nullable: true })
   approved_at: Date;
 

@@ -5,4 +5,3 @@ export class UnpaidByStoreQueryDto {
   @IsUUID()
   merchant_id?: string;
 }
-

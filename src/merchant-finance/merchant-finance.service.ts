@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, Between, ILike } from 'typeorm';
@@ -443,8 +444,8 @@ export class MerchantFinanceService {
       const invoicedAmount = Number(finance.invoiced_balance);
 
       // Deduct from processing first, then invoiced
-      let deductFromProcessing = Math.min(amount, processingAmount);
-      let deductFromInvoiced = amount - deductFromProcessing;
+      const deductFromProcessing = Math.min(amount, processingAmount);
+      const deductFromInvoiced = amount - deductFromProcessing;
 
       finance.processing_balance = processingAmount - deductFromProcessing;
       finance.invoiced_balance = invoicedAmount - deductFromInvoiced;
@@ -910,9 +911,9 @@ export class MerchantFinanceService {
       }
 
       // Count by status
-      if (deliveredStatuses.includes(parcel.status as ParcelStatus)) {
+      if (deliveredStatuses.includes(parcel.status)) {
         deliveredCount++;
-      } else if (returnedStatuses.includes(parcel.status as ParcelStatus)) {
+      } else if (returnedStatuses.includes(parcel.status)) {
         returnedCount++;
       }
     }
@@ -976,6 +977,23 @@ export class MerchantFinanceService {
   async createTransaction(
     dto: CreateTransactionDto,
   ): Promise<MerchantFinanceTransaction> {
+    // Hard block for advance payments if merchant has disabled the feature
+    if (dto.transaction_type === FinanceTransactionType.ADVANCE_PAYMENT) {
+      const merchant = await this.merchantRepository.findOne({
+        where: { user_id: dto.merchant_id },
+      });
+
+      if (!merchant) {
+        throw new NotFoundException('Merchant not found');
+      }
+
+      if (merchant.is_advance_payment_disabled) {
+        throw new ForbiddenException(
+          'Advance payment feature is disabled for this merchant',
+        );
+      }
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();

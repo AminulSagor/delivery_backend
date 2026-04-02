@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsArray, IsUUID, ArrayMinSize, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsUUID,
+  ArrayMinSize,
+  IsOptional,
+} from 'class-validator';
 
 /**
  * DTO for Hub Manager to bulk assign pickup requests to rider
@@ -18,4 +25,3 @@ export class BulkAssignPickupToRiderDto {
   @IsString()
   notes?: string;
 }
-

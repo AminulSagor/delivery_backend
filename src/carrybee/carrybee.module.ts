@@ -10,7 +10,10 @@ import { ReturnChargeConfiguration } from '../pricing/entities/return-charge-con
 import { CarrybeeApiService } from './carrybee-api.service';
 import { CarrybeeService } from './carrybee.service';
 import { CarrybeeWebhookService } from './carrybee-webhook.service';
-import { CarrybeeController, CarrybeeWebhookController } from './carrybee.controller';
+import {
+  CarrybeeController,
+  CarrybeeWebhookController,
+} from './carrybee.controller';
 
 @Module({
   imports: [

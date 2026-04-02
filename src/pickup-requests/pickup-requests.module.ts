@@ -9,7 +9,9 @@ import { Rider } from '../riders/entities/rider.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PickupRequest, Store, Merchant, Rider, Parcel])],
+  imports: [
+    TypeOrmModule.forFeature([PickupRequest, Store, Merchant, Rider, Parcel]),
+  ],
   controllers: [PickupRequestsController],
   providers: [PickupRequestsService],
   exports: [PickupRequestsService],

@@ -196,9 +196,9 @@ export class StoresService {
           contact_person_name: contactPersonName,
           contact_person_number: contactPhone,
           address: store.business_address,
-          city_id: store.carrybee_city_id!,
-          zone_id: store.carrybee_zone_id!,
-          area_id: store.carrybee_area_id!,
+          city_id: store.carrybee_city_id,
+          zone_id: store.carrybee_zone_id,
+          area_id: store.carrybee_area_id,
         });
 
         // Get Carrybee store ID after creation
@@ -655,7 +655,7 @@ export class StoresService {
     }
 
     store.hub_id = hubId;
-    store.hub = hub;  // Update in-memory hub object to match ID
+    store.hub = hub; // Update in-memory hub object to match ID
     await this.storesRepository.save(store);
 
     console.log(

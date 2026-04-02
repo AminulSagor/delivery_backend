@@ -49,8 +49,8 @@ export class FixFinancialStatusDefaultValue1737627800000
       );
     } catch (error) {
       console.log(
-        '[MIGRATION] Could not set DEFAULT (might already be set):'
-        , error.message
+        '[MIGRATION] Could not set DEFAULT (might already be set):',
+        error.message,
       );
     }
 
@@ -91,8 +91,6 @@ export class FixFinancialStatusDefaultValue1737627800000
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // No-op: Don't revert this migration as it fixes data integrity
-    console.log(
-      '[MIGRATION] Down: Skipped - this is a data integrity fix',
-    );
+    console.log('[MIGRATION] Down: Skipped - this is a data integrity fix');
   }
 }

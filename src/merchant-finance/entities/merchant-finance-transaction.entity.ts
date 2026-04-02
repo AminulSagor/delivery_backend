@@ -105,4 +105,3 @@ export class MerchantFinanceTransaction {
   @CreateDateColumn()
   created_at: Date;
 }
-

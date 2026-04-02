@@ -1386,7 +1386,6 @@ export class HubsService {
       let returnedCount = 0;
 
       for (const parcel of parcels) {
-
         // Add to total
         // We use 'cod_collected_amount' which is what the rider actually took from customer
         totalExpectedAmount += Number(parcel.cod_collected_amount || 0);
@@ -1546,7 +1545,7 @@ export class HubsService {
       // Update Hub Finance (Add Counted Cash to Available Balance)
       managerFinance.current_balance =
         Number(managerFinance.current_balance) + countedAmount;
-      
+
       managerFinance.last_collection_at = codClearedAt;
 
       await queryRunner.manager.save(managerFinance);
@@ -2211,13 +2210,22 @@ export class HubsService {
     // Calculate date range for "this month"
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
 
     // Get lifetime transferred (APPROVED transfers only - all time)
     const lifetimeTransferred = await this.hubTransferRecordRepository
       .createQueryBuilder('transfer')
       .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
-      .andWhere('transfer.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('transfer.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
       .select('COALESCE(SUM(transfer.transferred_amount), 0)', 'total')
       .getRawOne();
 
@@ -2225,13 +2233,17 @@ export class HubsService {
     const lifetimeExpenses = await this.expenseRepository
       .createQueryBuilder('expense')
       .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
-      .andWhere('expense.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('expense.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
       .select('COALESCE(SUM(expense.amount), 0)', 'total')
       .getRawOne();
 
     // Calculate Available Balance
     // = Total collected from rider settlements - Total approved transfers to admin
-    const totalCollectedFromRiders = Number(finance.total_collected_from_riders || 0);
+    const totalCollectedFromRiders = Number(
+      finance.total_collected_from_riders || 0,
+    );
     const totalApprovedTransfers = Number(lifetimeTransferred.total || 0);
     const availableBalance = totalCollectedFromRiders - totalApprovedTransfers;
 
@@ -2239,7 +2251,9 @@ export class HubsService {
     const transferredThisMonth = await this.hubTransferRecordRepository
       .createQueryBuilder('transfer')
       .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
-      .andWhere('transfer.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('transfer.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
       .andWhere('transfer.transfer_date BETWEEN :start AND :end', {
         start: startOfMonth,
         end: endOfMonth,
@@ -2251,7 +2265,9 @@ export class HubsService {
     const expensesThisMonth = await this.expenseRepository
       .createQueryBuilder('expense')
       .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
-      .andWhere('expense.status = :status', { status: TransferRecordStatus.APPROVED })
+      .andWhere('expense.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
       .andWhere('expense.created_at BETWEEN :start AND :end', {
         start: startOfMonth,
         end: endOfMonth,
@@ -2264,7 +2280,10 @@ export class HubsService {
       .createQueryBuilder('transfer')
       .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
       .andWhere('transfer.status IN (:...statuses)', {
-        statuses: [TransferRecordStatus.PENDING, TransferRecordStatus.IN_REVIEW],
+        statuses: [
+          TransferRecordStatus.PENDING,
+          TransferRecordStatus.IN_REVIEW,
+        ],
       })
       .select('COALESCE(SUM(transfer.transferred_amount), 0)', 'total')
       .getRawOne();
@@ -2284,7 +2303,7 @@ export class HubsService {
    */
   async deactivate(id: string): Promise<Hub> {
     const hub = await this.findOne(id);
-    
+
     // Also deactivate hub manager user if exists
     if (hub.manager_user) {
       hub.manager_user.is_active = false;
@@ -2292,8 +2311,10 @@ export class HubsService {
     }
 
     hub.is_active = false;
-    
-    console.log(`[HUB DEACTIVATED] Hub deactivated: ${hub.hub_code} (${hub.id})`);
+
+    console.log(
+      `[HUB DEACTIVATED] Hub deactivated: ${hub.hub_code} (${hub.id})`,
+    );
 
     return await this.hubRepository.save(hub);
   }
@@ -2303,7 +2324,7 @@ export class HubsService {
    */
   async activate(id: string): Promise<Hub> {
     const hub = await this.findOne(id);
-    
+
     // Also activate hub manager user if exists
     if (hub.manager_user) {
       hub.manager_user.is_active = true;
@@ -2311,7 +2332,7 @@ export class HubsService {
     }
 
     hub.is_active = true;
-    
+
     console.log(`[HUB ACTIVATED] Hub activated: ${hub.hub_code} (${hub.id})`);
 
     return await this.hubRepository.save(hub);
@@ -2322,7 +2343,7 @@ export class HubsService {
    */
   async decline(id: string): Promise<Hub> {
     const hub = await this.findOne(id);
-    
+
     // Also deactivate hub manager user permanently if exists
     if (hub.manager_user) {
       hub.manager_user.is_active = false;
@@ -2332,8 +2353,10 @@ export class HubsService {
     // Set hub status to REJECTED (permanent)
     hub.status = HubStatus.REJECTED;
     hub.is_active = false;
-    
-    console.log(`[HUB DECLINED] Hub permanently declined: ${hub.hub_code} (${hub.id})`);
+
+    console.log(
+      `[HUB DECLINED] Hub permanently declined: ${hub.hub_code} (${hub.id})`,
+    );
 
     return await this.hubRepository.save(hub);
   }

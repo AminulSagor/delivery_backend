@@ -35,13 +35,13 @@ export class PricingConfiguration {
   delivery_charge: number; // Base delivery charge for this zone
 
   // ===== WEIGHT CHARGES (Zone-based step calculation) =====
-  
+
   /**
    * Weight step size in kg for calculating charges
    * - INSIDE_DHAKA: default 0.5 kg per step
-   * - SUB_DHAKA: default 2.0 kg per step  
+   * - SUB_DHAKA: default 2.0 kg per step
    * - OUTSIDE_DHAKA: default 1.0 kg per step
-   * 
+   *
    * NOTE: free_weight_kg is FIXED at 0.5 kg for all zones
    * NOTE: charge_per_step is FIXED: 10 BDT for INSIDE_DHAKA, 20 BDT for others
    */
