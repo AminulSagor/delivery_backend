@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CarrybeeLocation, LocationType } from './entities/carrybee-location.entity';
+import {
+  CarrybeeLocation,
+  LocationType,
+} from './entities/carrybee-location.entity';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 
 @Injectable()
@@ -48,7 +51,9 @@ export class CarrybeeLocationsService {
         // 2. Fetch and sync zones for this city
         try {
           const zones = await this.carrybeeApiService.getZones(city.id);
-          this.logger.log(`Fetched ${zones.length} zones for city ${city.name}`);
+          this.logger.log(
+            `Fetched ${zones.length} zones for city ${city.name}`,
+          );
 
           for (const zone of zones) {
             await this.locationRepository.upsert(
@@ -66,8 +71,13 @@ export class CarrybeeLocationsService {
 
             // 3. Fetch and sync areas for this zone
             try {
-              const areas = await this.carrybeeApiService.getAreas(city.id, zone.id);
-              this.logger.log(`Fetched ${areas.length} areas for zone ${zone.name}`);
+              const areas = await this.carrybeeApiService.getAreas(
+                city.id,
+                zone.id,
+              );
+              this.logger.log(
+                `Fetched ${areas.length} areas for zone ${zone.name}`,
+              );
 
               for (const area of areas) {
                 await this.locationRepository.upsert(
@@ -84,11 +94,17 @@ export class CarrybeeLocationsService {
                 areasCount++;
               }
             } catch (error) {
-              this.logger.error(`Failed to fetch areas for zone ${zone.id}`, error.message);
+              this.logger.error(
+                `Failed to fetch areas for zone ${zone.id}`,
+                error.message,
+              );
             }
           }
         } catch (error) {
-          this.logger.error(`Failed to fetch zones for city ${city.id}`, error.message);
+          this.logger.error(
+            `Failed to fetch zones for city ${city.id}`,
+            error.message,
+          );
         }
       }
 
@@ -98,7 +114,10 @@ export class CarrybeeLocationsService {
 
       return { cities: citiesCount, zones: zonesCount, areas: areasCount };
     } catch (error) {
-      this.logger.error('Failed to sync locations from Carrybee', error.message);
+      this.logger.error(
+        'Failed to sync locations from Carrybee',
+        error.message,
+      );
       throw error;
     }
   }

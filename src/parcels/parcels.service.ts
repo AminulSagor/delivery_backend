@@ -1174,7 +1174,7 @@ export class ParcelsService {
           this.logger.error(
             `[FK CONSTRAINT VIOLATION] Constraint: ${constraintMsg}, Detail: ${error.detail}`,
           );
-          
+
           if (constraintMsg.includes('delivery_coverage_area')) {
             throw new BadRequestException(
               'Invalid delivery area ID. Please verify the delivery coverage area exists.',
@@ -1217,7 +1217,7 @@ export class ParcelsService {
             this.logger.log(
               `[AUTO-ASSIGN CARRYBEE] Attempting auto-assignment for parcel ${savedParcel.tracking_number}`,
             );
-            
+
             // Trigger Carrybee assignment asynchronously (don't block parcel creation)
             // Note: carrybeeService.assignParcelToCarrybee will auto-fetch the provider
             this.carrybeeService
@@ -1395,12 +1395,15 @@ export class ParcelsService {
             this.logger.log(
               `[AUTO-ASSIGN CARRYBEE] Hub Manager - Attempting auto-assignment for parcel ${savedParcel.tracking_number}`,
             );
-            
+
             // Trigger Carrybee assignment asynchronously
             this.carrybeeService
               .assignParcelToCarrybee(
                 savedParcel.id,
-                { provider_id: null, notes: 'Auto-assigned by hub manager' } as any,
+                {
+                  provider_id: null,
+                  notes: 'Auto-assigned by hub manager',
+                } as any,
                 hubId,
               )
               .then(() => {
@@ -3747,7 +3750,8 @@ export class ParcelsService {
       summary: {
         total_collectable_amount: totalCollectableAmount,
         total_cleared_parcels: total,
-        provider_name: parcels[0]?.thirdPartyProvider?.provider_name || 'Carrybee',
+        provider_name:
+          parcels[0]?.thirdPartyProvider?.provider_name || 'Carrybee',
       },
     };
   }
@@ -4336,7 +4340,7 @@ export class ParcelsService {
     }));
 
     for (const item of items) {
-      let result: SuggestionResult = {
+      const result: SuggestionResult = {
         original_row: item,
         status: 'FAILED',
       };
@@ -4695,9 +4699,7 @@ export class ParcelsService {
       const belongsToHubStore = parcel.store?.hub_id === hubId;
 
       if (!isPhysicallyAtHub && !belongsToHubStore) {
-        throw new ForbiddenException(
-          `This parcel does not belong to your hub`,
-        );
+        throw new ForbiddenException(`This parcel does not belong to your hub`);
       }
 
       // Status check: Allow editing when pending, picked up (awaiting reception), or already in hub
@@ -4727,12 +4729,13 @@ export class ParcelsService {
 
     // Recalculate total_charge and receivable_amount using existing formula:
     // total_charge = delivery_charge + weight_charge + cod_charge
-    const newTotalCharge = Math.round(
-      (Number(parcel.delivery_charge) +
-        Number(parcel.weight_charge) +
-        Number(parcel.cod_charge)) *
-        100,
-    ) / 100;
+    const newTotalCharge =
+      Math.round(
+        (Number(parcel.delivery_charge) +
+          Number(parcel.weight_charge) +
+          Number(parcel.cod_charge)) *
+          100,
+      ) / 100;
 
     // receivable_amount = cod_amount - total_charge
     const newReceivableAmount =

@@ -36,4 +36,4 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
   controllers: [RidersController, RiderFinanceController],
   exports: [RidersService, RiderFinanceService],
 })
-export class RidersModule { }
+export class RidersModule {}

@@ -336,7 +336,7 @@ export class PickupRequestsService {
             pickupRequest = this.pickupRequestRepository.create({
               merchant_id: store.merchant_id,
               store_id: store.id,
-              hub_id: store.hub_id!, // Non-null assertion - verified at start of loop
+              hub_id: store.hub_id, // Non-null assertion - verified at start of loop
               request_code: requestCode,
               estimated_parcels: parcels.length,
               actual_parcels: parcels.length,
@@ -579,11 +579,15 @@ export class PickupRequestsService {
                   phone: pr.completedByRider.user?.phone || 'N/A',
                 }
               : null,
-            riders: pr.completedByRider ? [{
-              id: pr.completedByRider.id,
-              name: pr.completedByRider.user?.full_name || 'Unknown',
-              phone: pr.completedByRider.user?.phone || 'N/A',
-            }] : [],
+            riders: pr.completedByRider
+              ? [
+                  {
+                    id: pr.completedByRider.id,
+                    name: pr.completedByRider.user?.full_name || 'Unknown',
+                    phone: pr.completedByRider.user?.phone || 'N/A',
+                  },
+                ]
+              : [],
             completed_at: pr.picked_up_at,
             date: dateKey,
           });

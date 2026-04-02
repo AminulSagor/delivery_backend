@@ -62,7 +62,14 @@ export class DeliveryVerification {
 
   // GENERATED column - auto-calculated by DB: collected_amount - expected_cod_amount
   // Note: nullable: true prevents TypeORM from trying to modify this generated column
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, insert: false, update: false })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    insert: false,
+    update: false,
+  })
   amount_difference: number | null;
 
   // ===== DIFFERENCE HANDLING =====

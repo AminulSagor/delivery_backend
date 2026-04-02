@@ -29,4 +29,3 @@ export class SettlementQueryDto {
   @IsOptional()
   limit?: number = 20;
 }
-

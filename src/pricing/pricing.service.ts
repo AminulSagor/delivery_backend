@@ -1,11 +1,20 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PricingConfiguration } from './entities/pricing-configuration.entity';
 import { CreatePricingConfigurationDto } from './dto/create-pricing-configuration.dto';
 import { UpdatePricingConfigurationDto } from './dto/update-pricing-configuration.dto';
 import { PricingZone } from '../common/enums/pricing-zone.enum';
-import { ReturnChargeConfiguration, ReturnStatus } from './entities/return-charge-configuration.entity';
+import {
+  ReturnChargeConfiguration,
+  ReturnStatus,
+} from './entities/return-charge-configuration.entity';
 import { CreateReturnChargeConfigDto } from './dto/create-return-charge-config.dto';
 import { UpdateReturnChargeConfigDto } from './dto/update-return-charge-config.dto';
 import { BulkCreateReturnChargesDto } from './dto/bulk-create-return-charges.dto';
@@ -18,9 +27,9 @@ import { WeightChargeCalculationResult } from './dto/calculate-weight-charge.dto
 const FIXED_FREE_WEIGHT_KG = 0.5; // First 0.5 kg is always FREE
 
 const FIXED_CHARGE_PER_STEP: Record<PricingZone, number> = {
-  [PricingZone.INSIDE_DHAKA]: 10,   // 10 BDT per step
-  [PricingZone.SUB_DHAKA]: 20,      // 20 BDT per step
-  [PricingZone.OUTSIDE_DHAKA]: 20,  // 20 BDT per step
+  [PricingZone.INSIDE_DHAKA]: 10, // 10 BDT per step
+  [PricingZone.SUB_DHAKA]: 20, // 20 BDT per step
+  [PricingZone.OUTSIDE_DHAKA]: 20, // 20 BDT per step
 };
 
 /**
@@ -28,12 +37,15 @@ const FIXED_CHARGE_PER_STEP: Record<PricingZone, number> = {
  * Admin can configure: delivery_charge, weight_step_kg, cod_percentage
  * Fixed values: free_weight_kg (0.5), charge_per_step (10/20)
  */
-const DEFAULT_PRICING_CONFIGS: Record<PricingZone, {
-  delivery_charge: number;
-  weight_step_kg: number;
-  cod_percentage: number;
-  discount_percentage: number;
-}> = {
+const DEFAULT_PRICING_CONFIGS: Record<
+  PricingZone,
+  {
+    delivery_charge: number;
+    weight_step_kg: number;
+    cod_percentage: number;
+    discount_percentage: number;
+  }
+> = {
   [PricingZone.INSIDE_DHAKA]: {
     delivery_charge: 70,
     weight_step_kg: 0.5,
@@ -63,7 +75,7 @@ export class PricingService {
     private pricingRepository: Repository<PricingConfiguration>,
     @InjectRepository(ReturnChargeConfiguration)
     private returnChargeRepository: Repository<ReturnChargeConfiguration>,
-  ) { }
+  ) {}
 
   /**
    * Get active pricing configuration for a store and zone
@@ -112,7 +124,7 @@ export class PricingService {
 
   /**
    * Create new pricing configuration for a store + zone
-   * 
+   *
    * Admin configures: delivery_charge, weight_step_kg, cod_percentage
    * Fixed values: free_weight_kg (0.5), charge_per_step (10/20 based on zone)
    */
@@ -134,7 +146,9 @@ export class PricingService {
         weight_step_kg: createDto.weight_step_kg,
         cod_percentage: createDto.cod_percentage,
         discount_percentage: createDto.discount_percentage ?? null,
-        start_date: createDto.start_date ? new Date(createDto.start_date) : null,
+        start_date: createDto.start_date
+          ? new Date(createDto.start_date)
+          : null,
         end_date: createDto.end_date ? new Date(createDto.end_date) : null,
       });
 
@@ -142,8 +156,8 @@ export class PricingService {
 
       this.logger.log(
         `[PRICING UPDATED (UPSERT)] Store: ${updated.store_id}, Zone: ${updated.zone}, ` +
-        `Delivery: ${updated.delivery_charge} BDT, Step: ${updated.weight_step_kg}kg, ` +
-        `COD: ${updated.cod_percentage}%`,
+          `Delivery: ${updated.delivery_charge} BDT, Step: ${updated.weight_step_kg}kg, ` +
+          `COD: ${updated.cod_percentage}%`,
       );
 
       return updated;
@@ -168,14 +182,12 @@ export class PricingService {
 
     this.logger.log(
       `[PRICING CREATED] Store: ${saved.store_id}, Zone: ${saved.zone}, ` +
-      `Delivery: ${saved.delivery_charge} BDT, Step: ${saved.weight_step_kg}kg, ` +
-      `Charge/Step: ${chargePerStep} BDT (fixed), COD: ${saved.cod_percentage}%`,
+        `Delivery: ${saved.delivery_charge} BDT, Step: ${saved.weight_step_kg}kg, ` +
+        `Charge/Step: ${chargePerStep} BDT (fixed), COD: ${saved.cod_percentage}%`,
     );
 
     return saved;
   }
-
-
 
   /**
    * Get all pricing configurations for a store, grouped by zone with 0-fill
@@ -208,7 +220,9 @@ export class PricingService {
           delivery_charge: Number(config.delivery_charge),
           weight_step_kg: Number(config.weight_step_kg),
           cod_percentage: Number(config.cod_percentage),
-          discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+          discount_percentage: config.discount_percentage
+            ? Number(config.discount_percentage)
+            : 0,
           start_date: config.start_date,
           end_date: config.end_date,
           created_at: config.created_at,
@@ -247,7 +261,10 @@ export class PricingService {
     });
 
     // Group by store_id
-    const storeMap: Record<string, { store: any; configs: Record<string, PricingConfiguration> }> = {};
+    const storeMap: Record<
+      string,
+      { store: any; configs: Record<string, PricingConfiguration> }
+    > = {};
 
     for (const config of configs) {
       if (!storeMap[config.store_id]) {
@@ -273,7 +290,9 @@ export class PricingService {
             delivery_charge: Number(config.delivery_charge),
             weight_step_kg: Number(config.weight_step_kg),
             cod_percentage: Number(config.cod_percentage),
-            discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+            discount_percentage: config.discount_percentage
+              ? Number(config.discount_percentage)
+              : 0,
             start_date: config.start_date,
             end_date: config.end_date,
             created_at: config.created_at,
@@ -310,7 +329,9 @@ export class PricingService {
     });
 
     if (!pricing) {
-      throw new NotFoundException(`Pricing configuration with ID ${id} not found`);
+      throw new NotFoundException(
+        `Pricing configuration with ID ${id} not found`,
+      );
     }
 
     return pricing;
@@ -399,6 +420,14 @@ export class PricingService {
   async createReturnCharge(
     dto: CreateReturnChargeConfigDto,
   ): Promise<ReturnChargeConfiguration> {
+    if (dto.start_date && dto.end_date) {
+      const start = new Date(dto.start_date);
+      const end = new Date(dto.end_date);
+      if (end < start) {
+        throw new BadRequestException('end_date must be after start_date');
+      }
+    }
+
     const existing = await this.returnChargeRepository.findOne({
       where: {
         store_id: dto.store_id,
@@ -420,7 +449,7 @@ export class PricingService {
       const updated = await this.returnChargeRepository.save(existing);
       console.log(
         `[RETURN CHARGE UPSERTED] Store: ${updated.store_id}, Status: ${updated.return_status}, ` +
-        `Zone: ${updated.zone}, Delivery: ${updated.return_delivery_charge} BDT`,
+          `Zone: ${updated.zone}, Delivery: ${updated.return_delivery_charge} BDT`,
       );
       return updated;
     }
@@ -436,12 +465,12 @@ export class PricingService {
       start_date: dto.start_date ? new Date(dto.start_date) : null,
       end_date: dto.end_date ? new Date(dto.end_date) : null,
     });
-    
+
     const saved = await this.returnChargeRepository.save(config);
 
     console.log(
       `[RETURN CHARGE CREATED] Store: ${saved.store_id}, Status: ${saved.return_status}, ` +
-      `Zone: ${saved.zone}, Delivery: ${saved.return_delivery_charge} BDT`,
+        `Zone: ${saved.zone}, Delivery: ${saved.return_delivery_charge} BDT`,
     );
 
     return saved;
@@ -456,6 +485,19 @@ export class PricingService {
     const savedConfigs: ReturnChargeConfiguration[] = [];
 
     for (const statusCharge of dto.status_charges) {
+      const discountPercentage =
+        statusCharge.discount_percentage ?? dto.discount_percentage ?? 0;
+      const startDate = statusCharge.start_date ?? dto.start_date;
+      const endDate = statusCharge.end_date ?? dto.end_date;
+
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (end < start) {
+          throw new BadRequestException('end_date must be after start_date');
+        }
+      }
+
       // Find existing config for this store, zone, and status
       const existing = await this.returnChargeRepository.findOne({
         where: {
@@ -469,11 +511,12 @@ export class PricingService {
         // Upsert behavior
         Object.assign(existing, {
           return_delivery_charge: statusCharge.return_delivery_charge || 0,
-          return_weight_charge_per_kg: statusCharge.return_weight_charge_per_kg || 0,
+          return_weight_charge_per_kg:
+            statusCharge.return_weight_charge_per_kg || 0,
           return_cod_percentage: statusCharge.return_cod_percentage || 0,
-          discount_percentage: statusCharge.discount_percentage || 0,
-          start_date: dto.start_date ? new Date(dto.start_date) : null,
-          end_date: dto.end_date ? new Date(dto.end_date) : null,
+          discount_percentage: discountPercentage,
+          start_date: startDate ? new Date(startDate) : null,
+          end_date: endDate ? new Date(endDate) : null,
         });
         const updated = await this.returnChargeRepository.save(existing);
         savedConfigs.push(updated);
@@ -484,11 +527,12 @@ export class PricingService {
           zone: dto.zone,
           return_status: statusCharge.return_status,
           return_delivery_charge: statusCharge.return_delivery_charge || 0,
-          return_weight_charge_per_kg: statusCharge.return_weight_charge_per_kg || 0,
+          return_weight_charge_per_kg:
+            statusCharge.return_weight_charge_per_kg || 0,
           return_cod_percentage: statusCharge.return_cod_percentage || 0,
-          discount_percentage: statusCharge.discount_percentage || 0,
-          start_date: dto.start_date ? new Date(dto.start_date) : null,
-          end_date: dto.end_date ? new Date(dto.end_date) : null,
+          discount_percentage: discountPercentage,
+          start_date: startDate ? new Date(startDate) : null,
+          end_date: endDate ? new Date(endDate) : null,
         });
         const saved = await this.returnChargeRepository.save(config);
         savedConfigs.push(saved);
@@ -505,14 +549,19 @@ export class PricingService {
   /**
    * Get all return charge configs for a store, grouped by zone then return_status with 0-fill
    */
-  async getReturnChargesForStore(storeId: string): Promise<Record<string, any>> {
+  async getReturnChargesForStore(
+    storeId: string,
+  ): Promise<Record<string, any>> {
     const configs = await this.returnChargeRepository.find({
       where: { store_id: storeId },
       order: { zone: 'ASC', return_status: 'ASC' },
     });
 
     // Build lookup map: zone -> return_status -> config
-    const configMap: Record<string, Record<string, ReturnChargeConfiguration>> = {};
+    const configMap: Record<
+      string,
+      Record<string, ReturnChargeConfiguration>
+    > = {};
     for (const config of configs) {
       if (!configMap[config.zone]) {
         configMap[config.zone] = {};
@@ -529,9 +578,13 @@ export class PricingService {
           statuses[status] = {
             id: config.id,
             return_delivery_charge: Number(config.return_delivery_charge),
-            return_weight_charge_per_kg: Number(config.return_weight_charge_per_kg),
+            return_weight_charge_per_kg: Number(
+              config.return_weight_charge_per_kg,
+            ),
             return_cod_percentage: Number(config.return_cod_percentage),
-            discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+            discount_percentage: config.discount_percentage
+              ? Number(config.discount_percentage)
+              : 0,
             start_date: config.start_date,
             end_date: config.end_date,
             created_at: config.created_at,
@@ -567,7 +620,13 @@ export class PricingService {
     });
 
     // Group by store_id -> zone -> return_status
-    const storeMap: Record<string, { store: any; configs: Record<string, Record<string, ReturnChargeConfiguration>> }> = {};
+    const storeMap: Record<
+      string,
+      {
+        store: any;
+        configs: Record<string, Record<string, ReturnChargeConfiguration>>;
+      }
+    > = {};
 
     for (const config of configs) {
       if (!storeMap[config.store_id]) {
@@ -579,8 +638,11 @@ export class PricingService {
       if (!storeMap[config.store_id].configs[config.zone]) {
         storeMap[config.store_id].configs[config.zone] = {};
       }
-      if (!storeMap[config.store_id].configs[config.zone][config.return_status]) {
-        storeMap[config.store_id].configs[config.zone][config.return_status] = config;
+      if (
+        !storeMap[config.store_id].configs[config.zone][config.return_status]
+      ) {
+        storeMap[config.store_id].configs[config.zone][config.return_status] =
+          config;
       }
     }
 
@@ -594,9 +656,13 @@ export class PricingService {
             statuses[status] = {
               id: config.id,
               return_delivery_charge: Number(config.return_delivery_charge),
-              return_weight_charge_per_kg: Number(config.return_weight_charge_per_kg),
+              return_weight_charge_per_kg: Number(
+                config.return_weight_charge_per_kg,
+              ),
               return_cod_percentage: Number(config.return_cod_percentage),
-              discount_percentage: config.discount_percentage ? Number(config.discount_percentage) : 0,
+              discount_percentage: config.discount_percentage
+                ? Number(config.discount_percentage)
+                : 0,
               start_date: config.start_date,
               end_date: config.end_date,
               created_at: config.created_at,
@@ -636,7 +702,9 @@ export class PricingService {
     });
 
     if (!config) {
-      throw new NotFoundException(`Return charge configuration with ID ${id} not found`);
+      throw new NotFoundException(
+        `Return charge configuration with ID ${id} not found`,
+      );
     }
 
     return config;
@@ -676,21 +744,21 @@ export class PricingService {
 
   /**
    * Calculate weight charge based on zone-specific rules
-   * 
+   *
    * FIXED VALUES:
    * - free_weight_kg = 0.5 kg (always free)
    * - charge_per_step = 10 BDT (INSIDE_DHAKA) or 20 BDT (SUB_DHAKA, OUTSIDE_DHAKA)
-   * 
+   *
    * CONFIGURABLE (from PricingConfiguration):
    * - weight_step_kg (step size)
-   * 
+   *
    * ALGORITHM:
    * 1. Subtract 0.5 kg from parcel weight
    * 2. If remaining weight <= 0, charge = 0
    * 3. Divide remaining weight by zone's weight step
    * 4. Round UP to nearest whole number (any fraction = 1 step)
    * 5. Multiply by zone's fixed per-step charge
-   * 
+   *
    * @param storeId - Store ID to lookup weight_step_kg config
    * @param zone - Pricing zone (determines charge_per_step)
    * @param weightKg - Parcel weight in kg
@@ -745,7 +813,7 @@ export class PricingService {
 
     this.logger.log(
       `[WEIGHT CHARGE] Zone: ${zone}, Weight: ${weightKg}kg, Billable: ${billableWeight}kg, ` +
-      `Steps: ${totalSteps}, Charge: ${weightCharge} BDT`,
+        `Steps: ${totalSteps}, Charge: ${weightCharge} BDT`,
     );
 
     return {
@@ -799,7 +867,7 @@ export class PricingService {
   /**
    * Get default/fixed pricing values for a zone (without database lookup)
    * Used when no configuration exists
-   * 
+   *
    * Returns both configurable defaults and fixed values
    */
   getDefaultPricingValues(zone: PricingZone): {

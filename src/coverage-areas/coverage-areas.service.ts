@@ -28,21 +28,21 @@ export class CoverageAreasService {
    */
   private getCityDivision(cityName: string): string {
     const divisionMap: Record<string, string> = {
-      'Dhaka': 'Dhaka',
-      'Chattogram': 'Chattogram',
-      'Chittagong': 'Chattogram',
-      'Rajshahi': 'Rajshahi',
-      'Khulna': 'Khulna',
-      'Barishal': 'Barishal',
-      'Sylhet': 'Sylhet',
-      'Rangpur': 'Rangpur',
-      'Mymensingh': 'Mymensingh',
-      'Gazipur': 'Dhaka',
-      'Narayanganj': 'Dhaka',
-      'Cumilla': 'Chattogram',
-      'Comilla': 'Chattogram',
-      'Cox\'s Bazar': 'Chattogram',
-      'Jessore': 'Khulna',
+      Dhaka: 'Dhaka',
+      Chattogram: 'Chattogram',
+      Chittagong: 'Chattogram',
+      Rajshahi: 'Rajshahi',
+      Khulna: 'Khulna',
+      Barishal: 'Barishal',
+      Sylhet: 'Sylhet',
+      Rangpur: 'Rangpur',
+      Mymensingh: 'Mymensingh',
+      Gazipur: 'Dhaka',
+      Narayanganj: 'Dhaka',
+      Cumilla: 'Chattogram',
+      Comilla: 'Chattogram',
+      "Cox's Bazar": 'Chattogram',
+      Jessore: 'Khulna',
     };
 
     // Check if city name contains any of the division keywords
@@ -69,7 +69,7 @@ export class CoverageAreasService {
     try {
       this.logger.log('Testing Carrybee API connection...');
       const cities = await this.carrybeeApiService.getCities();
-      
+
       if (!cities || cities.length === 0) {
         return {
           success: false,
@@ -124,7 +124,7 @@ export class CoverageAreasService {
       // 1. Fetch all cities from Carrybee
       this.logger.log('Fetching cities from Carrybee API...');
       const cities = await this.carrybeeApiService.getCities();
-      
+
       if (!cities || cities.length === 0) {
         const errorMsg = 'No cities returned from Carrybee API';
         this.logger.error(errorMsg);
@@ -145,28 +145,36 @@ export class CoverageAreasService {
         const division = this.getCityDivision(city.name);
 
         // Determine if city is in Dhaka
-        const isDhaka = city.name.toLowerCase().includes('dhaka') || 
-                        city.name.toLowerCase().includes('gazipur') ||
-                        city.name.toLowerCase().includes('narayanganj');
+        const isDhaka =
+          city.name.toLowerCase().includes('dhaka') ||
+          city.name.toLowerCase().includes('gazipur') ||
+          city.name.toLowerCase().includes('narayanganj');
 
         // 2. Fetch zones for this city
         try {
           const zones = await this.carrybeeApiService.getZones(city.id);
-          this.logger.log(`Fetched ${zones.length} zones for city ${city.name}`);
+          this.logger.log(
+            `Fetched ${zones.length} zones for city ${city.name}`,
+          );
           zonesCount += zones.length;
 
           for (const zone of zones) {
             // 3. Fetch areas for this zone
             try {
-              const areas = await this.carrybeeApiService.getAreas(city.id, zone.id);
-              
+              const areas = await this.carrybeeApiService.getAreas(
+                city.id,
+                zone.id,
+              );
+
               if (!areas || areas.length === 0) {
                 const warnMsg = `No areas found for zone ${zone.name} in ${city.name}`;
                 this.logger.warn(warnMsg);
                 continue;
               }
 
-              this.logger.log(`Fetched ${areas.length} areas for zone ${zone.name} in ${city.name}`);
+              this.logger.log(
+                `Fetched ${areas.length} areas for zone ${zone.name} in ${city.name}`,
+              );
               areasCount += areas.length;
 
               for (const area of areas) {
@@ -189,7 +197,9 @@ export class CoverageAreasService {
 
                   // Log progress every 100 areas
                   if (totalSynced % 100 === 0) {
-                    this.logger.log(`✅ Synced ${totalSynced} coverage areas...`);
+                    this.logger.log(
+                      `✅ Synced ${totalSynced} coverage areas...`,
+                    );
                   }
                 } catch (dbError) {
                   const errMsg = `DB Error syncing area ${area.name}: ${dbError.message}`;
@@ -225,7 +235,9 @@ export class CoverageAreasService {
       const errMsg = `Fatal error during sync: ${error.message}`;
       this.logger.error(errMsg);
       errors.push(errMsg);
-      throw new Error(`Failed to sync coverage areas from Carrybee: ${error.message}`);
+      throw new Error(
+        `Failed to sync coverage areas from Carrybee: ${error.message}`,
+      );
     }
   }
 

@@ -30,19 +30,22 @@ export const DeliveryTypeLabel: Record<DeliveryType, string> = {
 /**
  * Delivery time estimates in hours
  */
-export const DeliveryTypeEstimate: Record<DeliveryType, { min: number; max: number }> = {
-  [DeliveryType.NORMAL]: { min: 48, max: 72 },      // 2-3 days
-  [DeliveryType.EXPRESS]: { min: 12, max: 24 },     // 12-24 hours
-  [DeliveryType.SAME_DAY]: { min: 4, max: 12 },     // 4-12 hours
+export const DeliveryTypeEstimate: Record<
+  DeliveryType,
+  { min: number; max: number }
+> = {
+  [DeliveryType.NORMAL]: { min: 48, max: 72 }, // 2-3 days
+  [DeliveryType.EXPRESS]: { min: 12, max: 24 }, // 12-24 hours
+  [DeliveryType.SAME_DAY]: { min: 4, max: 12 }, // 4-12 hours
 };
 
 /**
  * Priority level for sorting/processing (lower number = higher priority)
  */
 export const DeliveryTypePriority: Record<DeliveryType, number> = {
-  [DeliveryType.SAME_DAY]: 1,    // Highest priority
+  [DeliveryType.SAME_DAY]: 1, // Highest priority
   [DeliveryType.EXPRESS]: 2,
-  [DeliveryType.NORMAL]: 3,      // Lowest priority
+  [DeliveryType.NORMAL]: 3, // Lowest priority
 };
 
 /**
@@ -51,23 +54,23 @@ export const DeliveryTypePriority: Record<DeliveryType, number> = {
  */
 export function getAllDeliveryTypes() {
   return [
-    { 
-      id: DeliveryType.NORMAL, 
-      value: DeliveryType.NORMAL, 
+    {
+      id: DeliveryType.NORMAL,
+      value: DeliveryType.NORMAL,
       label: DeliveryTypeLabel[DeliveryType.NORMAL],
       estimate: DeliveryTypeEstimate[DeliveryType.NORMAL],
       priority: DeliveryTypePriority[DeliveryType.NORMAL],
     },
-    { 
-      id: DeliveryType.EXPRESS, 
-      value: DeliveryType.EXPRESS, 
+    {
+      id: DeliveryType.EXPRESS,
+      value: DeliveryType.EXPRESS,
       label: DeliveryTypeLabel[DeliveryType.EXPRESS],
       estimate: DeliveryTypeEstimate[DeliveryType.EXPRESS],
       priority: DeliveryTypePriority[DeliveryType.EXPRESS],
     },
-    { 
-      id: DeliveryType.SAME_DAY, 
-      value: DeliveryType.SAME_DAY, 
+    {
+      id: DeliveryType.SAME_DAY,
+      value: DeliveryType.SAME_DAY,
       label: DeliveryTypeLabel[DeliveryType.SAME_DAY],
       estimate: DeliveryTypeEstimate[DeliveryType.SAME_DAY],
       priority: DeliveryTypePriority[DeliveryType.SAME_DAY],

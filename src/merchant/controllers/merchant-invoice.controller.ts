@@ -186,9 +186,10 @@ export class MerchantInvoiceController {
       };
     }
 
-    const dashboard = await this.merchantInvoiceService.getMerchantPaymentDashboard(
-      targetMerchantId,
-    );
+    const dashboard =
+      await this.merchantInvoiceService.getMerchantPaymentDashboard(
+        targetMerchantId,
+      );
 
     return {
       success: true,
@@ -252,12 +253,13 @@ export class MerchantInvoiceController {
     @Query('search') search?: string,
     @Query('has_pending_balance') hasPendingBalance?: string,
   ) {
-    const summary = await this.merchantInvoiceService.getAdminMerchantPaymentSummary({
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 10,
-      search,
-      has_pending_balance: hasPendingBalance === 'true',
-    });
+    const summary =
+      await this.merchantInvoiceService.getAdminMerchantPaymentSummary({
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 10,
+        search,
+        has_pending_balance: hasPendingBalance === 'true',
+      });
 
     return {
       success: true,
@@ -276,7 +278,10 @@ export class MerchantInvoiceController {
   @Get('summary')
   @Roles(UserRole.MERCHANT, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  async getMerchantSummary(@Query('merchant_id') merchantId: string, @Req() req: any) {
+  async getMerchantSummary(
+    @Query('merchant_id') merchantId: string,
+    @Req() req: any,
+  ) {
     // If merchant role, use their own ID
     const targetMerchantId =
       req.user.role === UserRole.MERCHANT ? req.user.userId : merchantId;
@@ -288,7 +293,10 @@ export class MerchantInvoiceController {
       };
     }
 
-    const summary = await this.merchantInvoiceService.getMerchantInvoiceSummary(targetMerchantId);
+    const summary =
+      await this.merchantInvoiceService.getMerchantInvoiceSummary(
+        targetMerchantId,
+      );
 
     return {
       success: true,
@@ -326,7 +334,10 @@ export class MerchantInvoiceController {
   @Get('unpaid-by-store')
   @Roles(UserRole.MERCHANT, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  async getUnpaidByStore(@Query() query: UnpaidByStoreQueryDto, @Req() req: any) {
+  async getUnpaidByStore(
+    @Query() query: UnpaidByStoreQueryDto,
+    @Req() req: any,
+  ) {
     // If merchant role, use their own ID
     const targetMerchantId =
       req.user.role === UserRole.MERCHANT ? req.user.userId : query.merchant_id;
@@ -338,7 +349,10 @@ export class MerchantInvoiceController {
       };
     }
 
-    const data = await this.merchantInvoiceService.getUnpaidParcelsByStore(targetMerchantId);
+    const data =
+      await this.merchantInvoiceService.getUnpaidParcelsByStore(
+        targetMerchantId,
+      );
 
     return {
       success: true,
@@ -354,7 +368,10 @@ export class MerchantInvoiceController {
   @Get('eligible-parcels')
   @Roles(UserRole.MERCHANT, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  async getEligibleParcels(@Query('merchant_id') merchantId: string, @Req() req: any) {
+  async getEligibleParcels(
+    @Query('merchant_id') merchantId: string,
+    @Req() req: any,
+  ) {
     // If merchant role, use their own ID
     const targetMerchantId =
       req.user.role === UserRole.MERCHANT ? req.user.userId : merchantId;
@@ -366,11 +383,13 @@ export class MerchantInvoiceController {
       };
     }
 
-    const parcels = await this.merchantInvoiceService.getEligibleParcels(targetMerchantId);
+    const parcels =
+      await this.merchantInvoiceService.getEligibleParcels(targetMerchantId);
 
     // Calculate breakdown for each parcel and enrich with customer & hub info
     const parcelBreakdowns = parcels.map((parcel) => {
-      const breakdown = this.invoiceCalculationService.calculateParcelBreakdown(parcel);
+      const breakdown =
+        this.invoiceCalculationService.calculateParcelBreakdown(parcel);
       return {
         ...breakdown,
         merchant_name: parcel.merchant?.user?.full_name || 'N/A',
@@ -384,7 +403,10 @@ export class MerchantInvoiceController {
           delivery_charge: Number(parcel.total_charge) || 0,
           return_charge: Number(parcel.return_charge) || 0,
           cod_charge: Number(parcel.cod_charge) || 0,
-          total_charges: (Number(parcel.total_charge) || 0) + (Number(parcel.return_charge) || 0) + (Number(parcel.cod_charge) || 0),
+          total_charges:
+            (Number(parcel.total_charge) || 0) +
+            (Number(parcel.return_charge) || 0) +
+            (Number(parcel.cod_charge) || 0),
         },
       };
     });
@@ -406,7 +428,10 @@ export class MerchantInvoiceController {
           total_return_charges: parcelBreakdowns
             .filter((p) => p.return_charge_applicable)
             .reduce((sum, p) => sum + p.return_charge, 0),
-          estimated_payable: parcelBreakdowns.reduce((sum, p) => sum + p.net_payable, 0),
+          estimated_payable: parcelBreakdowns.reduce(
+            (sum, p) => sum + p.net_payable,
+            0,
+          ),
         },
       },
       message: 'Eligible parcels retrieved successfully',
@@ -446,7 +471,8 @@ export class MerchantInvoiceController {
       query.merchant_id = req.user.userId;
     }
 
-    const { invoices, total } = await this.merchantInvoiceService.getInvoices(query);
+    const { invoices, total } =
+      await this.merchantInvoiceService.getInvoices(query);
 
     return {
       success: true,
@@ -467,7 +493,7 @@ export class MerchantInvoiceController {
    * Get invoice details with parcel list
    * Supports pagination, filtering, and sorting
    * GET /merchant-invoices/:id
-   * 
+   *
    * Query params:
    * - page: Page number (default: 1)
    * - limit: Items per page (default: 10)
@@ -563,4 +589,3 @@ export class MerchantInvoiceController {
     };
   }
 }
-

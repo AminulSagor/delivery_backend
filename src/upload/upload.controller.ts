@@ -1,4 +1,13 @@
-import { Body, Controller, Post, Get, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  Query,
+  UseGuards,
+  Request,
+  BadRequestException,
+} from '@nestjs/common';
 import { GetUploadUrlDto } from './dto/get-upload-url.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { extname } from 'path';
@@ -34,7 +43,7 @@ export class UploadController {
   /**
    * Regenerate read URL for an existing file
    * Use this when the stored readUrl has expired (after 7 days)
-   * 
+   *
    * @param fileKey - The file key from the original upload (e.g., "merchants/logo/abc-123.jpg")
    *                  Pass as query parameter: ?fileKey=merchants/logo/abc-123.jpg
    */
@@ -44,7 +53,7 @@ export class UploadController {
     if (!fileKey) {
       throw new BadRequestException('fileKey query parameter is required');
     }
-    
+
     const readUrl = await this.s3Service.generateReadUrl(fileKey);
 
     return {

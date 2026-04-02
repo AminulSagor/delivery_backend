@@ -28,4 +28,3 @@ export class CalculateTotalPricingDto {
   @Min(0)
   cod_amount?: number = 0; // Cash on Delivery amount in BDT
 }
-

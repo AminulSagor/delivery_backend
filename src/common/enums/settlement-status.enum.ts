@@ -3,4 +3,3 @@ export enum SettlementStatus {
   COMPLETED = 'COMPLETED', // Full settlement, no due amount
   PARTIAL = 'PARTIAL', // Partial payment received
 }
-

@@ -69,26 +69,33 @@ export class SmsService {
   /**
    * Toggle SMS service active/inactive
    */
-  toggleSms(active: boolean): { success: boolean; message: string; status: ReturnType<typeof this.getSmsStatus> } {
+  toggleSms(active: boolean): {
+    success: boolean;
+    message: string;
+    status: ReturnType<typeof this.getSmsStatus>;
+  } {
     if (active && !this.smsEnabled) {
       return {
         success: false,
-        message: 'Cannot activate SMS - service not configured (missing API key)',
+        message:
+          'Cannot activate SMS - service not configured (missing API key)',
         status: this.getSmsStatus(),
       };
     }
-    
+
     this.smsActive = active;
-    
+
     if (active) {
       this.logger.log('✅ SMS service activated');
     } else {
       this.logger.log('⚠️ SMS service deactivated');
     }
-    
+
     return {
       success: true,
-      message: active ? 'SMS service activated successfully' : 'SMS service deactivated successfully',
+      message: active
+        ? 'SMS service activated successfully'
+        : 'SMS service deactivated successfully',
       status: this.getSmsStatus(),
     };
   }
@@ -153,7 +160,9 @@ export class SmsService {
     }
 
     if (!this.smsActive) {
-      this.logger.log(`[DEACTIVATED] SMS to ${to} skipped - SMS service is deactivated`);
+      this.logger.log(
+        `[DEACTIVATED] SMS to ${to} skipped - SMS service is deactivated`,
+      );
       return {
         success: false,
         message: 'SMS service is currently deactivated by admin',
@@ -223,9 +232,7 @@ export class SmsService {
   /**
    * Send merchant approval SMS
    */
-  async sendMerchantApprovalSms(
-    merchant: Merchant,
-  ): Promise<{
+  async sendMerchantApprovalSms(merchant: Merchant): Promise<{
     success: boolean;
     stub?: boolean;
     message: string;
@@ -280,9 +287,7 @@ export class SmsService {
   /**
    * Send test SMS
    */
-  async sendTestSms(
-    to: string,
-  ): Promise<{
+  async sendTestSms(to: string): Promise<{
     success: boolean;
     stub?: boolean;
     message: string;
@@ -298,7 +303,9 @@ export class SmsService {
     }
 
     if (!this.smsActive) {
-      this.logger.log(`[DEACTIVATED] Test SMS to ${to} skipped - SMS service is deactivated`);
+      this.logger.log(
+        `[DEACTIVATED] Test SMS to ${to} skipped - SMS service is deactivated`,
+      );
       return {
         success: false,
         stub: true,

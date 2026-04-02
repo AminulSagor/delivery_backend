@@ -45,4 +45,3 @@ export class AddParcelTxIdColumn1768800000000 implements MigrationInterface {
     `);
   }
 }
-

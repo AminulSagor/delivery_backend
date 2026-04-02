@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsUUID, MaxLength, IsNotEmpty } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUUID,
+  MaxLength,
+  IsNotEmpty,
+} from 'class-validator';
 
 export class UpdateHubDto {
   @IsOptional()

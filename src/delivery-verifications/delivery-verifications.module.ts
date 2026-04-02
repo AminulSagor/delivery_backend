@@ -8,7 +8,13 @@ import { ReturnChargeConfiguration } from '../pricing/entities/return-charge-con
 import { SmsService } from '../utils/sms.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DeliveryVerification, Parcel, ReturnChargeConfiguration])],
+  imports: [
+    TypeOrmModule.forFeature([
+      DeliveryVerification,
+      Parcel,
+      ReturnChargeConfiguration,
+    ]),
+  ],
   controllers: [DeliveryVerificationsController],
   providers: [DeliveryVerificationsService, SmsService],
   exports: [DeliveryVerificationsService],

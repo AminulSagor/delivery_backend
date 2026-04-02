@@ -39,4 +39,4 @@ import { AdminAccountsService } from './services/admin-accounts.service';
   providers: [AdminService, EmailService, SmsService, AdminAccountsService],
   exports: [AdminAccountsService], // Export service if needed by Payout/Settlement modules
 })
-export class AdminModule { }
+export class AdminModule {}

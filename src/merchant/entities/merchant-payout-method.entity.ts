@@ -14,7 +14,10 @@ import { User } from '../../users/entities/user.entity';
 import { PayoutTransaction } from './payout-transaction.entity';
 import { PayoutMethodType } from '../../common/enums/payout-method-type.enum';
 import { PayoutMethodStatus } from '../../common/enums/payout-method-status.enum';
-import { BkashAccountType, NagadAccountType } from '../../common/enums/account-type.enum';
+import {
+  BkashAccountType,
+  NagadAccountType,
+} from '../../common/enums/account-type.enum';
 
 @Entity('merchant_payout_methods')
 @Index(['merchant_id', 'method_type'], { unique: true })
@@ -104,7 +107,10 @@ export class MerchantPayoutMethod {
   verifier: User | null;
 
   // ===== TRANSACTIONS =====
-  @OneToMany(() => PayoutTransaction, (transaction) => transaction.payout_method)
+  @OneToMany(
+    () => PayoutTransaction,
+    (transaction) => transaction.payout_method,
+  )
   transactions: PayoutTransaction[];
 
   // ===== TIMESTAMPS =====
@@ -114,4 +120,3 @@ export class MerchantPayoutMethod {
   @UpdateDateColumn()
   updated_at: Date;
 }
-

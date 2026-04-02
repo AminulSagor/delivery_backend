@@ -1,4 +1,11 @@
-import { IsEnum, IsOptional, IsNumber, IsString, IsDateString, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsDateString,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   FinanceTransactionType,
@@ -74,10 +81,10 @@ export class GetAllMerchantsFinanceQueryDto {
 
   @IsOptional()
   @IsString()
-  sort_by?: 'current_balance' | 'total_earned' | 'created_at' = 'current_balance';
+  sort_by?: 'current_balance' | 'total_earned' | 'created_at' =
+    'current_balance';
 
   @IsOptional()
   @IsString()
   sort_order?: 'ASC' | 'DESC' = 'DESC';
 }
-

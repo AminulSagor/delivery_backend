@@ -14,7 +14,13 @@ import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Merchant, MerchantProfile, HubManager, Hub, Rider]),
+    TypeOrmModule.forFeature([
+      Merchant,
+      MerchantProfile,
+      HubManager,
+      Hub,
+      Rider,
+    ]),
     UsersModule,
     ConfigModule,
   ],

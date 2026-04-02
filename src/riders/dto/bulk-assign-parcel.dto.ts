@@ -1,9 +1,16 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsUUID, ValidateIf } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 
 /**
  * Unified DTO for assigning parcels to a rider
  * Supports both single parcel and bulk parcel assignment
- * 
+ *
  * Usage:
  * - Single: { rider_id: "...", parcel_id: "..." }
  * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
@@ -36,4 +43,3 @@ export class BulkAssignParcelsToRiderDto {
   @IsOptional()
   notes?: string;
 }
-

@@ -147,7 +147,7 @@ export interface StaffActionResponse {
 export interface PickupRequestListItem {
   id: string;
   request_code: string | null; // Unique code: REQ-2001
-  pickup_count: number;        // Main field: number of parcels to pick up
+  pickup_count: number; // Main field: number of parcels to pick up
   status: string;
   comment: string | null;
   created_at: Date;
@@ -222,6 +222,7 @@ export interface MerchantDetail extends MerchantListItem {
   full_address: string | null;
   secondary_number: string | null;
   approved_at: Date | null;
+  is_advance_payment_disabled: boolean;
 }
 
 // ===== HUB RESPONSES =====
@@ -362,8 +363,8 @@ export function toRiderActionResponse(rider: any): RiderActionResponse {
 export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
   return {
     id: pickup.id,
-    request_code: pickup.request_code || null,  // Unique code: REQ-2001
-    pickup_count: pickup.estimated_parcels || 0,  // pickup_count = estimated_parcels
+    request_code: pickup.request_code || null, // Unique code: REQ-2001
+    pickup_count: pickup.estimated_parcels || 0, // pickup_count = estimated_parcels
     status: pickup.status,
     comment: pickup.comment,
     created_at: pickup.created_at,
@@ -477,6 +478,7 @@ export function toMerchantDetail(merchant: any): MerchantDetail {
     full_address: merchant.full_address,
     secondary_number: merchant.secondary_number,
     approved_at: merchant.approved_at,
+    is_advance_payment_disabled: !!merchant.is_advance_payment_disabled,
   };
 }
 

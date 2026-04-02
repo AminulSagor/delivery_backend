@@ -44,4 +44,3 @@ export class TransferRecordQueryDto {
   @Max(100)
   limit?: number = 10;
 }
-

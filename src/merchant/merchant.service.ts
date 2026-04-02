@@ -100,7 +100,7 @@ export class MerchantService {
 
     // === AUTO-CREATE DEFAULT STORE ===
     const storeCode = await this.generateStoreCode(dto.business_name);
-    
+
     // Convert phone from +8801... to 01... format for store
     const storePhone = dto.phone.replace('+88', '');
 
@@ -162,6 +162,36 @@ export class MerchantService {
 
     // Format: PREFIX + 3-digit number (e.g., TSH001)
     return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+  }
+
+  async setAdvancePaymentDisabled(
+    merchantId: string,
+    isDisabled: boolean,
+    options?: { hubId?: string | null },
+  ): Promise<Merchant> {
+    // If Hub Manager is toggling, ensure merchant is assigned to that hub
+    if (options?.hubId) {
+      const storeCount = await this.storeRepo.count({
+        where: { merchant_id: merchantId, hub_id: options.hubId },
+      });
+
+      if (storeCount === 0) {
+        throw new ForbiddenException(
+          'You do not have permission to update this merchant',
+        );
+      }
+    }
+
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+    });
+
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    merchant.is_advance_payment_disabled = isDisabled;
+    return await this.merchantRepository.save(merchant);
   }
 
   async approveMerchant(
@@ -285,7 +315,11 @@ export class MerchantService {
 
   async getMerchantOverview(
     merchantId: string,
-    options: { hubId?: string | null; range?: 'last7d' | 'month'; month?: string },
+    options: {
+      hubId?: string | null;
+      range?: 'last7d' | 'month';
+      month?: string;
+    },
   ) {
     const merchant = await this.merchantRepository.findOne({
       where: { id: merchantId },
@@ -296,7 +330,8 @@ export class MerchantService {
       throw new NotFoundException(`Merchant with ID ${merchantId} not found`);
     }
 
-    const range: 'last7d' | 'month' = options.range === 'month' ? 'month' : 'last7d';
+    const range: 'last7d' | 'month' =
+      options.range === 'month' ? 'month' : 'last7d';
     const { start, end } = this.getDateRange(range, options.month);
 
     const storeScope: any = { merchant_id: merchantId };
@@ -354,13 +389,20 @@ export class MerchantService {
       baseQb.clone().getCount(),
       baseQb
         .clone()
-        .andWhere('parcel.status IN (:...deliveredStatuses)', { deliveredStatuses })
+        .andWhere('parcel.status IN (:...deliveredStatuses)', {
+          deliveredStatuses,
+        })
         .getCount(),
       baseQb
         .clone()
-        .andWhere('parcel.status IN (:...returnedStatuses)', { returnedStatuses })
+        .andWhere('parcel.status IN (:...returnedStatuses)', {
+          returnedStatuses,
+        })
         .getCount(),
-      baseQb.clone().andWhere('parcel.issue_reported_at IS NOT NULL').getCount(),
+      baseQb
+        .clone()
+        .andWhere('parcel.issue_reported_at IS NOT NULL')
+        .getCount(),
       baseQb
         .clone()
         .select("DATE_TRUNC('day', parcel.created_at)", 'bucket')
@@ -382,7 +424,8 @@ export class MerchantService {
         phone: merchant.user?.phone || null,
         email: merchant.user?.email || null,
         business_name: defaultStore?.business_name || null,
-        address: merchant.full_address || defaultStore?.business_address || null,
+        address:
+          merchant.full_address || defaultStore?.business_address || null,
         status: merchant.status,
       },
       store_count: storeCount,
@@ -403,9 +446,14 @@ export class MerchantService {
     const qb = this.merchantRepository
       .createQueryBuilder('merchant')
       .leftJoinAndSelect('merchant.user', 'user')
-      .innerJoin('stores', 'store', 'store.merchant_id = merchant.id AND store.hub_id = :hubId', {
-        hubId,
-      })
+      .innerJoin(
+        'stores',
+        'store',
+        'store.merchant_id = merchant.id AND store.hub_id = :hubId',
+        {
+          hubId,
+        },
+      )
       .groupBy('merchant.id')
       .addGroupBy('user.id')
       .orderBy('merchant.created_at', 'DESC');
@@ -415,7 +463,9 @@ export class MerchantService {
   }
 
   async getHubParcelsInHubStatus(merchantId: string, hubId: string) {
-    const storeCount = await this.storeRepo.count({ where: { merchant_id: merchantId, hub_id: hubId } });
+    const storeCount = await this.storeRepo.count({
+      where: { merchant_id: merchantId, hub_id: hubId },
+    });
 
     if (storeCount === 0) {
       throw new ForbiddenException('Merchant has no stores in your hub');
@@ -693,7 +743,9 @@ export class MerchantService {
 
   private getDateRange(range: 'last7d' | 'month', month?: string) {
     if (range === 'month') {
-      const monthString = month || `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthString =
+        month ||
+        `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
       const [yearStr, monthStr] = monthString.split('-');
       const year = Number(yearStr);
       const monthIndex = Number(monthStr) - 1;
@@ -709,8 +761,20 @@ export class MerchantService {
     }
 
     const todayUtc = new Date();
-    const end = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() + 1));
-    const start = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() - 6));
+    const end = new Date(
+      Date.UTC(
+        todayUtc.getUTCFullYear(),
+        todayUtc.getUTCMonth(),
+        todayUtc.getUTCDate() + 1,
+      ),
+    );
+    const start = new Date(
+      Date.UTC(
+        todayUtc.getUTCFullYear(),
+        todayUtc.getUTCMonth(),
+        todayUtc.getUTCDate() - 6,
+      ),
+    );
 
     return { start, end };
   }
@@ -872,7 +936,7 @@ export class MerchantService {
           '(profile.trade_license_number IS NOT NULL AND profile.trade_license_verified = false) OR ' +
           '(profile.tin_number IS NOT NULL AND profile.tin_verified = false) OR ' +
           '(profile.bin_number IS NOT NULL AND profile.bin_verified = false)' +
-        ')',
+          ')',
       )
       .orderBy('merchant.created_at', 'DESC')
       .getMany();
@@ -932,7 +996,10 @@ export class MerchantService {
 
     const docFieldMap = {
       nid: { checkField: 'nid_number', verifiedField: 'nid_verified' },
-      trade_license: { checkField: 'trade_license_number', verifiedField: 'trade_license_verified' },
+      trade_license: {
+        checkField: 'trade_license_number',
+        verifiedField: 'trade_license_verified',
+      },
       tin: { checkField: 'tin_number', verifiedField: 'tin_verified' },
       bin: { checkField: 'bin_number', verifiedField: 'bin_verified' },
     };
@@ -1056,7 +1123,9 @@ export class MerchantService {
       await this.userRepo.save(merchant.user);
     }
 
-    console.log(`[MERCHANT DEACTIVATED] Merchant deactivated: ${merchant.user?.full_name} (${merchant.id})`);
+    console.log(
+      `[MERCHANT DEACTIVATED] Merchant deactivated: ${merchant.user?.full_name} (${merchant.id})`,
+    );
 
     return merchant;
   }
@@ -1073,7 +1142,9 @@ export class MerchantService {
       await this.userRepo.save(merchant.user);
     }
 
-    console.log(`[MERCHANT ACTIVATED] Merchant activated: ${merchant.user?.full_name} (${merchant.id})`);
+    console.log(
+      `[MERCHANT ACTIVATED] Merchant activated: ${merchant.user?.full_name} (${merchant.id})`,
+    );
 
     return merchant;
   }
@@ -1093,7 +1164,9 @@ export class MerchantService {
       await this.userRepo.save(merchant.user);
     }
 
-    console.log(`[MERCHANT DECLINED] Merchant permanently declined: ${merchant.user?.full_name} (${merchant.id})`);
+    console.log(
+      `[MERCHANT DECLINED] Merchant permanently declined: ${merchant.user?.full_name} (${merchant.id})`,
+    );
 
     return merchant;
   }

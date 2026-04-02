@@ -1,4 +1,13 @@
-import { IsString, IsEmail, IsOptional, MinLength, Matches, IsInt, IsNotEmpty, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  MinLength,
+  Matches,
+  IsInt,
+  IsNotEmpty,
+  MaxLength,
+} from 'class-validator';
 
 export class MerchantSignupDto {
   // === USER FIELDS ===
@@ -23,7 +32,8 @@ export class MerchantSignupDto {
   @IsOptional()
   @IsString()
   @Matches(/^\+8801[3-9]\d{8}$/, {
-    message: 'Secondary number must be a valid Bangladeshi number starting with +8801',
+    message:
+      'Secondary number must be a valid Bangladeshi number starting with +8801',
   })
   secondary_number?: string;
 

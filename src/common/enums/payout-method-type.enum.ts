@@ -4,4 +4,3 @@ export enum PayoutMethodType {
   NAGAD = 'NAGAD',
   CASH = 'CASH',
 }
-

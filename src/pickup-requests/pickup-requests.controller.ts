@@ -30,15 +30,13 @@ import {
 @Controller('pickup-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PickupRequestsController {
-  constructor(
-    private readonly pickupRequestsService: PickupRequestsService,
-  ) {}
+  constructor(private readonly pickupRequestsService: PickupRequestsService) {}
 
   // ===== MERCHANT ENDPOINTS =====
 
   /**
    * Create pickup request (Merchant)
-   * 
+   *
    * - If same store + same day PENDING exists → increments pickup count
    * - Otherwise creates new pickup request
    */
@@ -97,7 +95,7 @@ export class PickupRequestsController {
 
   /**
    * Get PENDING pickup requests for hub (Hub Manager)
-   * 
+   *
    * Shows only PENDING status pickups (ready for assignment to rider)
    */
   @Get('hub/my-requests')
@@ -128,7 +126,7 @@ export class PickupRequestsController {
 
   /**
    * Get confirmed pickups assigned to riders (Hub Manager)
-   * 
+   *
    * Shows pickups with status CONFIRMED (rider assigned, in progress)
    * Includes rider info (name, phone)
    */
@@ -230,9 +228,10 @@ export class PickupRequestsController {
         },
         results: result.results,
       },
-      message: result.success === assignDto.pickup_ids.length
-        ? 'All pickups assigned to rider successfully'
-        : `${result.success} pickup(s) assigned, ${result.failed} failed`,
+      message:
+        result.success === assignDto.pickup_ids.length
+          ? 'All pickups assigned to rider successfully'
+          : `${result.success} pickup(s) assigned, ${result.failed} failed`,
     };
   }
 
@@ -240,7 +239,7 @@ export class PickupRequestsController {
 
   /**
    * Get assigned pickups (Rider)
-   * 
+   *
    * ?filter=pending  → CONFIRMED (need to pick up)
    * ?filter=completed → PICKED_UP (done)
    */
@@ -275,7 +274,7 @@ export class PickupRequestsController {
 
   /**
    * Complete pickup with count (Rider)
-   * 
+   *
    * Flow:
    * - Rider specifies how many parcels picked up
    * - Pickup count decrements automatically
@@ -299,12 +298,13 @@ export class PickupRequestsController {
       };
     }
 
-    const { pickup, remaining, pickedUp } = await this.pickupRequestsService.riderCompletePickup(
-      id,
-      riderId,
-      completeDto.picked_up_count,
-      completeDto.notes,
-    );
+    const { pickup, remaining, pickedUp } =
+      await this.pickupRequestsService.riderCompletePickup(
+        id,
+        riderId,
+        completeDto.picked_up_count,
+        completeDto.notes,
+      );
 
     return {
       success: true,
@@ -316,9 +316,10 @@ export class PickupRequestsController {
         remaining_count: remaining,
         pickup_count: pickup.estimated_parcels,
       },
-      message: remaining > 0 
-        ? `Picked ${pickedUp} parcel(s). ${remaining} remaining.`
-        : `Pickup completed. All ${pickedUp} parcel(s) picked up.`,
+      message:
+        remaining > 0
+          ? `Picked ${pickedUp} parcel(s). ${remaining} remaining.`
+          : `Pickup completed. All ${pickedUp} parcel(s) picked up.`,
     };
   }
 }

@@ -6,4 +6,3 @@ export class BulkReceiveParcelsDto {
   @IsUUID('4', { each: true, message: 'Each parcel ID must be a valid UUID' })
   parcel_ids: string[];
 }
-

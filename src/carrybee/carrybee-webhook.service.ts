@@ -2,8 +2,16 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Parcel, ParcelStatus, PaymentStatus } from '../parcels/entities/parcel.entity';
-import { ReturnChargeConfiguration, ReturnStatus } from '../pricing/entities/return-charge-configuration.entity';
+import {
+  Parcel,
+  ParcelStatus,
+  PaymentStatus,
+} from '../parcels/entities/parcel.entity';
+import {
+  ReturnChargeConfiguration,
+  ReturnStatus,
+} from '../pricing/entities/return-charge-configuration.entity';
+import { PricingZone } from '../common/enums/pricing-zone.enum';
 import { CarrybeeWebhookDto } from './dto/carrybee-webhook.dto';
 
 @Injectable()
@@ -39,7 +47,9 @@ export class CarrybeeWebhookService {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 
-    this.logger.log(`Received Carrybee webhook: ${payload.event} for ${payload.consignment_id}`);
+    this.logger.log(
+      `Received Carrybee webhook: ${payload.event} for ${payload.consignment_id}`,
+    );
 
     // Use transaction for atomicity
     const queryRunner = this.dataSource.createQueryRunner();
@@ -55,7 +65,9 @@ export class CarrybeeWebhookService {
 
       if (!parcel) {
         await queryRunner.rollbackTransaction();
-        this.logger.error(`Parcel not found for consignment ${payload.consignment_id}`);
+        this.logger.error(
+          `Parcel not found for consignment ${payload.consignment_id}`,
+        );
         return {
           success: false,
           message: 'Parcel not found',
@@ -223,26 +235,55 @@ export class CarrybeeWebhookService {
       return 0;
     }
 
-    return Number(config.charge_amount || 0);
+    // Respect validity window
+    const now = new Date();
+    if (config.start_date && config.start_date > now) {
+      this.logger.warn(
+        `Return charge config not active yet for store ${parcel.store_id}, status ${returnStatus}, zone ${zone} (starts ${config.start_date.toISOString()})`,
+      );
+      return 0;
+    }
+    if (config.end_date && config.end_date < now) {
+      this.logger.warn(
+        `Return charge config expired for store ${parcel.store_id}, status ${returnStatus}, zone ${zone} (ended ${config.end_date.toISOString()})`,
+      );
+      return 0;
+    }
+
+    const baseCharge = Number(config.return_delivery_charge) || 0;
+    const weightCharge =
+      (Number(config.return_weight_charge_per_kg) || 0) *
+      (Number(parcel.product_weight) || 0);
+    const codPercentage = Number(config.return_cod_percentage) || 0;
+    const codCharge = (codPercentage / 100) * (Number(parcel.cod_amount) || 0);
+
+    let totalCharge = baseCharge + weightCharge + codCharge;
+
+    const discountPercentage = Number(config.discount_percentage) || 0;
+    if (discountPercentage > 0) {
+      totalCharge = totalCharge * (1 - discountPercentage / 100);
+    }
+
+    return Math.round(totalCharge * 100) / 100;
   }
 
   /**
    * Determine pricing zone from parcel's delivery area
    */
-  private determinePricingZone(parcel: Parcel): string {
-    if (!parcel.delivery_coverage_area) {
-      return 'inside_dhaka'; // Default
+  private determinePricingZone(parcel: Parcel): PricingZone {
+    const area = parcel.delivery_coverage_area as any;
+    if (!area) return PricingZone.OUTSIDE_DHAKA;
+
+    if (String(area.division || '').toLowerCase() === 'dhaka') {
+      if (typeof area.inside_dhaka_flag === 'boolean') {
+        return area.inside_dhaka_flag
+          ? PricingZone.INSIDE_DHAKA
+          : PricingZone.SUB_DHAKA;
+      }
+      return PricingZone.INSIDE_DHAKA;
     }
 
-    const areaName = parcel.delivery_coverage_area.area?.toLowerCase() || '';
-
-    if (areaName.includes('dhaka') || areaName.includes('city')) {
-      return 'inside_dhaka';
-    } else if (areaName.includes('sub') || areaName.includes('suburban')) {
-      return 'sub_city';
-    } else {
-      return 'outside_dhaka';
-    }
+    return PricingZone.OUTSIDE_DHAKA;
   }
 
   private mapEventToStatus(event: string): ParcelStatus | null {

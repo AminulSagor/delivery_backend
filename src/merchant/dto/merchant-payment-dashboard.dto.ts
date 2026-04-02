@@ -103,4 +103,3 @@ export interface PaymentHistoryResponse {
     total_processing: number;
   };
 }
-

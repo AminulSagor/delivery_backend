@@ -40,4 +40,3 @@ export class InvoiceQueryDto {
   @Max(100)
   limit?: number = 10;
 }
-

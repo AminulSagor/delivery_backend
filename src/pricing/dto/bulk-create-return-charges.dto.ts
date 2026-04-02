@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   ValidateNested,
@@ -15,27 +15,37 @@ import { ReturnStatus } from '../entities/return-charge-configuration.entity';
 
 export class StatusChargeDto {
   @IsEnum(ReturnStatus, {
-    message: 'Return status must be one of: PARTIAL_DELIVERY, EXCHANGE, RETURNED, PAID_RETURN',
+    message:
+      'Return status must be one of: PARTIAL_DELIVERY, EXCHANGE, RETURNED, PAID_RETURN',
   })
   return_status: ReturnStatus;
 
   @IsNumber(
     { maxDecimalPlaces: 2 },
-    { message: 'Return delivery charge must be a number with max 2 decimal places' }
+    {
+      message:
+        'Return delivery charge must be a number with max 2 decimal places',
+    },
   )
   @Min(0, { message: 'Return delivery charge cannot be negative' })
   return_delivery_charge: number;
 
   @IsNumber(
     { maxDecimalPlaces: 2 },
-    { message: 'Return weight charge must be a number with max 2 decimal places' }
+    {
+      message:
+        'Return weight charge must be a number with max 2 decimal places',
+    },
   )
   @Min(0, { message: 'Return weight charge cannot be negative' })
   return_weight_charge_per_kg: number;
 
   @IsNumber(
     { maxDecimalPlaces: 2 },
-    { message: 'Return COD percentage must be a number with max 2 decimal places' }
+    {
+      message:
+        'Return COD percentage must be a number with max 2 decimal places',
+    },
   )
   @Min(0, { message: 'Return COD percentage cannot be negative' })
   @Max(100, { message: 'Return COD percentage cannot exceed 100' })
@@ -44,12 +54,28 @@ export class StatusChargeDto {
 
   @IsNumber(
     { maxDecimalPlaces: 2 },
-    { message: 'Discount percentage must be a number with max 2 decimal places' }
+    {
+      message: 'Discount percentage must be a number with max 2 decimal places',
+    },
   )
   @Min(0, { message: 'Discount percentage cannot be negative' })
   @Max(100, { message: 'Discount percentage cannot exceed 100' })
   @IsOptional()
   discount_percentage?: number;
+
+  @IsDateString(
+    {},
+    { message: 'Start date must be a valid ISO date string (YYYY-MM-DD)' },
+  )
+  @IsOptional()
+  start_date?: string;
+
+  @IsDateString(
+    {},
+    { message: 'End date must be a valid ISO date string (YYYY-MM-DD)' },
+  )
+  @IsOptional()
+  end_date?: string;
 }
 
 export class BulkCreateReturnChargesDto {
@@ -61,17 +87,45 @@ export class BulkCreateReturnChargesDto {
   })
   zone: PricingZone;
 
+  /**
+   * Optional bulk-level discount applied to all statuses unless a per-status `discount_percentage` is provided.
+   */
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Discount percentage must be a number with max 2 decimal places' },
+  )
+  @Min(0, { message: 'Discount percentage cannot be negative' })
+  @Max(100, { message: 'Discount percentage cannot exceed 100' })
+  @IsOptional()
+  discount_percentage?: number;
+
+  /**
+   * Backward/Frontend compatibility: some clients send `configurations` instead of `status_charges`.
+   * We accept both; `status_charges` is the canonical field used internally.
+   */
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StatusChargeDto)
+  configurations?: StatusChargeDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StatusChargeDto)
+  @Transform(({ value, obj }) => value ?? obj?.configurations)
   status_charges: StatusChargeDto[];
 
-  @IsDateString({}, { message: 'Start date must be a valid ISO date string (YYYY-MM-DD)' })
+  @IsDateString(
+    {},
+    { message: 'Start date must be a valid ISO date string (YYYY-MM-DD)' },
+  )
   @IsOptional()
   start_date?: string;
 
-  @IsDateString({}, { message: 'End date must be a valid ISO date string (YYYY-MM-DD)' })
+  @IsDateString(
+    {},
+    { message: 'End date must be a valid ISO date string (YYYY-MM-DD)' },
+  )
   @IsOptional()
   end_date?: string;
 }
-

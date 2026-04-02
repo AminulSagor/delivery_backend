@@ -5,7 +5,7 @@ import { ParcelStatus } from '../../parcels/entities/parcel.entity';
 /**
  * Delivery outcome statuses for returns/exchanges
  * These parcels need to be processed (return to merchant or handle exchange)
- * 
+ *
  * Note: DELIVERY_RESCHEDULED has separate endpoint (needs re-delivery, not return)
  */
 export const DELIVERY_OUTCOME_STATUSES = [
@@ -17,7 +17,10 @@ export const DELIVERY_OUTCOME_STATUSES = [
 
 export class DeliveryOutcomeQueryDto {
   @IsOptional()
-  @IsEnum(ParcelStatus, { message: 'Invalid status. Must be one of: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED' })
+  @IsEnum(ParcelStatus, {
+    message:
+      'Invalid status. Must be one of: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED',
+  })
   status?: ParcelStatus;
 
   @IsOptional()

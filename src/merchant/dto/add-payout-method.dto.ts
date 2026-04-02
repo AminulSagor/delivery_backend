@@ -7,7 +7,10 @@ import {
   Matches,
 } from 'class-validator';
 import { PayoutMethodType } from '../../common/enums/payout-method-type.enum';
-import { BkashAccountType, NagadAccountType } from '../../common/enums/account-type.enum';
+import {
+  BkashAccountType,
+  NagadAccountType,
+} from '../../common/enums/account-type.enum';
 
 export class AddPayoutMethodDto {
   @IsEnum(PayoutMethodType)
@@ -71,4 +74,3 @@ export class AddPayoutMethodDto {
   @IsEnum(NagadAccountType)
   nagad_account_type?: NagadAccountType;
 }
-

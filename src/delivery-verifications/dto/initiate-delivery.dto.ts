@@ -1,10 +1,21 @@
-import { IsNumber, IsIn, IsOptional, IsString, Min, MinLength, MaxLength } from 'class-validator';
+import {
+  IsNumber,
+  IsIn,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { ParcelStatus, RIDER_DELIVERY_STATUSES } from '../../parcels/entities/parcel.entity';
+import {
+  ParcelStatus,
+  RIDER_DELIVERY_STATUSES,
+} from '../../parcels/entities/parcel.entity';
 
 /**
  * DTO for initiating delivery status update
- * 
+ *
  * Rider selects a status and provides collected amount.
  * For certain statuses (Delivery Rescheduled, Return, Paid Return), reason is always required.
  */
@@ -14,7 +25,8 @@ export class InitiateDeliveryDto {
    * Valid values: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED
    */
   @IsIn(RIDER_DELIVERY_STATUSES, {
-    message: 'Invalid status. Must be one of: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED',
+    message:
+      'Invalid status. Must be one of: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, DELIVERY_RESCHEDULED, PAID_RETURN, RETURNED',
   })
   selected_status: ParcelStatus;
 

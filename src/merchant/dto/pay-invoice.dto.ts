@@ -10,4 +10,3 @@ export class PayInvoiceDto {
   @IsString()
   notes?: string;
 }
-

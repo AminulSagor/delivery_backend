@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -35,7 +40,9 @@ export class AdminService {
 
     // Check if email exists (if provided)
     if (dto.email) {
-      const existingUserByEmail = await this.usersService.findByEmail(dto.email);
+      const existingUserByEmail = await this.usersService.findByEmail(
+        dto.email,
+      );
       if (existingUserByEmail) {
         throw new ConflictException('Email already registered');
       }
@@ -54,7 +61,9 @@ export class AdminService {
       is_active: true,
     });
 
-    console.log(`[ADMIN CREATED] New admin user: ${admin.full_name} (${admin.phone})`);
+    console.log(
+      `[ADMIN CREATED] New admin user: ${admin.full_name} (${admin.phone})`,
+    );
 
     return admin;
   }
@@ -62,14 +71,32 @@ export class AdminService {
   async findAll(): Promise<User[]> {
     return await this.userRepository.find({
       where: { role: UserRole.ADMIN },
-      select: ['id', 'full_name', 'phone', 'email', 'role', 'is_active', 'created_at', 'updated_at'],
+      select: [
+        'id',
+        'full_name',
+        'phone',
+        'email',
+        'role',
+        'is_active',
+        'created_at',
+        'updated_at',
+      ],
     });
   }
 
   async findOne(id: string): Promise<User> {
     const admin = await this.userRepository.findOne({
       where: { id, role: UserRole.ADMIN },
-      select: ['id', 'full_name', 'phone', 'email', 'role', 'is_active', 'created_at', 'updated_at'],
+      select: [
+        'id',
+        'full_name',
+        'phone',
+        'email',
+        'role',
+        'is_active',
+        'created_at',
+        'updated_at',
+      ],
     });
 
     if (!admin) {
@@ -94,7 +121,9 @@ export class AdminService {
 
     await this.userRepository.save(admin);
 
-    console.log(`[ADMIN UPDATED] Admin user updated: ${admin.full_name} (${admin.id})`);
+    console.log(
+      `[ADMIN UPDATED] Admin user updated: ${admin.full_name} (${admin.id})`,
+    );
 
     return admin;
   }
@@ -113,7 +142,9 @@ export class AdminService {
 
     await this.userRepository.remove(admin);
 
-    console.log(`[ADMIN DELETED] Admin user deleted: ${admin.full_name} (${admin.id})`);
+    console.log(
+      `[ADMIN DELETED] Admin user deleted: ${admin.full_name} (${admin.id})`,
+    );
   }
 
   async deactivate(id: string): Promise<User> {
@@ -122,7 +153,9 @@ export class AdminService {
     admin.is_active = false;
     await this.userRepository.save(admin);
 
-    console.log(`[ADMIN DEACTIVATED] Admin user deactivated: ${admin.full_name} (${admin.id})`);
+    console.log(
+      `[ADMIN DEACTIVATED] Admin user deactivated: ${admin.full_name} (${admin.id})`,
+    );
 
     return admin;
   }
@@ -133,7 +166,9 @@ export class AdminService {
     admin.is_active = true;
     await this.userRepository.save(admin);
 
-    console.log(`[ADMIN ACTIVATED] Admin user activated: ${admin.full_name} (${admin.id})`);
+    console.log(
+      `[ADMIN ACTIVATED] Admin user activated: ${admin.full_name} (${admin.id})`,
+    );
 
     return admin;
   }
@@ -314,8 +349,8 @@ export class AdminService {
 
     // Fetch Merchant entities with User relation to get name and phone
     const merchants = await this.merchantRepository.find({
-      where: merchantIds.map(id => ({ id })),
-      relations: ['user'],  // Load the User relation from Merchant
+      where: merchantIds.map((id) => ({ id })),
+      relations: ['user'], // Load the User relation from Merchant
     });
 
     // Create a map of merchant_id -> Merchant (with User)
@@ -325,11 +360,14 @@ export class AdminService {
     }
 
     // Build the clearance list with proper merchant info
-    let merchantMap = new Map<string, {
-      merchant_name: string;
-      phone_number: string;
-      parcels: typeof unpaidParcels;
-    }>();
+    let merchantMap = new Map<
+      string,
+      {
+        merchant_name: string;
+        phone_number: string;
+        parcels: typeof unpaidParcels;
+      }
+    >();
 
     for (const [mid, parcels] of parcelsByMerchant.entries()) {
       const merchant = merchantInfoMap.get(mid);
@@ -343,7 +381,10 @@ export class AdminService {
     // Apply search filter if provided
     if (search) {
       const searchLower = search.toLowerCase();
-      const filteredMap = new Map<string, typeof merchantMap extends Map<string, infer V> ? V : never>();
+      const filteredMap = new Map<
+        string,
+        typeof merchantMap extends Map<string, infer V> ? V : never
+      >();
       for (const [mid, data] of merchantMap.entries()) {
         if (
           data.merchant_name.toLowerCase().includes(searchLower) ||
@@ -356,50 +397,58 @@ export class AdminService {
     }
 
     // Calculate stats for each merchant
-    const merchantClearanceList = Array.from(merchantMap.entries()).map(([, data]) => {
-      const parcels = data.parcels;
+    const merchantClearanceList = Array.from(merchantMap.entries()).map(
+      ([, data]) => {
+        const parcels = data.parcels;
 
-      // Calculate totals
-      const totalCollectedAmount = parcels.reduce(
-        (sum, p) => sum + Number(p.cod_collected_amount || p.cod_amount || 0),
-        0,
-      );
+        // Calculate totals
+        const totalCollectedAmount = parcels.reduce(
+          (sum, p) => sum + Number(p.cod_collected_amount || p.cod_amount || 0),
+          0,
+        );
 
-      const totalDeliveryCharge = parcels.reduce(
-        (sum, p) => sum + Number(p.delivery_charge || 0),
-        0,
-      );
+        const totalDeliveryCharge = parcels.reduce(
+          (sum, p) => sum + Number(p.delivery_charge || 0),
+          0,
+        );
 
-      const totalReturnCharge = parcels.reduce(
-        (sum, p) => sum + Number(p.return_charge || 0),
-        0,
-      );
+        const totalReturnCharge = parcels.reduce(
+          (sum, p) => sum + Number(p.return_charge || 0),
+          0,
+        );
 
-      const dueAmount = totalCollectedAmount - totalDeliveryCharge - totalReturnCharge;
+        const dueAmount =
+          totalCollectedAmount - totalDeliveryCharge - totalReturnCharge;
 
-      return {
-        merchant_name: data.merchant_name,
-        phone_number: data.phone_number,
-        total_parcels: parcels.length,
-        total_delivered: parcels.length,
-        total_collected_amount: totalCollectedAmount,
-        total_delivery_charge: totalDeliveryCharge,
-        total_return_charge: totalReturnCharge,
-        total_due_amount: dueAmount,
-      };
-    });
+        return {
+          merchant_name: data.merchant_name,
+          phone_number: data.phone_number,
+          total_parcels: parcels.length,
+          total_delivered: parcels.length,
+          total_collected_amount: totalCollectedAmount,
+          total_delivery_charge: totalDeliveryCharge,
+          total_return_charge: totalReturnCharge,
+          total_due_amount: dueAmount,
+        };
+      },
+    );
 
     // Apply pagination
     const total = merchantClearanceList.length;
-    const paginatedList = merchantClearanceList.slice((page - 1) * limit, page * limit);
+    const paginatedList = merchantClearanceList.slice(
+      (page - 1) * limit,
+      page * limit,
+    );
 
     // Calculate grand totals for summary
     const grandTotals = merchantClearanceList.reduce(
       (acc, m) => ({
         total_parcels: acc.total_parcels + m.total_parcels,
         total_delivered: acc.total_delivered + m.total_delivered,
-        total_collected_amount: acc.total_collected_amount + m.total_collected_amount,
-        total_delivery_charge: acc.total_delivery_charge + m.total_delivery_charge,
+        total_collected_amount:
+          acc.total_collected_amount + m.total_collected_amount,
+        total_delivery_charge:
+          acc.total_delivery_charge + m.total_delivery_charge,
         total_return_charge: acc.total_return_charge + m.total_return_charge,
         total_due_amount: acc.total_due_amount + m.total_due_amount,
       }),

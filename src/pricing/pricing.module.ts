@@ -7,10 +7,7 @@ import { ReturnChargeConfiguration } from './entities/return-charge-configuratio
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      PricingConfiguration,
-      ReturnChargeConfiguration,
-    ]),
+    TypeOrmModule.forFeature([PricingConfiguration, ReturnChargeConfiguration]),
   ],
   controllers: [PricingController],
   providers: [PricingService],

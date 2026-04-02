@@ -36,7 +36,9 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Token has expired. Please refresh your token.');
+        throw new UnauthorizedException(
+          'Token has expired. Please refresh your token.',
+        );
       }
       throw new UnauthorizedException('Invalid token');
     }

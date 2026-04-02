@@ -10,4 +10,3 @@ export class GenerateInvoiceDto {
   @IsUUID('4', { each: true })
   parcel_ids: string[];
 }
-

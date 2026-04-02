@@ -77,4 +77,3 @@ export class ReturnChargeConfiguration {
   @UpdateDateColumn()
   updated_at: Date;
 }
-

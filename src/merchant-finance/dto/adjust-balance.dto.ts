@@ -1,4 +1,11 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 import { FinanceTransactionType } from '../../common/enums/finance-transaction-type.enum';
 
 export class AdjustBalanceDto {
@@ -57,4 +64,3 @@ export class ProcessWithdrawalDto {
   @IsString()
   notes?: string;
 }
-

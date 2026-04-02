@@ -14,7 +14,7 @@ export class PickupQueryDto extends PaginationDto {
  * - completed: PICKED_UP
  */
 export enum RiderPickupFilter {
-  PENDING = 'pending',     // CONFIRMED - assigned but not picked up
+  PENDING = 'pending', // CONFIRMED - assigned but not picked up
   COMPLETED = 'completed', // PICKED_UP
   ALL = 'all',
 }
@@ -25,6 +25,8 @@ export class RiderPickupQueryDto {
   status?: PickupRequestStatus;
 
   @IsOptional()
-  @IsEnum(RiderPickupFilter, { message: 'Invalid filter. Use: pending, completed, all' })
+  @IsEnum(RiderPickupFilter, {
+    message: 'Invalid filter. Use: pending, completed, all',
+  })
   filter?: RiderPickupFilter;
 }

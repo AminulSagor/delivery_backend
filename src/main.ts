@@ -9,7 +9,7 @@ import { dataSourceOptions } from './data-source';
 /**
  * Fix stale enum types and orphan data before TypeORM synchronize runs.
  * This is a critical startup fix for Railway deployment stability.
- * 
+ *
  * TEMPORARILY DISABLED FOR LOCAL DEVELOPMENT
  */
 async function runDatabaseFixes() {
@@ -17,10 +17,10 @@ async function runDatabaseFixes() {
   console.log('[DB FIX] Database fixes DISABLED for local development');
   console.log('[DB FIX] (Enable in production if needed)');
   console.log('[DB FIX] ========================================');
-  
+
   // Skip fixes for now to avoid pg library issues
   return Promise.resolve();
-  
+
   /* COMMENTED OUT TEMPORARILY
   const tempDataSource = new DataSource({
     ...dataSourceOptions,
@@ -198,18 +198,22 @@ async function runDatabaseFixes() {
 async function bootstrap() {
   const isProduction = process.env.NODE_ENV === 'production';
   const isRailway = !!process.env.RAILWAY_ENVIRONMENT;
-  
+
   console.log('[BOOTSTRAP] Starting application...');
-  console.log(`[BOOTSTRAP] Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(
+    `[BOOTSTRAP] Environment: ${process.env.NODE_ENV || 'development'}`,
+  );
   console.log(`[BOOTSTRAP] Platform: ${isRailway ? 'Railway' : 'Local'}`);
   console.log(`[BOOTSTRAP] Port: ${process.env.PORT || 3000}`);
 
   // Run database fixes BEFORE NestJS/TypeORM starts
   await runDatabaseFixes();
-  
+
   const app = await NestFactory.create(AppModule, {
-    logger: isProduction ? ['error', 'warn', 'log'] : ['log', 'error', 'warn', 'debug'],
-    abortOnError: false, 
+    logger: isProduction
+      ? ['error', 'warn', 'log']
+      : ['log', 'error', 'warn', 'debug'],
+    abortOnError: false,
   });
 
   app.enableCors({
@@ -218,14 +222,14 @@ async function bootstrap() {
     allowedHeaders: 'Content-Type,Authorization,Accept',
     credentials: true,
   });
-  
+
   app.useGlobalFilters(new HttpExceptionFilter());
-  
+
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),
     new ResponseInterceptor(),
   );
-  
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -236,9 +240,11 @@ async function bootstrap() {
       },
     }),
   );
-  
+
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`🚀 Server running on port ${port} [${process.env.NODE_ENV || 'development'}]`);
+  console.log(
+    `🚀 Server running on port ${port} [${process.env.NODE_ENV || 'development'}]`,
+  );
 }
 bootstrap();

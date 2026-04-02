@@ -16,7 +16,10 @@ export interface Response<T> {
 
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T>> {
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<Response<T>> {
     return next.handle().pipe(
       map((data) => {
         // If response already has success field, return as is
@@ -26,7 +29,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
 
         // Extract message if present
         const message = data?.message;
-        
+
         // Remove message from data if it exists
         if (data && typeof data === 'object' && 'message' in data) {
           const { message: _, ...rest } = data;

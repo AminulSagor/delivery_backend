@@ -16,7 +16,15 @@ import { CarrybeeModule } from '../carrybee/carrybee.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Parcel, CoverageArea, Store, Merchant, Rider, Hub, User]),
+    TypeOrmModule.forFeature([
+      Parcel,
+      CoverageArea,
+      Store,
+      Merchant,
+      Rider,
+      Hub,
+      User,
+    ]),
     PricingModule,
     CustomerModule,
     PickupRequestsModule,

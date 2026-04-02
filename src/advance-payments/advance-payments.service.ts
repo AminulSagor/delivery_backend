@@ -11,6 +11,7 @@ import {
   AdvancePayment,
   AdvancePaymentStatus,
 } from './entities/advance-payment.entity';
+import { Merchant } from '../merchant/entities/merchant.entity';
 import { CreateAdvancePaymentDto } from './dto/create-advance.dto';
 import {
   MerchantActionDto,
@@ -35,11 +36,28 @@ export class AdvancePaymentsService {
   constructor(
     @InjectRepository(AdvancePayment)
     private readonly advanceRepo: Repository<AdvancePayment>,
+    @InjectRepository(Merchant)
+    private readonly merchantRepo: Repository<Merchant>,
     private readonly merchantFinanceService: MerchantFinanceService,
   ) {}
 
+  private async assertAdvancePaymentsEnabled(merchantId: string) {
+    const merchant = await this.merchantRepo.findOne({
+      where: { id: merchantId },
+    });
+    if (!merchant) throw new NotFoundException('Merchant not found');
+    if (merchant.is_advance_payment_disabled) {
+      throw new ForbiddenException(
+        'Advance payment feature is disabled for this merchant',
+      );
+    }
+    return merchant;
+  }
+
   // --- 1. Admin Creates Manual Invoice ---
   async create(dto: CreateAdvancePaymentDto, admin: User) {
+    await this.assertAdvancePaymentsEnabled(dto.merchant_id);
+
     // Manual Calculation logic
     const deductions =
       Number(dto.delivery_fee) +
@@ -76,6 +94,12 @@ export class AdvancePaymentsService {
 
     if (!advance) throw new NotFoundException('Invoice not found');
 
+    if (advance.merchant?.is_advance_payment_disabled) {
+      throw new ForbiddenException(
+        'Advance payment feature is disabled for this merchant',
+      );
+    }
+
     // Security check: ensure the logged-in merchant owns this invoice
     if (advance.merchant.user_id !== merchantUserId) {
       throw new BadRequestException('Unauthorized access to this invoice');
@@ -100,10 +124,23 @@ export class AdvancePaymentsService {
 
   // --- 3. Admin Updates (If Merchant Requested Review) ---
   async update(id: string, dto: CreateAdvancePaymentDto) {
-    const advance = await this.advanceRepo.findOne({ where: { id } });
+    const advance = await this.advanceRepo.findOne({
+      where: { id },
+      relations: ['merchant'],
+    });
     if (!advance) throw new NotFoundException('Invoice not found');
+
+    if (advance.merchant?.is_advance_payment_disabled) {
+      throw new ForbiddenException(
+        'Advance payment feature is disabled for this merchant',
+      );
+    }
+
     if (advance.is_paid)
       throw new BadRequestException('Cannot update a paid invoice');
+
+    // Also block changing merchant_id to a disabled merchant
+    await this.assertAdvancePaymentsEnabled(dto.merchant_id);
 
     const deductions =
       Number(dto.delivery_fee) +
@@ -127,6 +164,12 @@ export class AdvancePaymentsService {
     });
 
     if (!advance) throw new NotFoundException('Invoice not found');
+
+    if (advance.merchant?.is_advance_payment_disabled) {
+      throw new ForbiddenException(
+        'Advance payment feature is disabled for this merchant',
+      );
+    }
 
     if (advance.status !== AdvancePaymentStatus.APPROVED_BY_MERCHANT) {
       throw new BadRequestException(
@@ -217,7 +260,7 @@ export class AdvancePaymentsService {
     }
 
     // 5. Sort & Pagination
-    queryBuilder.orderBy(`ap.${sortBy}`, order as 'ASC' | 'DESC');
+    queryBuilder.orderBy(`ap.${sortBy}`, order);
     queryBuilder.skip(skip).take(limit);
 
     const [items, total] = await queryBuilder.getManyAndCount();

@@ -75,7 +75,9 @@ export class InvoiceCalculationService {
    * Calculate totals for multiple parcels (for invoice generation)
    */
   calculateInvoiceTotals(parcels: Parcel[]): InvoiceTotals {
-    const parcelBreakdowns = parcels.map((p) => this.calculateParcelBreakdown(p));
+    const parcelBreakdowns = parcels.map((p) =>
+      this.calculateParcelBreakdown(p),
+    );
 
     const totals = {
       total_parcels: parcels.length,
@@ -136,4 +138,3 @@ export class InvoiceCalculationService {
     return alreadyPaid - shouldPay;
   }
 }
-

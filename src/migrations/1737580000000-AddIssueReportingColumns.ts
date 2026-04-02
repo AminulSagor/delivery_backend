@@ -4,7 +4,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Add issue reporting columns to parcels table
  * Also adds transaction_id to merchant_invoices
  */
-export class AddIssueReportingColumns1737580000000 implements MigrationInterface {
+export class AddIssueReportingColumns1737580000000
+  implements MigrationInterface
+{
   name = 'AddIssueReportingColumns1737580000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -77,16 +79,33 @@ export class AddIssueReportingColumns1737580000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_type"`);
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_description"`);
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_reported_by_id"`);
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_reported_at"`);
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "is_issue_resolved"`);
-    await queryRunner.query(`ALTER TABLE "parcels" DROP COLUMN IF EXISTS "reschedule_count"`);
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_type"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_description"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_reported_by_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "issue_reported_at"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "is_issue_resolved"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "parcels" DROP COLUMN IF EXISTS "reschedule_count"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS parcel_issue_type_enum`);
-    await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP CONSTRAINT IF EXISTS "UQ_merchant_invoices_transaction_id"`);
-    await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "transaction_id"`);
-    await queryRunner.query(`ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "merchant_profile_id"`);
+    await queryRunner.query(
+      `ALTER TABLE "merchant_invoices" DROP CONSTRAINT IF EXISTS "UQ_merchant_invoices_transaction_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "transaction_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "merchant_invoices" DROP COLUMN IF EXISTS "merchant_profile_id"`,
+    );
   }
 }
-

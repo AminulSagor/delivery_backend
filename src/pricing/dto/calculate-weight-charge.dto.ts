@@ -1,10 +1,4 @@
-import {
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsUUID,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 import { PricingZone } from '../../common/enums/pricing-zone.enum';
 
 /**
@@ -12,14 +6,21 @@ import { PricingZone } from '../../common/enums/pricing-zone.enum';
  * Used to get the weight charge for a specific weight and zone
  */
 export class CalculateWeightChargeDto {
-  @IsUUID('4', { message: 'Store ID must be a valid UUID (or omit to use global config)' })
+  @IsUUID('4', {
+    message: 'Store ID must be a valid UUID (or omit to use global config)',
+  })
   @IsOptional()
   store_id?: string;
 
-  @IsEnum(PricingZone, { message: 'Zone must be one of: INSIDE_DHAKA, SUB_DHAKA, OUTSIDE_DHAKA' })
+  @IsEnum(PricingZone, {
+    message: 'Zone must be one of: INSIDE_DHAKA, SUB_DHAKA, OUTSIDE_DHAKA',
+  })
   zone: PricingZone;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Weight must be a number with max 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Weight must be a number with max 2 decimal places' },
+  )
   @Min(0, { message: 'Weight cannot be negative' })
   weight_kg: number;
 }
@@ -38,4 +39,3 @@ export interface WeightChargeCalculationResult {
   weight_charge: number;
   breakdown: string; // Human-readable breakdown
 }
-

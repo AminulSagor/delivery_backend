@@ -1,6 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddRescheduleCountToParcel1737570000000 implements MigrationInterface {
+export class AddRescheduleCountToParcel1737570000000
+  implements MigrationInterface
+{
   name = 'AddRescheduleCountToParcel1737570000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -17,4 +19,3 @@ export class AddRescheduleCountToParcel1737570000000 implements MigrationInterfa
     `);
   }
 }
-
