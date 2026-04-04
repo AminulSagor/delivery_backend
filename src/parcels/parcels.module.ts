@@ -13,6 +13,7 @@ import { PricingModule } from '../pricing/pricing.module';
 import { CustomerModule } from '../customer/customer.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
 import { CarrybeeModule } from '../carrybee/carrybee.module';
+import { SmsService } from '../utils/sms.service';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { CarrybeeModule } from '../carrybee/carrybee.module';
     forwardRef(() => CarrybeeModule), // Circular dependency resolution
   ],
   controllers: [ParcelsController],
-  providers: [ParcelsService],
+  providers: [ParcelsService, SmsService],
   exports: [ParcelsService],
 })
 export class ParcelsModule {}

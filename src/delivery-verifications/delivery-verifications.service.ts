@@ -1375,6 +1375,14 @@ export class DeliveryVerificationsService {
     return `${start}****${end}`;
   }
 
+  private formatSmsAmount(amount: number): string {
+    const value = Number(amount || 0);
+    if (Number.isInteger(value)) {
+      return `${value}`;
+    }
+    return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+
   /**
    * Send OTP SMS to recipient
    */
@@ -1390,48 +1398,53 @@ export class DeliveryVerificationsService {
   ) {
     const difference = collectedAmount - expectedAmount;
     const hasDifference = Math.abs(difference) > 0.01;
+    const parcelId = trackingNumber;
+    const amountText = this.formatSmsAmount(collectedAmount);
 
     let message: string;
 
-    if (recipientType === OtpRecipientType.CUSTOMER) {
-      // Customer receives OTP (already paid parcel)
-      message = `Delivery Confirmation
-Parcel: ${trackingNumber}
-Status: ${this.formatStatus(selectedStatus)}
+    switch (selectedStatus) {
+      case ParcelStatus.RETURNED:
+        message =
+          `[Meghswar Courier] [${parcelId}] Return initiated as the delivery was unsuccessful. ` +
+          `Use OTP ${otp} to confirm the return of the parcel.`;
+        break;
 
-Your OTP: ${otp}
-Valid for 5 minutes.
+      case ParcelStatus.EXCHANGE:
+        message =
+          `[Meghswar Courier] [${parcelId}] Your Exchange parcel OTP is ${otp}. ` +
+          `Share this code only with the delivery agent.`;
+        break;
 
-Share this code with the delivery rider to confirm receipt.
+      case ParcelStatus.PAID_RETURN:
+        message =
+          `[Meghswar Courier] [${parcelId}] is marked for Paid Return ${amountText}. ` +
+          `Your Paid Return Code is: ${otp}`;
+        break;
 
-- Courier Delivery`;
-    } else if (hasDifference && reason) {
-      // Merchant receives OTP with amount difference
-      const differenceText =
-        difference > 0 ? `+৳${difference}` : `৳${difference}`;
-      message = `Delivery Verification Required!
-Parcel: ${trackingNumber}
-Status: ${this.formatStatus(selectedStatus)}
-Expected: ৳${expectedAmount}
-Collected: ৳${collectedAmount}
-Difference: ${differenceText}
-Reason: ${reason}
+      case ParcelStatus.PARTIAL_DELIVERY:
+        message =
+          `[Meghswar Courier] [${parcelId}] Your order partial delivery has been updated to ${amountText}. ` +
+          `To confirm, please use OTP ${otp}.`;
+        break;
 
-Your OTP: ${otp}
-Valid for 5 minutes.
+      case ParcelStatus.DELIVERED:
+        if (hasDifference || reason) {
+          message =
+            `[Meghswar Courier] [${parcelId}] Your order price has been updated to ${amountText}. ` +
+            `To confirm, please use OTP ${otp}.`;
+        } else {
+          message =
+            `[Meghswar Courier] [${parcelId}] To confirm delivery, received amount: ${amountText}. ` +
+            `To confirm, please use OTP ${otp}.`;
+        }
+        break;
 
-- Courier Delivery`;
-    } else {
-      // Merchant receives OTP (amounts match)
-      message = `Delivery Confirmation
-Parcel: ${trackingNumber}
-Status: ${this.formatStatus(selectedStatus)}
-Amount Collected: ৳${collectedAmount}
-
-Your OTP: ${otp}
-Valid for 5 minutes.
-
-- Courier Delivery`;
+      default:
+        message =
+          `[Meghswar Courier] [${parcelId}] Status updated to ${this.formatStatus(selectedStatus)}. ` +
+          `Please use OTP ${otp} to confirm.`;
+        break;
     }
 
     try {
