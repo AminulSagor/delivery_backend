@@ -22,6 +22,8 @@ This flow allows a rider to complete delivery without OTP only when a hub manage
 
 Request body:
 
+- request_reason is optional.
+
 ```json
 {
   "request_reason": "Merchant did not receive OTP after resend attempts"
@@ -47,6 +49,7 @@ Validation rules:
 - Verification must still require OTP.
 - Verification must not already be completed.
 - OTP must already be in OTP_SENT state.
+- If request_reason is provided, it must be 10-500 characters.
 
 ### 2) Hub Manager: List Pending Requests
 
