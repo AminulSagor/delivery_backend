@@ -483,8 +483,15 @@ export class PricingService {
     dto: BulkCreateReturnChargesDto,
   ): Promise<ReturnChargeConfiguration[]> {
     const savedConfigs: ReturnChargeConfiguration[] = [];
+    const statusCharges = dto.status_charges ?? dto.configurations ?? [];
 
-    for (const statusCharge of dto.status_charges) {
+    if (statusCharges.length === 0) {
+      throw new BadRequestException(
+        'Either status_charges or configurations must be provided with at least one item',
+      );
+    }
+
+    for (const statusCharge of statusCharges) {
       const discountPercentage =
         statusCharge.discount_percentage ?? dto.discount_percentage ?? 0;
       const startDate = statusCharge.start_date ?? dto.start_date;

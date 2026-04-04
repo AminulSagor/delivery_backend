@@ -9,6 +9,7 @@ import {
   Max,
   IsOptional,
   IsDateString,
+  ValidateIf,
 } from 'class-validator';
 import { PricingZone } from '../../common/enums/pricing-zone.enum';
 import { ReturnStatus } from '../entities/return-charge-configuration.entity';
@@ -104,16 +105,20 @@ export class BulkCreateReturnChargesDto {
    * We accept both; `status_charges` is the canonical field used internally.
    */
   @IsOptional()
+  @ValidateIf((o) => o.status_charges == null)
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StatusChargeDto)
   configurations?: StatusChargeDto[];
 
+  @ValidateIf((o) => o.configurations == null)
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StatusChargeDto)
-  @Transform(({ value, obj }) => value ?? obj?.configurations)
-  status_charges: StatusChargeDto[];
+  @Transform(({ value, obj }) => value ?? obj?.configurations, {
+    toClassOnly: true,
+  })
+  status_charges?: StatusChargeDto[];
 
   @IsDateString(
     {},
