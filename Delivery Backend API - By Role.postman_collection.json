@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "faaacc54-cd3a-43ed-a1df-67bed2480309",
 		"name": "Delivery Backend API - By Role",
-		"description": "Complete API collection organized by user role.\n\nUPDATED (Dec 1, 2025 - v2):\n- OTP verification flow for delivery status\n- Delivery Outcomes: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED\n- Rescheduled Deliveries: DELIVERY_RESCHEDULED (separate endpoint)\n- Return Parcel Tracking: Creates RTN-xxx parcel with original_parcel_id link\n- Hub Manager actions: Mark Return to Merchant, Prepare for Redelivery\n- Added: GET /pickup-requests/rider/my-pickups (legacy)\n- Added: GET /riders/parcels/my-deliveries (legacy)\n- Added: POST /delivery-verifications/:id/request-otp",
+		"description": "Complete API collection organized by user role.\n\nUPDATED (Dec 1, 2025 - v2):\n- OTP verification flow for delivery status\n- Delivery Outcomes: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED\n- Rescheduled Deliveries: DELIVERY_RESCHEDULED (separate endpoint)\n- Return Parcel Tracking: Creates RTN-xxx parcel with original_parcel_id link\n- Hub Manager actions: Mark Return to Merchant, Prepare for Redelivery\n- Added: GET /pickup-requests/rider/my-pickups (legacy)\n- Added: GET /riders/parcels/my-deliveries (legacy)\n- Added: POST /delivery-verifications/:id/request-otp\n- Added: POST /delivery-verifications/:id/request-hub-approval\n- Added: GET /delivery-verifications/hub-approval/pending\n- Added: PATCH /delivery-verifications/:id/hub-approval/approve\n- Added: PATCH /delivery-verifications/:id/hub-approval/reject",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "50053725",
 		"_collection_link": "https://ms1111-9890.postman.co/workspace/Meghswar-Backend~3f2c5300-1962-47d8-ad1f-6fd02011a9ab/collection/50053725-faaacc54-cd3a-43ed-a1df-67bed2480309?action=share&source=collection_link&creator=50053725"
@@ -4259,6 +4259,120 @@
 										"delivery-verifications",
 										":id",
 										"resend-otp"
+									],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{verificationId}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Hub Manager: Reject OTP Bypass Request",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"rejection_reason\": \"Please retry OTP with merchant and confirm phone number\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/delivery-verifications/:id/hub-approval/reject",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"delivery-verifications",
+										":id",
+										"hub-approval",
+										"reject"
+									],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{verificationId}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Hub Manager: Approve OTP Bypass Request",
+							"request": {
+								"method": "PATCH",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/delivery-verifications/:id/hub-approval/approve",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"delivery-verifications",
+										":id",
+										"hub-approval",
+										"approve"
+									],
+									"variable": [
+										{
+											"key": "id",
+											"value": "{{verificationId}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Hub Manager: Get Pending OTP Bypass Requests",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/delivery-verifications/hub-approval/pending",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"delivery-verifications",
+										"hub-approval",
+										"pending"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Step 3A: Request Hub Approval (No OTP Received)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"request_reason\": \"Merchant did not receive OTP after resend attempts\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/delivery-verifications/:id/request-hub-approval",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"delivery-verifications",
+										":id",
+										"request-hub-approval"
 									],
 									"variable": [
 										{

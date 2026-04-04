@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   DeliveryVerification,
   DeliveryVerificationStatus,
+  OtpBypassRequestStatus,
   OtpRecipientType,
 } from './entities/delivery-verification.entity';
 import {
@@ -27,7 +28,15 @@ import {
   ReturnStatus,
 } from '../pricing/entities/return-charge-configuration.entity';
 import { PricingZone } from '../common/enums/pricing-zone.enum';
+import { UserRole } from '../common/enums/user-role.enum';
 import { SmsService } from '../utils/sms.service';
+
+const OTP_BYPASS_STATUS = {
+  NONE: 'NONE' as OtpBypassRequestStatus,
+  PENDING: 'PENDING' as OtpBypassRequestStatus,
+  APPROVED: 'APPROVED' as OtpBypassRequestStatus,
+  REJECTED: 'REJECTED' as OtpBypassRequestStatus,
+};
 
 @Injectable()
 export class DeliveryVerificationsService {
@@ -43,6 +52,35 @@ export class DeliveryVerificationsService {
     private readonly smsService: SmsService,
     private readonly configService: ConfigService,
   ) {}
+
+  private isVerificationFinalized(
+    verification: DeliveryVerification,
+  ): boolean {
+    return (
+      verification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
+      verification.verification_status === DeliveryVerificationStatus.COMPLETED
+    );
+  }
+
+  private resetOtpBypassRequestState(verification: DeliveryVerification): void {
+    verification.otp_bypass_request_status = OTP_BYPASS_STATUS.NONE;
+    verification.otp_bypass_request_reason = null;
+    verification.otp_bypass_requested_at = null;
+    verification.otp_bypass_reviewed_at = null;
+    verification.otp_bypass_reviewed_by_hub_manager_id = null;
+    verification.otp_bypass_rejection_reason = null;
+  }
+
+  private resolveVerificationHubId(
+    verification: DeliveryVerification,
+  ): string | null {
+    return (
+      verification.parcel?.current_hub_id ||
+      verification.parcel?.assignedRider?.hub_id ||
+      verification.rider?.hub_id ||
+      null
+    );
+  }
 
   private getParcelTxPrefixForCompletedStatus(
     status: ParcelStatus,
@@ -229,6 +267,7 @@ export class DeliveryVerificationsService {
       existingVerification.requires_otp_verification = !skipOtpVerification;
       existingVerification.otp_attempts = 0;
       existingVerification.delivery_attempted_at = new Date();
+      this.resetOtpBypassRequestState(existingVerification);
 
       if (skipOtpVerification) {
         existingVerification.otp_code = null;
@@ -563,6 +602,15 @@ export class DeliveryVerificationsService {
     verification.merchant_approved = true;
     verification.merchant_approved_at = new Date();
     verification.verification_status = DeliveryVerificationStatus.OTP_VERIFIED;
+
+    if (verification.otp_bypass_request_status === OTP_BYPASS_STATUS.PENDING) {
+      verification.otp_bypass_request_status = OTP_BYPASS_STATUS.REJECTED;
+      verification.otp_bypass_reviewed_at = new Date();
+      verification.otp_bypass_rejection_reason =
+        'Closed automatically because OTP was verified successfully.';
+      verification.otp_bypass_reviewed_by_hub_manager_id = null;
+    }
+
     await this.deliveryVerificationRepo.save(verification);
 
     await this.completeDelivery(verificationId);
@@ -659,12 +707,270 @@ export class DeliveryVerificationsService {
   }
 
   /**
+   * Rider requests hub manager approval to complete without OTP.
+   */
+  async requestHubApproval(
+    verificationId: string,
+    riderId: string,
+    requestReason: string,
+  ) {
+    const verification = await this.deliveryVerificationRepo.findOne({
+      where: { id: verificationId },
+      relations: ['parcel', 'parcel.assignedRider', 'rider'],
+    });
+
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+
+    if (verification.parcel.assigned_rider_id !== riderId) {
+      throw new ForbiddenException(
+        'You are not authorized to request hub approval for this delivery',
+      );
+    }
+
+    if (!verification.requires_otp_verification) {
+      throw new BadRequestException(
+        'This delivery does not require OTP verification',
+      );
+    }
+
+    if (this.isVerificationFinalized(verification)) {
+      throw new BadRequestException('Delivery already verified');
+    }
+
+    if (
+      verification.verification_status !== DeliveryVerificationStatus.OTP_SENT
+    ) {
+      throw new BadRequestException(
+        'OTP must be sent first. Please request or resend OTP before asking for hub approval.',
+      );
+    }
+
+    if (verification.otp_bypass_request_status === OTP_BYPASS_STATUS.PENDING) {
+      throw new BadRequestException('Hub approval request is already pending');
+    }
+
+    verification.otp_bypass_request_status = OTP_BYPASS_STATUS.PENDING;
+    verification.otp_bypass_request_reason = requestReason;
+    verification.otp_bypass_requested_at = new Date();
+    verification.otp_bypass_reviewed_at = null;
+    verification.otp_bypass_reviewed_by_hub_manager_id = null;
+    verification.otp_bypass_rejection_reason = null;
+
+    await this.deliveryVerificationRepo.save(verification);
+
+    this.logger.log(
+      `[OTP BYPASS REQUESTED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}`,
+    );
+
+    return {
+      success: true,
+      request_submitted: true,
+      verification_id: verification.id,
+      otp_bypass_status: verification.otp_bypass_request_status,
+      requested_at: verification.otp_bypass_requested_at,
+      message:
+        'Request sent to hub manager. You can complete delivery without OTP after approval.',
+    };
+  }
+
+  /**
+   * Hub Manager: Get pending OTP bypass requests for current hub.
+   */
+  async getPendingHubApprovalRequests(hubId: string | null) {
+    if (!hubId) {
+      throw new ForbiddenException(
+        'Hub Manager is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const pending = await this.deliveryVerificationRepo
+      .createQueryBuilder('verification')
+      .leftJoinAndSelect('verification.parcel', 'parcel')
+      .leftJoinAndSelect('verification.rider', 'rider')
+      .leftJoinAndSelect('rider.user', 'riderUser')
+      .where('verification.otp_bypass_request_status = :status', {
+        status: OTP_BYPASS_STATUS.PENDING,
+      })
+      .andWhere('(parcel.current_hub_id = :hubId OR rider.hub_id = :hubId)', {
+        hubId,
+      })
+      .orderBy('verification.otp_bypass_requested_at', 'DESC')
+      .getMany();
+
+    return {
+      success: true,
+      total: pending.length,
+      data: pending.map((item) => ({
+        verification_id: item.id,
+        parcel_id: item.parcel_id,
+        tracking_number: item.parcel?.tracking_number,
+        rider_id: item.rider_id,
+        rider_name: item.rider?.user?.full_name || null,
+        rider_phone: item.rider?.user?.phone || null,
+        selected_status: item.selected_status,
+        expected_amount: Number(item.expected_cod_amount),
+        collected_amount: Number(item.collected_amount),
+        difference: Number(item.amount_difference || 0),
+        request_reason: item.otp_bypass_request_reason,
+        requested_at: item.otp_bypass_requested_at,
+        otp_sent_to: item.otp_recipient_type,
+        otp_phone: item.otp_sent_to_phone
+          ? this.maskPhone(item.otp_sent_to_phone)
+          : null,
+        otp_expires_at: item.otp_expires_at,
+      })),
+    };
+  }
+
+  /**
+   * Hub Manager: Approve OTP bypass request and complete delivery.
+   */
+  async approveHubApprovalRequest(
+    verificationId: string,
+    hubId: string | null,
+    hubManagerId: string | null,
+  ) {
+    if (!hubId) {
+      throw new ForbiddenException(
+        'Hub Manager is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const verification = await this.deliveryVerificationRepo.findOne({
+      where: { id: verificationId },
+      relations: ['parcel', 'parcel.assignedRider', 'rider'],
+    });
+
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+
+    const verificationHubId = this.resolveVerificationHubId(verification);
+    if (!verificationHubId || verificationHubId !== hubId) {
+      throw new ForbiddenException(
+        'You are not authorized to review this verification',
+      );
+    }
+
+    if (!verification.requires_otp_verification) {
+      throw new BadRequestException(
+        'This delivery does not require OTP verification',
+      );
+    }
+
+    if (this.isVerificationFinalized(verification)) {
+      throw new BadRequestException('Delivery already verified');
+    }
+
+    if (verification.otp_bypass_request_status !== OTP_BYPASS_STATUS.PENDING) {
+      throw new BadRequestException('No pending hub approval request found');
+    }
+
+    const approvedAt = new Date();
+    verification.otp_bypass_request_status = OTP_BYPASS_STATUS.APPROVED;
+    verification.otp_bypass_reviewed_at = approvedAt;
+    verification.otp_bypass_reviewed_by_hub_manager_id = hubManagerId || null;
+    verification.otp_bypass_rejection_reason = null;
+
+    verification.otp_code = null;
+    verification.otp_sent_at = null;
+    verification.otp_expires_at = null;
+    verification.otp_attempts = 0;
+    verification.otp_verified_at = approvedAt;
+    verification.otp_verified_by = null;
+    verification.merchant_approved = true;
+    verification.merchant_approved_at = approvedAt;
+    verification.verification_status = DeliveryVerificationStatus.OTP_VERIFIED;
+
+    await this.deliveryVerificationRepo.save(verification);
+    await this.completeDelivery(verification.id);
+
+    this.logger.log(
+      `[OTP BYPASS APPROVED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, HubManager: ${hubManagerId || 'N/A'}`,
+    );
+
+    return {
+      success: true,
+      approved: true,
+      verification_id: verification.id,
+      message:
+        'Hub manager approved the request. Delivery completed without OTP.',
+    };
+  }
+
+  /**
+   * Hub Manager: Reject OTP bypass request.
+   */
+  async rejectHubApprovalRequest(
+    verificationId: string,
+    hubId: string | null,
+    hubManagerId: string | null,
+    rejectionReason: string,
+  ) {
+    if (!hubId) {
+      throw new ForbiddenException(
+        'Hub Manager is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const reason = rejectionReason?.trim();
+    if (!reason) {
+      throw new BadRequestException('Rejection reason is required');
+    }
+
+    const verification = await this.deliveryVerificationRepo.findOne({
+      where: { id: verificationId },
+      relations: ['parcel', 'parcel.assignedRider', 'rider'],
+    });
+
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+
+    const verificationHubId = this.resolveVerificationHubId(verification);
+    if (!verificationHubId || verificationHubId !== hubId) {
+      throw new ForbiddenException(
+        'You are not authorized to review this verification',
+      );
+    }
+
+    if (this.isVerificationFinalized(verification)) {
+      throw new BadRequestException('Delivery already verified');
+    }
+
+    if (verification.otp_bypass_request_status !== OTP_BYPASS_STATUS.PENDING) {
+      throw new BadRequestException('No pending hub approval request found');
+    }
+
+    verification.otp_bypass_request_status = OTP_BYPASS_STATUS.REJECTED;
+    verification.otp_bypass_reviewed_at = new Date();
+    verification.otp_bypass_reviewed_by_hub_manager_id = hubManagerId || null;
+    verification.otp_bypass_rejection_reason = reason;
+
+    await this.deliveryVerificationRepo.save(verification);
+
+    this.logger.log(
+      `[OTP BYPASS REJECTED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, HubManager: ${hubManagerId || 'N/A'}`,
+    );
+
+    return {
+      success: true,
+      approved: false,
+      verification_id: verification.id,
+      message: 'Hub manager rejected the OTP bypass request.',
+    };
+  }
+
+  /**
    * Get verification details
    */
   async getVerification(
     verificationId: string,
     userId: string,
     userRole: string,
+    hubId?: string | null,
   ) {
     const verification = await this.deliveryVerificationRepo.findOne({
       where: { id: verificationId },
@@ -689,9 +995,13 @@ export class DeliveryVerificationsService {
       verification.rider?.user_id === userId ||
       verification.parcel?.assignedRider?.user_id === userId;
     const isMerchant = verification.parcel?.store?.merchant?.user_id === userId;
-    const isAdmin = userRole === 'ADMIN';
+    const isAdmin = userRole === UserRole.ADMIN;
+    const isHubManager =
+      userRole === UserRole.HUB_MANAGER &&
+      !!hubId &&
+      this.resolveVerificationHubId(verification) === hubId;
 
-    if (!isRider && !isMerchant && !isAdmin) {
+    if (!isRider && !isMerchant && !isAdmin && !isHubManager) {
       throw new ForbiddenException(
         'You are not authorized to view this verification',
       );
@@ -705,6 +1015,11 @@ export class DeliveryVerificationsService {
       status: verification.selected_status,
       verification_status: verification.verification_status,
       collected_amount: Number(verification.collected_amount),
+      otp_bypass_status: verification.otp_bypass_request_status,
+      otp_bypass_request_reason: verification.otp_bypass_request_reason,
+      otp_bypass_requested_at: verification.otp_bypass_requested_at,
+      otp_bypass_reviewed_at: verification.otp_bypass_reviewed_at,
+      otp_bypass_rejection_reason: verification.otp_bypass_rejection_reason,
     };
 
     // For Rider: Show relevant data based on verification state
@@ -757,6 +1072,27 @@ export class DeliveryVerificationsService {
       };
     }
 
+    if (isHubManager) {
+      return {
+        success: true,
+        data: {
+          ...baseData,
+          expected_amount: Number(verification.expected_cod_amount),
+          difference: Number(verification.amount_difference),
+          reason: verification.difference_reason,
+          rider_id: verification.rider_id,
+          otp_sent_to: verification.otp_recipient_type,
+          otp_phone: verification.otp_sent_to_phone
+            ? this.maskPhone(verification.otp_sent_to_phone)
+            : null,
+          otp_expires_at: verification.otp_expires_at,
+          otp_bypass_reviewed_by_hub_manager_id:
+            verification.otp_bypass_reviewed_by_hub_manager_id,
+          completed_at: verification.delivery_completed_at,
+        },
+      };
+    }
+
     // For Admin: Full audit data
     return {
       success: true,
@@ -775,6 +1111,13 @@ export class DeliveryVerificationsService {
         otp_recipient: verification.otp_recipient_type,
         otp_verified_by: verification.otp_verified_by,
         otp_attempts: verification.otp_attempts,
+        otp_bypass_status: verification.otp_bypass_request_status,
+        otp_bypass_request_reason: verification.otp_bypass_request_reason,
+        otp_bypass_requested_at: verification.otp_bypass_requested_at,
+        otp_bypass_reviewed_at: verification.otp_bypass_reviewed_at,
+        otp_bypass_reviewed_by_hub_manager_id:
+          verification.otp_bypass_reviewed_by_hub_manager_id,
+        otp_bypass_rejection_reason: verification.otp_bypass_rejection_reason,
         attempted_at: verification.delivery_attempted_at,
         completed_at: verification.delivery_completed_at,
       },

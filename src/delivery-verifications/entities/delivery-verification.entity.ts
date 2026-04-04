@@ -26,6 +26,16 @@ export enum OtpRecipientType {
   CUSTOMER = 'CUSTOMER',
 }
 
+export const OTP_BYPASS_REQUEST_STATUSES = [
+  'NONE',
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+] as const;
+
+export type OtpBypassRequestStatus =
+  (typeof OTP_BYPASS_REQUEST_STATUSES)[number];
+
 @Entity('delivery_verifications')
 export class DeliveryVerification {
   @PrimaryGeneratedColumn('uuid')
@@ -115,6 +125,25 @@ export class DeliveryVerification {
     default: DeliveryVerificationStatus.PENDING,
   })
   verification_status: DeliveryVerificationStatus;
+
+  // ===== OTP BYPASS REQUEST (RIDER -> HUB MANAGER) =====
+  @Column({ type: 'varchar', length: 20, default: 'NONE' })
+  otp_bypass_request_status: OtpBypassRequestStatus;
+
+  @Column({ type: 'text', nullable: true })
+  otp_bypass_request_reason: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  otp_bypass_requested_at: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  otp_bypass_reviewed_at: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  otp_bypass_reviewed_by_hub_manager_id: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  otp_bypass_rejection_reason: string | null;
 
   // ===== AUDIT TRAIL =====
   @Column({ type: 'varchar', length: 20, nullable: true })
