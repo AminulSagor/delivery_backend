@@ -10,7 +10,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, FindOptionsWhere, In } from 'typeorm';
+import { Repository, Between, FindOptionsWhere, In, IsNull } from 'typeorm';
 import {
   PaginatedResponse,
   PaginationMeta,
@@ -81,6 +81,7 @@ import {
 } from 'src/hubs/dto/resolve-report.dto';
 import { BulkAcceptDto } from 'src/hubs/dto/bulk-accept-parcels.dto';
 import { CarrybeeService } from '../carrybee/carrybee.service';
+import { SmsService } from '../utils/sms.service';
 
 @Injectable()
 export class ParcelsService {
@@ -109,7 +110,41 @@ export class ParcelsService {
     private pickupRequestsService: PickupRequestsService,
     @Inject(forwardRef(() => CarrybeeService))
     private carrybeeService: CarrybeeService,
+    private smsService: SmsService,
   ) {}
+
+  private formatSmsAmount(amount: number): string {
+    const value = Number(amount || 0);
+    if (Number.isInteger(value)) {
+      return `${value}`;
+    }
+    return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+
+  private async sendAssignForRiderSms(parcel: Parcel, rider: Rider) {
+    if (!parcel.customer_phone) {
+      return;
+    }
+
+    const parcelId = parcel.parcel_tx_id || parcel.tracking_number || parcel.id;
+    const riderName = rider.user?.full_name || 'Delivery Rider';
+    const riderPhone = rider.user?.phone || 'N/A';
+
+    const message =
+      `[Meghswar Courier] Your parcel (${parcelId}) is out for delivery by ${riderName} (${riderPhone}). ` +
+      `Use OTP to receive your order. Please share it only with the delivery agent.`;
+
+    try {
+      await this.smsService.sendSms(parcel.customer_phone, message);
+      this.logger.log(
+        `[ASSIGN SMS SENT] Parcel: ${parcel.tracking_number}, To: ${parcel.customer_phone}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[ASSIGN SMS FAILED] Parcel: ${parcel.tracking_number}, Error: ${error.message}`,
+      );
+    }
+  }
 
   /**
    * Generate unique tracking number with retry logic for race conditions
@@ -2572,6 +2607,8 @@ export class ParcelsService {
       `[PARCEL ASSIGNED] Parcel: ${updatedParcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`,
     );
 
+    await this.sendAssignForRiderSms(updatedParcel, rider);
+
     return updatedParcel;
   }
 
@@ -2741,6 +2778,8 @@ export class ParcelsService {
         this.logger.log(
           `[BULK ASSIGN] Parcel: ${parcel.tracking_number}, Rider: ${rider.user.full_name}`,
         );
+
+        await this.sendAssignForRiderSms(parcel, rider);
       } catch (error) {
         results.push({
           parcel_id: parcelId,
@@ -2779,10 +2818,20 @@ export class ParcelsService {
     filter?: string,
   ) {
     const where: any = { assigned_rider_id: riderId };
+    const completedDeliveryStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
 
     // If specific status is provided, use it (takes priority)
     if (status) {
       where.status = status;
+      // Keep completed-delivery views clean after COD settlement
+      if (completedDeliveryStatuses.includes(status)) {
+        where.cod_cleared_at = IsNull();
+      }
     } else if (filter) {
       switch (filter) {
         case 'pickup_pending':
@@ -2796,6 +2845,8 @@ export class ParcelsService {
         case 'delivery_completed':
           // Delivery section - Completed
           where.status = ParcelStatus.DELIVERED;
+          // Hide parcels after hub has collected COD from rider
+          where.cod_cleared_at = IsNull();
           break;
         case 'return_pending':
           // Return section - Pending (failed, needs to return to hub)
@@ -2851,6 +2902,8 @@ export class ParcelsService {
         ParcelStatus.EXCHANGE,
         ParcelStatus.PAID_RETURN,
       ]);
+      // Do not show parcels already cleared (COD collected by hub from rider)
+      where.cod_cleared_at = IsNull();
     }
 
     return this.parcelRepository.find({
