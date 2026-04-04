@@ -712,7 +712,7 @@ export class DeliveryVerificationsService {
   async requestHubApproval(
     verificationId: string,
     riderId: string,
-    requestReason: string,
+    requestReason?: string,
   ) {
     const verification = await this.deliveryVerificationRepo.findOne({
       where: { id: verificationId },
@@ -751,8 +751,10 @@ export class DeliveryVerificationsService {
       throw new BadRequestException('Hub approval request is already pending');
     }
 
+    const normalizedRequestReason = requestReason?.trim() || null;
+
     verification.otp_bypass_request_status = OTP_BYPASS_STATUS.PENDING;
-    verification.otp_bypass_request_reason = requestReason;
+    verification.otp_bypass_request_reason = normalizedRequestReason;
     verification.otp_bypass_requested_at = new Date();
     verification.otp_bypass_reviewed_at = null;
     verification.otp_bypass_reviewed_by_hub_manager_id = null;
