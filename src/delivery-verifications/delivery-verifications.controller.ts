@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Param,
   Body,
   UseGuards,
@@ -13,6 +14,8 @@ import { DeliveryVerificationsService } from './delivery-verifications.service';
 import { InitiateDeliveryDto } from './dto/initiate-delivery.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { RequestHubApprovalDto } from './dto/request-hub-approval.dto';
+import { RejectHubApprovalDto } from './dto/reject-hub-approval.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -149,12 +152,91 @@ export class DeliveryVerificationsController {
   }
 
   /**
+   * Rider requests hub manager approval to complete delivery without OTP.
+   * POST /delivery-verifications/:id/request-hub-approval
+   */
+  @Post(':id/request-hub-approval')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.RIDER)
+  async requestHubApproval(
+    @Param('id', ParseUUIDPipe) verificationId: string,
+    @Body() dto: RequestHubApprovalDto,
+    @CurrentUser() user: any,
+  ) {
+    const riderId = user.riderId;
+
+    if (!riderId) {
+      return {
+        success: false,
+        message: 'Rider ID not found in user context',
+      };
+    }
+
+    return await this.deliveryVerificationsService.requestHubApproval(
+      verificationId,
+      riderId,
+      dto.request_reason,
+    );
+  }
+
+  /**
+   * Hub Manager: pending OTP bypass requests in current hub.
+   * GET /delivery-verifications/hub-approval/pending
+   */
+  @Get('hub-approval/pending')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async getPendingHubApprovalRequests(@CurrentUser() user: any) {
+    return await this.deliveryVerificationsService.getPendingHubApprovalRequests(
+      user.hubId,
+    );
+  }
+
+  /**
+   * Hub Manager: approve OTP bypass request and complete delivery.
+   * PATCH /delivery-verifications/:id/hub-approval/approve
+   */
+  @Patch(':id/hub-approval/approve')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async approveHubApprovalRequest(
+    @Param('id', ParseUUIDPipe) verificationId: string,
+    @CurrentUser() user: any,
+  ) {
+    return await this.deliveryVerificationsService.approveHubApprovalRequest(
+      verificationId,
+      user.hubId,
+      user.hubManagerId,
+    );
+  }
+
+  /**
+   * Hub Manager: reject OTP bypass request.
+   * PATCH /delivery-verifications/:id/hub-approval/reject
+   */
+  @Patch(':id/hub-approval/reject')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async rejectHubApprovalRequest(
+    @Param('id', ParseUUIDPipe) verificationId: string,
+    @Body() dto: RejectHubApprovalDto,
+    @CurrentUser() user: any,
+  ) {
+    return await this.deliveryVerificationsService.rejectHubApprovalRequest(
+      verificationId,
+      user.hubId,
+      user.hubManagerId,
+      dto.rejection_reason,
+    );
+  }
+
+  /**
    * Get verification details
    * GET /delivery-verifications/:id
    */
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.RIDER, UserRole.MERCHANT, UserRole.ADMIN)
+  @Roles(UserRole.RIDER, UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
   async getVerification(
     @Param('id', ParseUUIDPipe) verificationId: string,
     @CurrentUser() user: any,
@@ -163,6 +245,7 @@ export class DeliveryVerificationsController {
       verificationId,
       user.userId,
       user.role,
+      user.hubId,
     );
   }
 }
