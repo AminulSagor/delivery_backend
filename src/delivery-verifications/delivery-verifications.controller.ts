@@ -185,10 +185,11 @@ export class DeliveryVerificationsController {
    */
   @Get('hub-approval/pending')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async getPendingHubApprovalRequests(@CurrentUser() user: any) {
     return await this.deliveryVerificationsService.getPendingHubApprovalRequests(
-      user.hubId,
+      user.hubId || null,
+      user.role,
     );
   }
 
@@ -198,15 +199,16 @@ export class DeliveryVerificationsController {
    */
   @Patch(':id/hub-approval/approve')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async approveHubApprovalRequest(
     @Param('id', ParseUUIDPipe) verificationId: string,
     @CurrentUser() user: any,
   ) {
     return await this.deliveryVerificationsService.approveHubApprovalRequest(
       verificationId,
-      user.hubId,
-      user.hubManagerId,
+      user.hubId || null,
+      user.hubManagerId || user.userId || null,
+      user.role,
     );
   }
 
@@ -216,7 +218,7 @@ export class DeliveryVerificationsController {
    */
   @Patch(':id/hub-approval/reject')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async rejectHubApprovalRequest(
     @Param('id', ParseUUIDPipe) verificationId: string,
     @Body() dto: RejectHubApprovalDto,
@@ -224,8 +226,9 @@ export class DeliveryVerificationsController {
   ) {
     return await this.deliveryVerificationsService.rejectHubApprovalRequest(
       verificationId,
-      user.hubId,
-      user.hubManagerId,
+      user.hubId || null,
+      user.hubManagerId || user.userId || null,
+      user.role,
       dto.rejection_reason,
     );
   }

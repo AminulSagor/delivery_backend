@@ -11,6 +11,7 @@ import { ReturnChargeConfiguration } from '../pricing/entities/return-charge-con
 import { ConfigService } from '@nestjs/config';
 import { SmsService } from '../utils/sms.service';
 import { ForbiddenException } from '@nestjs/common';
+import { UserRole } from '../common/enums/user-role.enum';
 
 const mockDeliveryVerificationRepo = {
   findOne: jest.fn(),
@@ -135,6 +136,7 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
       'verification-1',
       'hub-1',
       'hub-manager-1',
+      UserRole.HUB_MANAGER,
     );
 
     expect(result.success).toBe(true);
@@ -159,6 +161,7 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
       'verification-1',
       'hub-1',
       'hub-manager-1',
+      UserRole.HUB_MANAGER,
       'Rider must retry OTP with merchant',
     );
 
@@ -181,7 +184,12 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
     mockDeliveryVerificationRepo.findOne.mockResolvedValue(verification);
 
     await expect(
-      service.approveHubApprovalRequest('verification-1', 'hub-1', 'hm-1'),
+      service.approveHubApprovalRequest(
+        'verification-1',
+        'hub-1',
+        'hm-1',
+        UserRole.HUB_MANAGER,
+      ),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -203,11 +211,44 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
 
     mockDeliveryVerificationRepo.createQueryBuilder.mockReturnValue(qb);
 
-    const result = await service.getPendingHubApprovalRequests('hub-1');
+    const result = await service.getPendingHubApprovalRequests(
+      'hub-1',
+      UserRole.HUB_MANAGER,
+    );
 
     expect(result.success).toBe(true);
     expect(result.total).toBe(1);
     expect(result.data[0].verification_id).toBe('verification-1');
     expect(result.data[0].request_reason).toBe('OTP not received');
+  });
+
+  it('should allow admin to approve request across hubs', async () => {
+    const verification = {
+      ...buildVerification(),
+      otp_bypass_request_status: 'PENDING',
+      parcel: {
+        ...buildVerification().parcel,
+        current_hub_id: 'hub-2',
+      },
+    };
+
+    mockDeliveryVerificationRepo.findOne.mockResolvedValue(verification);
+    mockDeliveryVerificationRepo.save.mockImplementation(async (v) => v);
+
+    const completeSpy = jest
+      .spyOn(service as any, 'completeDelivery')
+      .mockResolvedValue(undefined);
+
+    const result = await service.approveHubApprovalRequest(
+      'verification-1',
+      null,
+      'admin-user-1',
+      UserRole.ADMIN,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.approved).toBe(true);
+    expect(verification.otp_bypass_request_status).toBe('APPROVED');
+    expect(completeSpy).toHaveBeenCalledWith('verification-1');
   });
 });
