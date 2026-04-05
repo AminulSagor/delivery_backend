@@ -18,6 +18,11 @@ import { PickupRequestsService } from '../pickup-requests/pickup-requests.servic
 import { RiderFinanceService } from './services/riders-finance.service';
 import { CreateRiderDto } from './dto/create-rider.dto';
 import { UpdateRiderDto } from './dto/update-rider.dto';
+import { UpdateRiderProfileDto } from './dto/update-rider-profile.dto';
+import { UpdateRiderDocumentsDto } from './dto/update-rider-documents.dto';
+import { UpdateRiderPasswordDto } from './dto/update-rider-password.dto';
+import { AddRiderPayoutMethodDto } from './dto/add-rider-payout-method.dto';
+import { UpdateRiderPayoutMethodDto } from './dto/update-rider-payout-method.dto';
 import { FailedDeliveryDto, ReturnParcelDto } from './dto/delivery-action.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -130,6 +135,236 @@ export class RidersController {
       success: true,
       data,
       message: 'Finance summary retrieved successfully',
+    };
+  }
+
+  /**
+   * Get rider own profile details
+   */
+  @Get('profile')
+  @Roles(UserRole.RIDER)
+  async getMyProfile(@CurrentUser() user: any) {
+    const rider = await this.ridersService.findByUserId(user.userId);
+
+    return {
+      success: true,
+      data: toRiderDetail(rider),
+      message: 'Profile retrieved successfully',
+    };
+  }
+
+  /**
+   * Rider updates own profile details
+   */
+  @Patch('profile')
+  @Roles(UserRole.RIDER)
+  async updateMyProfile(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateRiderProfileDto,
+  ) {
+    const rider = await this.ridersService.updateMyProfile(
+      user.userId,
+      user.riderId,
+      dto,
+    );
+
+    return {
+      success: true,
+      data: toRiderDetail(rider),
+      message: 'Profile updated successfully',
+    };
+  }
+
+  /**
+   * Get rider NID and driving license documents
+   */
+  @Get('profile/documents')
+  @Roles(UserRole.RIDER)
+  async getMyDocuments(@CurrentUser() user: any) {
+    const rider = await this.ridersService.findByUserId(user.userId);
+
+    return {
+      success: true,
+      data: {
+        nid_number: rider.nid_number,
+        nid_front_photo: rider.nid_front_photo,
+        nid_back_photo: rider.nid_back_photo,
+        license_no: rider.license_no,
+        license_front_photo: rider.license_front_photo,
+        license_back_photo: rider.license_back_photo,
+      },
+      message: 'Documents retrieved successfully',
+    };
+  }
+
+  /**
+   * Rider updates NID and driving license documents
+   */
+  @Patch('profile/documents')
+  @Roles(UserRole.RIDER)
+  async updateMyDocuments(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateRiderDocumentsDto,
+  ) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const rider = await this.ridersService.updateMyDocuments(
+      user.userId,
+      user.riderId,
+      dto,
+    );
+
+    return {
+      success: true,
+      data: toRiderDetail(rider),
+      message: 'Documents updated successfully',
+    };
+  }
+
+  /**
+   * Rider updates own password
+   */
+  @Patch('profile/password')
+  @Roles(UserRole.RIDER)
+  async updateMyPassword(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateRiderPasswordDto,
+  ) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    await this.ridersService.updateMyPassword(user.userId, user.riderId, dto);
+
+    return {
+      success: true,
+      message: 'Password updated successfully',
+    };
+  }
+
+  /**
+   * Get available payout methods for rider
+   */
+  @Get('profile/payout-methods/available')
+  @Roles(UserRole.RIDER)
+  async getAvailablePayoutMethods(@CurrentUser() user: any) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const available = await this.ridersService.getAvailablePayoutMethods(
+      user.userId,
+      user.riderId,
+    );
+
+    return {
+      success: true,
+      data: { available_methods: available },
+      message: 'Available payout methods retrieved successfully',
+    };
+  }
+
+  /**
+   * Get rider payout methods (account numbers are masked)
+   */
+  @Get('profile/payout-methods')
+  @Roles(UserRole.RIDER)
+  async getMyPayoutMethods(@CurrentUser() user: any) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const methods = await this.ridersService.getMyPayoutMethods(
+      user.userId,
+      user.riderId,
+    );
+
+    return {
+      success: true,
+      data: { methods },
+      message: 'Payout methods retrieved successfully',
+    };
+  }
+
+  /**
+   * Add rider payout method
+   */
+  @Post('profile/payout-methods')
+  @Roles(UserRole.RIDER)
+  async addMyPayoutMethod(
+    @CurrentUser() user: any,
+    @Body() dto: AddRiderPayoutMethodDto,
+  ) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const method = await this.ridersService.addMyPayoutMethod(
+      user.userId,
+      user.riderId,
+      dto,
+    );
+
+    return {
+      success: true,
+      data: { method },
+      message: 'Payout method added successfully',
+    };
+  }
+
+  /**
+   * Update rider payout method details
+   */
+  @Patch('profile/payout-methods/:id')
+  @Roles(UserRole.RIDER)
+  async updateMyPayoutMethod(
+    @CurrentUser() user: any,
+    @Param('id', ParseUUIDPipe) methodId: string,
+    @Body() dto: UpdateRiderPayoutMethodDto,
+  ) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const method = await this.ridersService.updateMyPayoutMethod(
+      user.userId,
+      user.riderId,
+      methodId,
+      dto,
+    );
+
+    return {
+      success: true,
+      data: { method },
+      message: 'Payout method updated successfully',
+    };
+  }
+
+  /**
+   * Set default rider payout method
+   */
+  @Patch('profile/payout-methods/:id/set-default')
+  @Roles(UserRole.RIDER)
+  async setDefaultPayoutMethod(
+    @CurrentUser() user: any,
+    @Param('id', ParseUUIDPipe) methodId: string,
+  ) {
+    if (!user.riderId) {
+      throw new BadRequestException('Rider ID not found in user context');
+    }
+
+    const method = await this.ridersService.setMyPayoutMethodDefault(
+      user.userId,
+      user.riderId,
+      methodId,
+    );
+
+    return {
+      success: true,
+      data: { method },
+      message: 'Default payout method set successfully',
     };
   }
 
