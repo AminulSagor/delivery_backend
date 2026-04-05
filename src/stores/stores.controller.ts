@@ -23,7 +23,6 @@ import {
   toStoreListItem,
   toStoreDetail,
 } from '../common/interfaces/responses.interface';
-import { StoreStatus } from './entities/store.entity';
 
 @Controller('stores')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,12 +35,10 @@ export class StoresController {
   @HttpCode(HttpStatus.OK)
   @Patch('admin/:id/approve')
   async approveStore(@Param('id') id: string) {
-    await this.storesService.approveStore(id);
+    const store = await this.storesService.approveStore(id);
 
-    // Minimal response as requested
     return {
-      store_id: id,
-      status: StoreStatus.APPROVED,
+      store: toStoreDetail(store),
       message: 'Store approved successfully',
     };
   }
@@ -50,12 +47,10 @@ export class StoresController {
   @HttpCode(HttpStatus.OK)
   @Patch('admin/:id/decline')
   async rejectStore(@Param('id') id: string) {
-    await this.storesService.rejectStore(id);
+    const store = await this.storesService.rejectStore(id);
 
-    // Minimal response as requested
     return {
-      store_id: id,
-      status: StoreStatus.DECLINED,
+      store: toStoreDetail(store),
       message: 'Store declined successfully',
     };
   }
@@ -80,8 +75,7 @@ export class StoresController {
   ) {
     const store = await this.storesService.assignHubToStore(storeId, hubId);
     return {
-      store_id: store.id,
-      hub_id: store.hub_id,
+      store: toStoreDetail(store),
       message: 'Hub assigned to store successfully',
     };
   }
@@ -105,8 +99,7 @@ export class StoresController {
   async create(@CurrentUser() user: any, @Body() dto: CreateStoreDto) {
     const store = await this.storesService.create(user.userId, dto);
     return {
-      store_id: store.id,
-      business_name: store.business_name,
+      store: toStoreDetail(store),
       message: 'Store created successfully',
     };
   }
@@ -117,7 +110,7 @@ export class StoresController {
   async findAll(@CurrentUser() user: any) {
     const stores = await this.storesService.findAllByMerchant(user.userId);
     return {
-      stores: stores,
+      stores: stores.map(toStoreDetail),
       message: 'Stores retrieved successfully',
     };
   }
@@ -160,8 +153,7 @@ export class StoresController {
   ) {
     const store = await this.storesService.update(id, user.userId, dto);
     return {
-      store_id: store.id,
-      business_name: store.business_name,
+      store: toStoreDetail(store),
       message: 'Store updated successfully',
     };
   }
@@ -172,8 +164,7 @@ export class StoresController {
   async setAsDefault(@Param('id') id: string, @CurrentUser() user: any) {
     const store = await this.storesService.setAsDefault(id, user.userId);
     return {
-      store_id: store.id,
-      is_default: store.is_default,
+      store: toStoreDetail(store),
       message: 'Store set as default successfully',
     };
   }

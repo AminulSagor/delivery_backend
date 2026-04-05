@@ -35,6 +35,15 @@ export class StoresService {
     private coverageAreasService: CoverageAreasService,
   ) {}
 
+  private normalizeOptionalText(value?: string): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   /**
    * Generate unique store code from business name
    * Format: First 3 letters + 3 digit number (e.g., TSH001)
@@ -135,12 +144,14 @@ export class StoresService {
     store.store_code = storeCode; // Auto-generated
     store.business_name = dto.business_name;
     store.business_address = dto.business_address;
-    store.district = dto.district ?? null;
-    store.thana = dto.thana ?? null;
-    store.area = dto.area ?? null;
+    store.district = this.normalizeOptionalText(dto.district);
+    store.thana = this.normalizeOptionalText(dto.thana);
+    store.area = this.normalizeOptionalText(dto.area);
     store.phone_number = dto.phone_number;
-    store.email = dto.email ?? null;
-    store.facebook_page = dto.facebook_page ?? null;
+    store.email = this.normalizeOptionalText(dto.email);
+    const facebookPage =
+      dto.facebook_page !== undefined ? dto.facebook_page : dto.fb;
+    store.facebook_page = this.normalizeOptionalText(facebookPage);
     store.is_default = dto.is_default || false;
     store.carrybee_city_id = dto.carrybee_city_id;
     store.carrybee_zone_id = dto.carrybee_zone_id;
@@ -252,7 +263,7 @@ export class StoresService {
 
     const stores = await this.storesRepository.find({
       where: { merchant_id: merchant.id },
-      relations: ['hub'],
+      relations: ['hub', 'merchant', 'merchant.user'],
       order: {
         is_default: 'DESC', // Default first
         created_at: 'DESC',
@@ -331,7 +342,7 @@ export class StoresService {
 
     const defaultStore = await this.storesRepository.findOne({
       where: { merchant_id: merchant.id, is_default: true },
-      relations: ['hub'],
+      relations: ['hub', 'merchant', 'merchant.user'],
     });
 
     if (!defaultStore) {
@@ -400,7 +411,7 @@ export class StoresService {
 
     const store = await this.storesRepository.findOne({
       where: { id, merchant_id: merchant.id },
-      relations: ['hub'],
+      relations: ['hub', 'merchant', 'merchant.user'],
     });
 
     if (!store) {
@@ -460,13 +471,20 @@ export class StoresService {
       store.business_name = dto.business_name;
     if (dto.business_address !== undefined)
       store.business_address = dto.business_address;
-    if (dto.district !== undefined) store.district = dto.district;
-    if (dto.thana !== undefined) store.thana = dto.thana;
-    if (dto.area !== undefined) store.area = dto.area;
+    if (dto.district !== undefined)
+      store.district = this.normalizeOptionalText(dto.district);
+    if (dto.thana !== undefined)
+      store.thana = this.normalizeOptionalText(dto.thana);
+    if (dto.area !== undefined)
+      store.area = this.normalizeOptionalText(dto.area);
     if (dto.phone_number !== undefined) store.phone_number = dto.phone_number;
-    if (dto.email !== undefined) store.email = dto.email;
-    if (dto.facebook_page !== undefined)
-      store.facebook_page = dto.facebook_page;
+    if (dto.email !== undefined)
+      store.email = this.normalizeOptionalText(dto.email);
+    if (dto.facebook_page !== undefined || dto.fb !== undefined) {
+      const facebookPage =
+        dto.facebook_page !== undefined ? dto.facebook_page : dto.fb;
+      store.facebook_page = this.normalizeOptionalText(facebookPage);
+    }
     if (dto.carrybee_city_id !== undefined)
       store.carrybee_city_id = dto.carrybee_city_id;
     if (dto.carrybee_zone_id !== undefined)
@@ -639,7 +657,7 @@ export class StoresService {
   async assignHubToStore(storeId: string, hubId: string): Promise<Store> {
     const store = await this.storesRepository.findOne({
       where: { id: storeId },
-      relations: ['merchant', 'hub'],
+      relations: ['merchant', 'merchant.user', 'hub'],
     });
 
     if (!store) {

@@ -359,20 +359,8 @@ export class HubsController {
     return {
       success: true,
       data: {
-        original_parcel: {
-          id: result.original_parcel.id,
-          parcel_tx_id: result.original_parcel.parcel_tx_id,
-          tracking_number: result.original_parcel.tracking_number,
-          status: result.original_parcel.status,
-        },
-        return_parcel: {
-          id: result.return_parcel.id,
-          parcel_tx_id: result.return_parcel.parcel_tx_id,
-          tracking_number: result.return_parcel.tracking_number,
-          original_parcel_id: result.return_parcel.original_parcel_id,
-          status: result.return_parcel.status,
-          customer_address: result.return_parcel.customer_address,
-        },
+        original_parcel: toParcelListItem(result.original_parcel),
+        return_parcel: toParcelListItem(result.return_parcel),
       },
       message:
         'Return parcel created. Assign to rider for delivery back to merchant.',
@@ -517,7 +505,7 @@ export class HubsController {
     return {
       success: true,
       data: {
-        parcels: result.items,
+        parcels: result.items.map(toParcelListItem),
         pagination: result.pagination,
       },
       message: 'Parcels retrieved successfully',
@@ -562,10 +550,7 @@ export class HubsController {
     return {
       success: true,
       data: {
-        id: parcel.id,
-        tracking_number: parcel.tracking_number,
-        status: parcel.status,
-        total_charge: parcel.total_charge,
+        parcel: toParcelListItem(parcel),
       },
       message: 'Parcel created and received successfully',
     };
@@ -593,7 +578,7 @@ export class HubsController {
     return {
       success: true,
       data: {
-        parcels: result.items,
+        parcels: result.items.map(toParcelListItem),
         pagination: result.pagination,
       },
       message: 'Parcels awaiting receipt retrieved successfully',
@@ -819,7 +804,13 @@ export class HubsController {
     );
     return {
       success: true,
-      data: result,
+      data: {
+        parcels: result.parcels.map(toParcelListItem),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      },
       message: 'Incoming parcels retrieved successfully',
     };
   }
@@ -893,7 +884,13 @@ export class HubsController {
     );
     return {
       success: true,
-      data: result,
+      data: {
+        parcels: result.parcels.map(toParcelListItem),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      },
       message: 'Outgoing parcels retrieved successfully',
     };
   }

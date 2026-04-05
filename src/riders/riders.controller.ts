@@ -70,11 +70,7 @@ export class RidersController {
 
     return {
       success: true,
-      data: {
-        id: rider.id,
-        full_name: rider.user?.full_name,
-        phone: rider.user?.phone,
-      },
+      data: toRiderDetail(rider),
       message: 'Rider created successfully. Pending admin approval.',
     };
   }
@@ -90,11 +86,7 @@ export class RidersController {
 
     return {
       success: true,
-      data: {
-        id: rider.id,
-        full_name: rider.user?.full_name,
-        phone: rider.user?.phone,
-      },
+      data: toRiderDetail(rider),
       message: 'Rider created successfully',
     };
   }
@@ -179,10 +171,7 @@ export class RidersController {
 
     return {
       success: true,
-      data: {
-        id: rider.id,
-        approval_status: rider.approval_status,
-      },
+      data: toRiderDetail(rider),
       message: 'Rider approved successfully',
     };
   }
@@ -200,10 +189,7 @@ export class RidersController {
 
     return {
       success: true,
-      data: {
-        id: rider.id,
-        approval_status: rider.approval_status,
-      },
+      data: toRiderDetail(rider),
       message: 'Rider rejected',
     };
   }
@@ -462,17 +448,7 @@ export class RidersController {
 
     return {
       success: true,
-      data: {
-        parcel_id: parcel.id,
-        parcel_tx_id: parcel.parcel_tx_id,
-        tracking_number: parcel.tracking_number,
-        customer_name: parcel.customer_name,
-        customer_phone: parcel.customer_phone,
-        customer_address: parcel.customer_address,
-        is_cod: parcel.is_cod,
-        cod_amount: parcel.cod_amount,
-        total_charge: parcel.total_charge,
-      },
+      data: toParcelListItem(parcel),
       message:
         'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
     };
