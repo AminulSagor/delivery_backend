@@ -2,7 +2,7 @@
 
 ## Overview
 
-This flow allows a rider to complete delivery without OTP only when a hub manager approves the rider request.
+This flow allows a rider to complete delivery without OTP only when a hub manager (or admin) approves the rider request.
 
 ### Standard Flow
 
@@ -55,7 +55,7 @@ Validation rules:
 
 - Method: GET
 - Path: /delivery-verifications/hub-approval/pending
-- Role: HUB_MANAGER
+- Role: HUB_MANAGER or ADMIN
 
 Success response (example):
 
@@ -88,12 +88,13 @@ Success response (example):
 Notes:
 
 - Hub manager sees only requests from their own hub.
+- Admin can see pending requests across all hubs.
 
 ### 3) Hub Manager: Approve Request
 
 - Method: PATCH
 - Path: /delivery-verifications/:id/hub-approval/approve
-- Role: HUB_MANAGER
+- Role: HUB_MANAGER or ADMIN
 
 Request body:
 
@@ -121,7 +122,7 @@ Effects on approval:
 
 - Method: PATCH
 - Path: /delivery-verifications/:id/hub-approval/reject
-- Role: HUB_MANAGER
+- Role: HUB_MANAGER or ADMIN
 
 Request body:
 
@@ -158,4 +159,5 @@ Effects on rejection:
 
 - Rider endpoint is restricted to the rider who owns that verification.
 - Hub manager actions are restricted by hub scope using JWT hubId.
-- Cross-hub approval/rejection is blocked.
+- Admin can approve/reject without hub scoping.
+- Cross-hub approval/rejection is blocked for hub managers.

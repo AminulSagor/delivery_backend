@@ -54,7 +54,14 @@ export class CustomerController {
 
   @Get('get/:phone')
   async getByPhone(@Param('phone') phone: string, @CurrentUser() user: any) {
-    return await this.customerService.getCustomerByPhone(phone, user.userId);
+    if (!user.merchantId) {
+      return {
+        success: false,
+        message: 'Merchant ID not found in user context',
+      };
+    }
+
+    return await this.customerService.getCustomerByPhone(phone, user.merchantId);
   }
 
   // Get customer by phone number instead of id

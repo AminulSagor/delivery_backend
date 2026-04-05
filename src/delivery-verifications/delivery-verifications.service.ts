@@ -780,8 +780,12 @@ export class DeliveryVerificationsService {
   /**
    * Hub Manager: Get pending OTP bypass requests for current hub.
    */
-  async getPendingHubApprovalRequests(hubId: string | null) {
-    if (!hubId) {
+  async getPendingHubApprovalRequests(
+    hubId: string | null,
+    userRole: string = UserRole.HUB_MANAGER,
+  ) {
+    const isAdmin = userRole === UserRole.ADMIN;
+    if (!isAdmin && !hubId) {
       throw new ForbiddenException(
         'Hub Manager is not assigned to any hub. Please contact admin.',
       );
@@ -795,9 +799,12 @@ export class DeliveryVerificationsService {
       .where('verification.otp_bypass_request_status = :status', {
         status: OTP_BYPASS_STATUS.PENDING,
       })
-      .andWhere('(parcel.current_hub_id = :hubId OR rider.hub_id = :hubId)', {
-        hubId,
-      })
+      .andWhere(
+        isAdmin
+          ? '1=1'
+          : '(parcel.current_hub_id = :hubId OR rider.hub_id = :hubId)',
+        isAdmin ? {} : { hubId },
+      )
       .orderBy('verification.otp_bypass_requested_at', 'DESC')
       .getMany();
 
@@ -832,9 +839,11 @@ export class DeliveryVerificationsService {
   async approveHubApprovalRequest(
     verificationId: string,
     hubId: string | null,
-    hubManagerId: string | null,
+    reviewerId: string | null,
+    userRole: string = UserRole.HUB_MANAGER,
   ) {
-    if (!hubId) {
+    const isAdmin = userRole === UserRole.ADMIN;
+    if (!isAdmin && !hubId) {
       throw new ForbiddenException(
         'Hub Manager is not assigned to any hub. Please contact admin.',
       );
@@ -849,11 +858,13 @@ export class DeliveryVerificationsService {
       throw new NotFoundException('Verification not found');
     }
 
-    const verificationHubId = this.resolveVerificationHubId(verification);
-    if (!verificationHubId || verificationHubId !== hubId) {
-      throw new ForbiddenException(
-        'You are not authorized to review this verification',
-      );
+    if (!isAdmin) {
+      const verificationHubId = this.resolveVerificationHubId(verification);
+      if (!verificationHubId || verificationHubId !== hubId) {
+        throw new ForbiddenException(
+          'You are not authorized to review this verification',
+        );
+      }
     }
 
     if (!verification.requires_otp_verification) {
@@ -873,7 +884,7 @@ export class DeliveryVerificationsService {
     const approvedAt = new Date();
     verification.otp_bypass_request_status = OTP_BYPASS_STATUS.APPROVED;
     verification.otp_bypass_reviewed_at = approvedAt;
-    verification.otp_bypass_reviewed_by_hub_manager_id = hubManagerId || null;
+    verification.otp_bypass_reviewed_by_hub_manager_id = reviewerId || null;
     verification.otp_bypass_rejection_reason = null;
 
     verification.otp_code = null;
@@ -890,7 +901,7 @@ export class DeliveryVerificationsService {
     await this.completeDelivery(verification.id);
 
     this.logger.log(
-      `[OTP BYPASS APPROVED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, HubManager: ${hubManagerId || 'N/A'}`,
+      `[OTP BYPASS APPROVED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, Reviewer: ${reviewerId || 'N/A'}, Role: ${userRole}`,
     );
 
     return {
@@ -908,10 +919,12 @@ export class DeliveryVerificationsService {
   async rejectHubApprovalRequest(
     verificationId: string,
     hubId: string | null,
-    hubManagerId: string | null,
+    reviewerId: string | null,
+    userRole: string = UserRole.HUB_MANAGER,
     rejectionReason: string,
   ) {
-    if (!hubId) {
+    const isAdmin = userRole === UserRole.ADMIN;
+    if (!isAdmin && !hubId) {
       throw new ForbiddenException(
         'Hub Manager is not assigned to any hub. Please contact admin.',
       );
@@ -931,11 +944,13 @@ export class DeliveryVerificationsService {
       throw new NotFoundException('Verification not found');
     }
 
-    const verificationHubId = this.resolveVerificationHubId(verification);
-    if (!verificationHubId || verificationHubId !== hubId) {
-      throw new ForbiddenException(
-        'You are not authorized to review this verification',
-      );
+    if (!isAdmin) {
+      const verificationHubId = this.resolveVerificationHubId(verification);
+      if (!verificationHubId || verificationHubId !== hubId) {
+        throw new ForbiddenException(
+          'You are not authorized to review this verification',
+        );
+      }
     }
 
     if (this.isVerificationFinalized(verification)) {
@@ -948,13 +963,13 @@ export class DeliveryVerificationsService {
 
     verification.otp_bypass_request_status = OTP_BYPASS_STATUS.REJECTED;
     verification.otp_bypass_reviewed_at = new Date();
-    verification.otp_bypass_reviewed_by_hub_manager_id = hubManagerId || null;
+    verification.otp_bypass_reviewed_by_hub_manager_id = reviewerId || null;
     verification.otp_bypass_rejection_reason = reason;
 
     await this.deliveryVerificationRepo.save(verification);
 
     this.logger.log(
-      `[OTP BYPASS REJECTED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, HubManager: ${hubManagerId || 'N/A'}`,
+      `[OTP BYPASS REJECTED] Verification: ${verification.id}, Parcel: ${verification.parcel.tracking_number}, Reviewer: ${reviewerId || 'N/A'}, Role: ${userRole}`,
     );
 
     return {
