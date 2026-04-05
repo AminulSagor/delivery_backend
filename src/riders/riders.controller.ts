@@ -358,7 +358,7 @@ export class RidersController {
   /**
    * Get rider by ID
    */
-  @Get(':id([0-9a-fA-F-]{36})')
+  @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.findOne(id);
@@ -373,7 +373,7 @@ export class RidersController {
   /**
    * Update rider
    */
-  @Patch(':id([0-9a-fA-F-]{36})')
+  @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -391,7 +391,7 @@ export class RidersController {
   /**
    * Deactivate rider
    */
-  @Patch(':id([0-9a-fA-F-]{36})/deactivate')
+  @Patch(':id/deactivate')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.deactivate(id);
@@ -406,7 +406,7 @@ export class RidersController {
   /**
    * Activate rider (Admin only)
    */
-  @Patch(':id([0-9a-fA-F-]{36})/activate')
+  @Patch(':id/activate')
   @Roles(UserRole.ADMIN)
   async activate(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.activate(id);
@@ -421,7 +421,7 @@ export class RidersController {
   /**
    * Decline rider (Admin only) - Permanent deactivation
    */
-  @Patch(':id([0-9a-fA-F-]{36})/decline')
+  @Patch(':id/decline')
   @Roles(UserRole.ADMIN)
   async decline(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.decline(id);
