@@ -1,0 +1,1021 @@
+{
+  "info": {
+    "name": "Delivery Backend - Rider Endpoints (Complete)",
+    "description": "All rider-related endpoints found in the codebase (RIDER app endpoints + rider management endpoints used by HUB_MANAGER/ADMIN + pickup assignment + delivery verification OTP flow).\n\nVariables:\n- {{baseUrl}}: API base URL\n- {{token}}: Bearer access token\n- {{refreshToken}}: refresh token\n- {{riderId}}, {{hubId}}, {{parcelId}}, {{verificationId}}, {{pickupRequestId}}: UUID placeholders\n\nNotes:\n- /riders/summary is a RIDER-only alias of /riders/finance/summary.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "token", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "riderId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "hubId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "parcelId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "verificationId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "pickupRequestId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "providerId", "value": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Public)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const json = pm.response.json();",
+                  "  if (json && json.accessToken) pm.collectionVariables.set('token', json.accessToken);",
+                  "  if (json && json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"01700000000\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/login"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"identifier\": \"01700000000\",\n  \"password\": \"password123\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/auth/login"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"accessToken\": \"<jwt>\",\n  \"refreshToken\": \"<refresh>\",\n  \"user\": {\n    \"id\": \"00000000-0000-0000-0000-000000000001\",\n    \"full_name\": \"Rider One\",\n    \"phone\": \"01700000000\",\n    \"role\": \"RIDER\",\n    \"is_active\": true\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token (Public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/refresh"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/auth/refresh"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"accessToken\": \"<new_jwt>\",\n  \"refreshToken\": \"<new_refresh>\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout (Public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/logout"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/auth/logout"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"message\": \"Logged out successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Me (Requires Bearer)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{baseUrl}}/auth/me"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": {\n      \"id\": \"00000000-0000-0000-0000-000000000001\",\n      \"phone\": \"01700000000\",\n      \"role\": \"RIDER\"\n    },\n    \"riderId\": \"{{riderId}}\",\n    \"hubId\": \"{{hubId}}\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider App - Dashboard & Finance",
+      "item": [
+        {
+          "name": "Dashboard (RIDER) - GET /riders/dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/dashboard"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/dashboard" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"rider\": { \"id\": \"{{riderId}}\" },\n    \"pending_pickups\": 2,\n    \"pending_deliveries\": 5,\n    \"completed_deliveries\": 18,\n    \"total_deliveries\": 23,\n    \"pending_returns\": 1,\n    \"completed_returns\": 3,\n    \"total_returns\": 4\n  },\n  \"message\": \"Dashboard retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Finance Summary (RIDER) - GET /riders/summary (alias)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/summary?startDate=2026-04-01&endDate=2026-04-05"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/summary?startDate=2026-04-01&endDate=2026-04-05" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"earnings\": {\n      \"today\": 120,\n      \"this_month\": 980\n    },\n    \"lifetime_cash_collection_30_days\": 15450,\n    \"cod_summary_today\": {\n      \"total_collected_amount\": 3200,\n      \"total_pending\": 1800,\n      \"total_collection\": 5000\n    },\n    \"summary\": {\n      \"date_range\": {\n        \"start\": \"2026-04-01T00:00:00.000Z\",\n        \"end\": \"2026-04-05T23:59:59.999Z\"\n      },\n      \"total_parcel\": 31,\n      \"delivered\": 10,\n      \"partially_delivered\": 2,\n      \"return\": 3,\n      \"paid_return\": 0,\n      \"pickup\": 15,\n      \"exchanged\": 1,\n      \"return_to_merchant\": 0,\n      \"price_change\": 0\n    }\n  },\n  \"message\": \"Finance summary retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Finance Summary (RIDER) - GET /riders/finance/summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/finance/summary?startDate=2026-04-01&endDate=2026-04-05"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/finance/summary?startDate=2026-04-01&endDate=2026-04-05" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"earnings\": {\n      \"today\": 120,\n      \"this_month\": 980\n    },\n    \"lifetime_cash_collection_30_days\": 15450,\n    \"cod_summary_today\": {\n      \"total_collected_amount\": 3200,\n      \"total_pending\": 1800,\n      \"total_collection\": 5000\n    },\n    \"summary\": {\n      \"date_range\": {\n        \"start\": \"2026-04-01T00:00:00.000Z\",\n        \"end\": \"2026-04-05T23:59:59.999Z\"\n      },\n      \"total_parcel\": 31,\n      \"delivered\": 10,\n      \"partially_delivered\": 2,\n      \"return\": 3,\n      \"paid_return\": 0,\n      \"pickup\": 15,\n      \"exchanged\": 1,\n      \"return_to_merchant\": 0,\n      \"price_change\": 0\n    }\n  },\n  \"message\": \"Finance summary retrieved successfully\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider App - Pickups",
+      "item": [
+        {
+          "name": "Pickups Section (RIDER) - GET /riders/pickups",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/pickups?tab=pending"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/pickups?tab=pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"{{pickupRequestId}}\",\n      \"request_code\": \"REQ-2001\",\n      \"request_codes\": [\"REQ-2001\", \"REQ-2002\"],\n      \"pickup_count\": 5,\n      \"status\": \"CONFIRMED\",\n      \"comment\": null,\n      \"created_at\": \"2026-04-05T08:00:00.000Z\",\n      \"completed_at\": null,\n      \"store\": {\n        \"id\": \"00000000-0000-0000-0000-000000000010\",\n        \"business_name\": \"Demo Store\",\n        \"phone_number\": \"01711111111\",\n        \"business_address\": \"Dhaka\"\n      }\n    }\n  ],\n  \"count\": 1,\n  \"tab\": \"pending\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "My Pickups (RIDER) - GET /pickup-requests/rider/my-pickups",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pickup-requests/rider/my-pickups?filter=pending"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/pickup-requests/rider/my-pickups?filter=pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"{{pickupRequestId}}\",\n      \"request_code\": \"REQ-2001\",\n      \"pickup_count\": 5,\n      \"status\": \"CONFIRMED\",\n      \"comment\": null,\n      \"created_at\": \"2026-04-05T08:00:00.000Z\",\n      \"store\": {\n        \"id\": \"00000000-0000-0000-0000-000000000010\",\n        \"business_name\": \"Demo Store\",\n        \"phone_number\": \"01711111111\",\n        \"business_address\": \"Dhaka\"\n      },\n      \"assigned_rider\": {\n        \"id\": \"{{riderId}}\",\n        \"full_name\": \"Rider One\",\n        \"phone\": \"01700000000\"\n      }\n    }\n  ],\n  \"message\": \"Rider pickups retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Complete Pickup (RIDER) - PATCH /pickup-requests/:id/rider/complete",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"picked_up_count\": 3,\n  \"notes\": \"Picked up 3 parcels\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/pickup-requests/{{pickupRequestId}}/rider/complete"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"picked_up_count\": 3,\n  \"notes\": \"Picked up 3 parcels\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/pickup-requests/{{pickupRequestId}}/rider/complete"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{pickupRequestId}}\",\n    \"request_code\": \"REQ-2001\",\n    \"status\": \"PENDING\",\n    \"picked_up\": 3,\n    \"remaining_count\": 2,\n    \"pickup_count\": 5\n  },\n  \"message\": \"Picked 3 parcel(s). 2 remaining.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider App - Deliveries & Returns",
+      "item": [
+        {
+          "name": "Deliveries Section (RIDER) - GET /riders/deliveries",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/deliveries?tab=pending"
+          },
+          "response": [
+            {
+              "name": "Example Success (ParcelListItem array)",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/deliveries?tab=pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"{{parcelId}}\",\n      \"customer_id\": null,\n      \"merchant_id\": null,\n      \"store_id\": null,\n      \"pickup_request_id\": null,\n      \"parcel_tx_id\": \"#139679\",\n      \"tracking_number\": \"TRK-0001\",\n      \"merchant_order_id\": null,\n      \"delivery_area_text\": null,\n      \"customer_name\": \"Customer A\",\n      \"customer_phone\": \"01722222222\",\n      \"customer_secondary_phone\": null,\n      \"customer_address\": \"Dhaka\",\n      \"product_description\": \"Shirt\",\n      \"product_weight\": 1,\n      \"product_price\": 500,\n      \"delivery_charge\": 60,\n      \"weight_charge\": 0,\n      \"cod_charge\": 10,\n      \"total_charge\": 70,\n      \"computed_discount\": 0,\n      \"cod_amount\": 500,\n      \"cod_collected_amount\": 0,\n      \"cod_pending_amount\": 500,\n      \"is_cod\": true,\n      \"payment_status\": \"UNPAID\",\n      \"status\": \"ASSIGNED_TO_RIDER\",\n      \"delivery_type\": 1,\n      \"assigned_rider_id\": \"{{riderId}}\",\n      \"current_hub_id\": \"{{hubId}}\",\n      \"assigned_at\": \"2026-04-05T08:30:00.000Z\",\n      \"picked_up_at\": null,\n      \"delivered_at\": null,\n      \"created_at\": \"2026-04-05T08:00:00.000Z\",\n      \"updated_at\": \"2026-04-05T08:00:00.000Z\",\n      \"merchant\": null,\n      \"store\": null,\n      \"customer\": null,\n      \"delivery_area\": null,\n      \"delivery_coverage_area\": null,\n      \"assigned_rider\": null,\n      \"current_hub\": null,\n      \"origin_hub\": null,\n      \"destination_hub\": null,\n      \"third_party_provider\": null\n    }\n  ],\n  \"count\": 1,\n  \"tab\": \"pending\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Returns Section (RIDER) - GET /riders/returns",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/returns?tab=pending"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/returns?tab=pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": [],\n  \"count\": 0\n}"
+            }
+          ]
+        },
+        {
+          "name": "Legacy: My Deliveries (RIDER) - GET /riders/parcels/my-deliveries",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/parcels/my-deliveries?filter=delivery_pending"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/parcels/my-deliveries?filter=delivery_pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": [],\n  \"message\": \"Deliveries retrieved successfully\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider App - Parcel Actions",
+      "item": [
+        {
+          "name": "Accept Parcel (RIDER) - PATCH /riders/parcels/:id/accept",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/accept"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "PATCH", "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/accept" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{parcelId}}\",\n    \"parcel_tx_id\": \"#139679\",\n    \"tracking_number\": \"TRK-0001\",\n    \"status\": \"OUT_FOR_DELIVERY\"\n  },\n  \"message\": \"Parcel accepted successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delivery Info (RIDER) - GET /riders/parcels/:id/delivery-info",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/delivery-info"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/delivery-info" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{parcelId}}\",\n    \"tracking_number\": \"TRK-0001\",\n    \"cod_amount\": 500,\n    \"status\": \"ASSIGNED_TO_RIDER\"\n  },\n  \"message\": \"Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Return Parcel to Hub (RIDER) - PATCH /riders/parcels/:id/return",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"return_reason\": \"Customer not available\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/return"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"return_reason\": \"Customer not available\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/riders/parcels/{{parcelId}}/return"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{parcelId}}\",\n    \"tracking_number\": \"TRK-0001\",\n    \"status\": \"RETURNED_TO_HUB\"\n  },\n  \"message\": \"Parcel returned to hub successfully\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider Support",
+      "item": [
+        {
+          "name": "Trigger Emergency (RIDER) - POST /riders/rider-support/emergency",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ACCIDENT\",\n  \"latitude\": 23.8103,\n  \"longitude\": 90.4125,\n  \"location_address\": \"Dhaka\",\n  \"description\": \"Accident happened, need help\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/riders/rider-support/emergency"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"type\": \"ACCIDENT\",\n  \"latitude\": 23.8103,\n  \"longitude\": 90.4125,\n  \"location_address\": \"Dhaka\",\n  \"description\": \"Accident happened, need help\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/riders/rider-support/emergency"
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"00000000-0000-0000-0000-000000000099\",\n    \"rider_id\": \"{{riderId}}\",\n    \"hub_id\": \"{{hubId}}\",\n    \"type\": \"ACCIDENT\",\n    \"description\": \"Accident happened, need help\",\n    \"latitude\": 23.8103,\n    \"longitude\": 90.4125,\n    \"location_address\": \"Dhaka\",\n    \"status\": \"PENDING\",\n    \"created_at\": \"2026-04-05T10:00:00.000Z\",\n    \"updated_at\": \"2026-04-05T10:00:00.000Z\"\n  },\n  \"message\": \"Emergency alert sent! Support team has been notified.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery Verification (OTP Flow)",
+      "item": [
+        {
+          "name": "1) Initiate Delivery (RIDER) - POST /delivery-verifications/parcels/:parcelId/initiate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 500,\n  \"reason\": \"Collected exactly the expected amount\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/delivery-verifications/parcels/{{parcelId}}/initiate"
+          },
+          "response": [
+            {
+              "name": "Example Success (OTP Sent)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 450,\n  \"reason\": \"Customer paid partially due to damage\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/delivery-verifications/parcels/{{parcelId}}/initiate"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"verification_id\": \"{{verificationId}}\",\n  \"selected_status\": \"DELIVERED\",\n  \"expected_amount\": 500,\n  \"collected_amount\": 450,\n  \"has_difference\": true,\n  \"difference\": -50,\n  \"reason\": \"Customer paid partially due to damage\",\n  \"otp_sent_to\": \"MERCHANT\",\n  \"otp_phone\": \"01******000\",\n  \"otp_expires_at\": \"2026-04-05T10:05:00.000Z\",\n  \"message\": \"OTP sent to merchant. Please enter the 4-digit code to complete.\"\n}"
+            },
+            {
+              "name": "Example Success (OTP Not Required)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"selected_status\": \"DELIVERED\",\n  \"collected_amount\": 500\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/delivery-verifications/parcels/{{parcelId}}/initiate"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"verification_id\": \"{{verificationId}}\",\n  \"selected_status\": \"DELIVERED\",\n  \"expected_amount\": 500,\n  \"collected_amount\": 500,\n  \"has_difference\": false,\n  \"difference\": 0,\n  \"reason\": null,\n  \"otp_required\": false,\n  \"message\": \"Delivery completed successfully. OTP verification was not required.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "2) Request OTP (RIDER) - POST /delivery-verifications/:id/request-otp",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"difference_reason\": \"Customer paid partially due to damage\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/request-otp"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"difference_reason\": \"Customer paid partially due to damage\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/request-otp"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"otp_sent\": true,\n  \"merchant_phone\": \"01700000000\",\n  \"otp_expires_at\": \"2026-04-05T10:05:00.000Z\",\n  \"message\": \"OTP sent to merchant. Please ask merchant for the 4-digit code.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "3) Verify OTP (RIDER) - POST /delivery-verifications/:id/verify-otp",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp_code\": \"1234\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/verify-otp"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"otp_code\": \"1234\"\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/verify-otp"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"verified\": true,\n  \"message\": \"OTP verified successfully. Delivery completed.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Resend OTP (RIDER) - POST /delivery-verifications/:id/resend-otp",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/resend-otp"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "POST", "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/resend-otp" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"otp_sent\": true,\n  \"otp_sent_to\": \"merchant\",\n  \"message\": \"OTP resent to merchant\",\n  \"otp_expires_at\": \"2026-04-05T10:05:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Request Hub Approval (RIDER) - POST /delivery-verifications/:id/request-hub-approval",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_reason\": \"Merchant not reachable, requesting bypass\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/request-hub-approval"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "POST", "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/request-hub-approval" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"request_submitted\": true,\n  \"verification_id\": \"{{verificationId}}\",\n  \"otp_bypass_status\": \"PENDING\",\n  \"requested_at\": \"2026-04-05T10:00:00.000Z\",\n  \"message\": \"Request sent to hub manager. You can complete delivery without OTP after approval.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Verification (RIDER/MERCHANT/ADMIN/HUB_MANAGER) - GET /delivery-verifications/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}"
+          },
+          "response": [
+            {
+              "name": "Example Success (RIDER View)",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{verificationId}}\",\n    \"parcel_tx_id\": \"#139679\",\n    \"tracking_number\": \"TRK-0001\",\n    \"status\": \"DELIVERED\",\n    \"verification_status\": \"OTP_SENT\",\n    \"collected_amount\": 450,\n    \"otp_bypass_status\": \"PENDING\",\n    \"otp_bypass_request_reason\": \"Merchant not reachable\",\n    \"otp_bypass_requested_at\": \"2026-04-05T10:00:00.000Z\",\n    \"otp_bypass_reviewed_at\": null,\n    \"otp_bypass_rejection_reason\": null,\n    \"difference\": -50,\n    \"reason\": \"Customer paid partially due to damage\",\n    \"otp_sent_to\": \"MERCHANT\",\n    \"otp_phone\": \"01******000\",\n    \"otp_expires_at\": \"2026-04-05T10:05:00.000Z\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OTP Bypass Review (HUB_MANAGER / ADMIN)",
+      "item": [
+        {
+          "name": "Pending Bypass Requests - GET /delivery-verifications/hub-approval/pending",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/delivery-verifications/hub-approval/pending"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/delivery-verifications/hub-approval/pending" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"total\": 1,\n  \"data\": [\n    {\n      \"verification_id\": \"{{verificationId}}\",\n      \"parcel_id\": \"{{parcelId}}\",\n      \"tracking_number\": \"TRK-0001\",\n      \"rider_id\": \"{{riderId}}\",\n      \"rider_name\": \"Rider One\",\n      \"rider_phone\": \"01700000000\",\n      \"selected_status\": \"DELIVERED\",\n      \"expected_amount\": 500,\n      \"collected_amount\": 450,\n      \"difference\": -50,\n      \"request_reason\": \"Merchant not reachable\",\n      \"requested_at\": \"2026-04-05T10:00:00.000Z\",\n      \"otp_sent_to\": \"MERCHANT\",\n      \"otp_phone\": \"01******000\",\n      \"otp_expires_at\": \"2026-04-05T10:05:00.000Z\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Approve Bypass - PATCH /delivery-verifications/:id/hub-approval/approve",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/hub-approval/approve"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "PATCH", "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/hub-approval/approve" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"approved\": true,\n  \"verification_id\": \"{{verificationId}}\",\n  \"message\": \"Hub manager approved the request. Delivery completed without OTP.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject Bypass - PATCH /delivery-verifications/:id/hub-approval/reject",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejection_reason\": \"Merchant reached, bypass not needed\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/hub-approval/reject"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "PATCH", "url": "{{baseUrl}}/delivery-verifications/{{verificationId}}/hub-approval/reject" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"approved\": false,\n  \"verification_id\": \"{{verificationId}}\",\n  \"message\": \"Hub manager rejected the OTP bypass request.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rider Management (HUB_MANAGER / ADMIN)",
+      "item": [
+        {
+          "name": "Create Rider (HUB_MANAGER) - POST /riders",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rider One\",\n  \"phone\": \"01700000000\",\n  \"email\": \"rider1@example.com\",\n  \"password\": \"password123\",\n  \"photo\": null,\n  \"guardian_mobile_no\": \"01700000001\",\n  \"bike_type\": \"BIKE\",\n  \"nid_number\": \"1234567890\",\n  \"license_no\": \"DL-12345\",\n  \"present_address\": \"Dhaka\",\n  \"permanent_address\": \"Dhaka\",\n  \"fixed_salary\": 0,\n  \"commission_per_delivery\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/riders"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "POST", "url": "{{baseUrl}}/riders" },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{riderId}}\",\n    \"rider_code\": \"RDR-0001\",\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"hub_id\": \"{{hubId}}\",\n    \"photo\": null,\n    \"guardian_mobile_no\": \"01700000001\",\n    \"bike_type\": \"BIKE\",\n    \"nid_number\": \"1234567890\",\n    \"license_no\": \"DL-12345\",\n    \"present_address\": \"Dhaka\",\n    \"permanent_address\": \"Dhaka\",\n    \"fixed_salary\": 0,\n    \"commission_per_delivery\": 20,\n    \"approval_status\": \"PENDING\",\n    \"is_active\": true,\n    \"created_at\": \"2026-04-05T10:00:00.000Z\",\n    \"updated_at\": \"2026-04-05T10:00:00.000Z\",\n    \"user\": {\n      \"id\": \"00000000-0000-0000-0000-000000000001\",\n      \"full_name\": \"Rider One\",\n      \"phone\": \"01700000000\",\n      \"email\": \"rider1@example.com\",\n      \"role\": \"RIDER\"\n    },\n    \"hub\": null,\n    \"approver\": null\n  },\n  \"message\": \"Rider created successfully. Pending admin approval.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Rider (ADMIN) - POST /riders/admin/create",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Rider Two\",\n  \"phone\": \"01700000002\",\n  \"email\": \"rider2@example.com\",\n  \"password\": \"password123\",\n  \"guardian_mobile_no\": \"01700000003\",\n  \"bike_type\": \"BIKE\",\n  \"nid_number\": \"1234567899\",\n  \"present_address\": \"Dhaka\",\n  \"permanent_address\": \"Dhaka\",\n  \"fixed_salary\": 0,\n  \"commission_per_delivery\": 20,\n  \"hub_id\": \"{{hubId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/riders/admin/create"
+          },
+          "response": []
+        },
+        {
+          "name": "List Riders (ADMIN/HUB_MANAGER) - GET /riders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders?page=1&limit=20&isActive=all&approval_status=PENDING&hubId={{hubId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Rider By ID (ADMIN/HUB_MANAGER) - GET /riders/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/riders/{{riderId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Rider (ADMIN/HUB_MANAGER) - PATCH /riders/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"present_address\": \"New Address\",\n  \"permanent_address\": \"New Address\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/riders/{{riderId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Rider (ADMIN/HUB_MANAGER) - PATCH /riders/:id/deactivate",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/{{riderId}}/deactivate"
+          },
+          "response": []
+        },
+        {
+          "name": "Activate Rider (ADMIN) - PATCH /riders/:id/activate",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/{{riderId}}/activate"
+          },
+          "response": []
+        },
+        {
+          "name": "Decline Rider Permanently (ADMIN) - PATCH /riders/:id/decline",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/{{riderId}}/decline"
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Rider (ADMIN) - PATCH /riders/:id/approve",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/{{riderId}}/approve"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Rider (ADMIN) - PATCH /riders/:id/reject",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/riders/{{riderId}}/reject"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Pickup Requests - HUB_MANAGER (Rider Related)",
+      "item": [
+        {
+          "name": "Hub Pending Pickup Requests - GET /pickup-requests/hub/my-requests",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pickup-requests/hub/my-requests?page=1&limit=20"
+          },
+          "response": []
+        },
+        {
+          "name": "Hub Confirmed Pickups - GET /pickup-requests/hub/confirmed-pickups",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pickup-requests/hub/confirmed-pickups?page=1&limit=20"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Pickup To Rider - PATCH /pickup-requests/:id/assign-rider",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": \"{{riderId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/pickup-requests/{{pickupRequestId}}/assign-rider"
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Assign Pickups To Rider - POST /pickup-requests/hub/bulk-assign-rider",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": \"{{riderId}}\",\n  \"pickup_ids\": [\n    \"{{pickupRequestId}}\"\n  ],\n  \"notes\": \"Assigning to rider for today\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/pickup-requests/hub/bulk-assign-rider"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hub - Parcel Assignment (HUB_MANAGER)",
+      "item": [
+        {
+          "name": "Parcels For Assignment - GET /hubs/parcels/for-assignment",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hubs/parcels/for-assignment?page=1&limit=20"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Parcel (Legacy) - PATCH /hubs/parcels/:id/assign-rider",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": \"{{riderId}}\",\n  \"notes\": \"Assigning for delivery\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/parcels/{{parcelId}}/assign-rider"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Parcels (Unified) - POST /hubs/parcels/assign-rider",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": \"{{riderId}}\",\n  \"parcel_ids\": [\n    \"{{parcelId}}\"\n  ],\n  \"notes\": \"Assigning parcels to rider\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/parcels/assign-rider"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hub - Rider Settlement (HUB_MANAGER)",
+      "item": [
+        {
+          "name": "Hub Riders List - GET /hubs/riders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hubs/riders"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/hubs/riders" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"riders\": [\n      {\n        \"id\": \"{{riderId}}\",\n        \"full_name\": \"Rider One\",\n        \"phone\": \"01700000000\",\n        \"bike_type\": \"BIKE\",\n        \"is_active\": true,\n        \"photo\": null\n      }\n    ]\n  },\n  \"message\": \"Riders retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Settlement Details - GET /hubs/riders/:riderId/settlement",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hubs/riders/{{riderId}}/settlement"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "GET", "url": "{{baseUrl}}/hubs/riders/{{riderId}}/settlement" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"rider_id\": \"{{riderId}}\",\n    \"rider_name\": \"Rider One\",\n    \"rider_phone\": \"01700000000\",\n    \"total_collected_amount\": 3200,\n    \"completed_deliveries\": 8,\n    \"previous_due_amount\": 0,\n    \"current_due_amount\": 0,\n    \"period_start\": \"2026-04-01T00:00:00.000Z\",\n    \"period_end\": \"2026-04-05T10:00:00.000Z\",\n    \"breakdown\": {\n      \"delivered\": 6,\n      \"partial_delivery\": 1,\n      \"exchange\": 1,\n      \"paid_return\": 0,\n      \"returned\": 0\n    },\n    \"parcels\": []\n  },\n  \"message\": \"Settlement details retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Settlement Preview - POST /hubs/riders/:riderId/settlement/calculate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cash_received\": 3000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/riders/{{riderId}}/settlement/calculate"
+          },
+          "response": []
+        },
+        {
+          "name": "Record Settlement - POST /hubs/riders/:riderId/settlement/record",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cash_received\": 3000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/riders/{{riderId}}/settlement/record"
+          },
+          "response": []
+        },
+        {
+          "name": "Settlement History - GET /hubs/riders/:riderId/settlement/history",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hubs/riders/{{riderId}}/settlement/history?page=1&limit=20"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hub - COD Collection Per Rider (HUB_MANAGER)",
+      "item": [
+        {
+          "name": "Hub Finance Dashboard - GET /hubs/finance/dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hubs/finance/dashboard"
+          },
+          "response": []
+        },
+        {
+          "name": "Collect COD From Rider - POST /hubs/finance/collect-cod/:rider_id",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"counted_amount\": 3200\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/finance/collect-cod/{{riderId}}"
+          },
+          "response": [
+            {
+              "name": "Example Success",
+              "originalRequest": { "method": "POST", "url": "{{baseUrl}}/hubs/finance/collect-cod/{{riderId}}" },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Cash collected successfully\",\n  \"data\": {\n    \"rider_id\": \"{{riderId}}\",\n    \"parcel_count\": 8,\n    \"counted_amount\": 3200,\n    \"cod_cleared_at\": \"2026-04-05T10:00:00.000Z\",\n    \"current_balance\": 15200,\n    \"message\": \"COD collection processed successfully\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Collect COD From Carrybee - POST /hubs/finance/collect-cod-carrybee/:provider_id",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"counted_amount\": 5000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hubs/finance/collect-cod-carrybee/{{providerId}}"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
