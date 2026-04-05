@@ -13,6 +13,7 @@ export class RiderFinanceController {
   constructor(private readonly riderFinanceService: RiderFinanceService) {}
 
   @Get('summary')
+  @Roles(UserRole.RIDER)
   async getFinanceSummary(
     @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
