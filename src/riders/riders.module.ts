@@ -15,6 +15,7 @@ import { Staff } from '../staff/entities/staff.entity';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
 import { EmergencyAlert } from './entities/emergency-alert.entity';
+import { RiderPayoutMethod } from './entities/rider-payout-method.entity';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { EmergencyAlert } from './entities/emergency-alert.entity';
       Hub,
       Staff,
       EmergencyAlert,
+      RiderPayoutMethod,
     ]),
     forwardRef(() => ParcelsModule),
     forwardRef(() => PickupRequestsModule),
