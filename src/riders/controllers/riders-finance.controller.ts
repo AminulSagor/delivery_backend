@@ -18,10 +18,16 @@ export class RiderFinanceController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.riderFinanceService.getFinanceSummaryByUserId(
+    const data = await this.riderFinanceService.getFinanceSummaryByUserId(
       user.userId,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
     );
+
+    return {
+      success: true,
+      data,
+      message: 'Finance summary retrieved successfully',
+    };
   }
 }

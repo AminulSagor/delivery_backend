@@ -15,6 +15,7 @@ import {
 import { RidersService } from './riders.service';
 import { ParcelsService } from '../parcels/parcels.service';
 import { PickupRequestsService } from '../pickup-requests/pickup-requests.service';
+import { RiderFinanceService } from './services/riders-finance.service';
 import { CreateRiderDto } from './dto/create-rider.dto';
 import { UpdateRiderDto } from './dto/update-rider.dto';
 import { FailedDeliveryDto, ReturnParcelDto } from './dto/delivery-action.dto';
@@ -44,6 +45,7 @@ export class RidersController {
     private readonly ridersService: RidersService,
     private readonly parcelsService: ParcelsService,
     private readonly pickupRequestsService: PickupRequestsService,
+    private readonly riderFinanceService: RiderFinanceService,
   ) {}
 
   /**
@@ -104,6 +106,30 @@ export class RidersController {
       success: true,
       data: dashboard,
       message: 'Dashboard retrieved successfully',
+    };
+  }
+
+  /**
+   * Rider finance summary (Totals: collected/pending/cash + today/month earnings)
+   * NOTE: This is an alias for backward compatibility with clients calling /riders/summary
+   */
+  @Get('summary')
+  @Roles(UserRole.RIDER)
+  async getRiderFinanceSummary(
+    @CurrentUser() user: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.riderFinanceService.getFinanceSummaryByUserId(
+      user.userId,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Finance summary retrieved successfully',
     };
   }
 
@@ -332,9 +358,9 @@ export class RidersController {
   /**
    * Get rider by ID
    */
-  @Get(':id')
+  @Get(':id([0-9a-fA-F-]{36})')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.findOne(id);
 
     return {
@@ -347,10 +373,10 @@ export class RidersController {
   /**
    * Update rider
    */
-  @Patch(':id')
+  @Patch(':id([0-9a-fA-F-]{36})')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRiderDto: UpdateRiderDto,
   ) {
     const rider = await this.ridersService.update(id, updateRiderDto);
@@ -365,9 +391,9 @@ export class RidersController {
   /**
    * Deactivate rider
    */
-  @Patch(':id/deactivate')
+  @Patch(':id([0-9a-fA-F-]{36})/deactivate')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async deactivate(@Param('id') id: string) {
+  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.deactivate(id);
 
     return {
@@ -380,9 +406,9 @@ export class RidersController {
   /**
    * Activate rider (Admin only)
    */
-  @Patch(':id/activate')
+  @Patch(':id([0-9a-fA-F-]{36})/activate')
   @Roles(UserRole.ADMIN)
-  async activate(@Param('id') id: string) {
+  async activate(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.activate(id);
 
     return {
@@ -395,9 +421,9 @@ export class RidersController {
   /**
    * Decline rider (Admin only) - Permanent deactivation
    */
-  @Patch(':id/decline')
+  @Patch(':id([0-9a-fA-F-]{36})/decline')
   @Roles(UserRole.ADMIN)
-  async decline(@Param('id') id: string) {
+  async decline(@Param('id', ParseUUIDPipe) id: string) {
     const rider = await this.ridersService.decline(id);
 
     return {
