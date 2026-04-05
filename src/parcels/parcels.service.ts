@@ -82,6 +82,7 @@ import {
 import { BulkAcceptDto } from 'src/hubs/dto/bulk-accept-parcels.dto';
 import { CarrybeeService } from '../carrybee/carrybee.service';
 import { SmsService } from '../utils/sms.service';
+import { toParcelListItem } from '../common/interfaces/responses.interface';
 
 @Injectable()
 export class ParcelsService {
@@ -1530,7 +1531,23 @@ export class ParcelsService {
 
       const [items, total] = await this.parcelRepository.findAndCount({
         where,
-        relations: ['delivery_coverage_area', 'store', 'customer'],
+        relations: [
+          'merchant',
+          'merchant.user',
+          'store',
+          'store.hub',
+          'store.merchant',
+          'store.merchant.user',
+          'delivery_coverage_area',
+          'customer',
+          'assignedRider',
+          'assignedRider.user',
+          'assignedRider.hub',
+          'currentHub',
+          'originHub',
+          'destinationHub',
+          'thirdPartyProvider',
+        ],
         order: { [sortBy]: order },
         skip: (page - 1) * limit,
         take: limit,
@@ -1575,7 +1592,23 @@ export class ParcelsService {
         throw new BadRequestException('Invalid parcel ID format');
       const parcel = await this.parcelRepository.findOne({
         where: { id },
-        relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
+        relations: [
+          'merchant',
+          'merchant.user',
+          'store',
+          'store.hub',
+          'store.merchant',
+          'store.merchant.user',
+          'delivery_coverage_area',
+          'customer',
+          'assignedRider',
+          'assignedRider.user',
+          'assignedRider.hub',
+          'currentHub',
+          'originHub',
+          'destinationHub',
+          'thirdPartyProvider',
+        ],
       });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
       // Rider can only view parcels assigned to them
@@ -1949,7 +1982,23 @@ export class ParcelsService {
 
       const [items, total] = await this.parcelRepository.findAndCount({
         where,
-        relations: ['merchant', 'store', 'delivery_coverage_area', 'customer'],
+        relations: [
+          'merchant',
+          'merchant.user',
+          'store',
+          'store.hub',
+          'store.merchant',
+          'store.merchant.user',
+          'delivery_coverage_area',
+          'customer',
+          'assignedRider',
+          'assignedRider.user',
+          'assignedRider.hub',
+          'currentHub',
+          'originHub',
+          'destinationHub',
+          'thirdPartyProvider',
+        ],
         order: { [sortBy]: order },
         skip: (page - 1) * limit,
         take: limit,
@@ -1982,7 +2031,7 @@ export class ParcelsService {
 
   /**
    * Get all parcels received by a hub (for hub managers)
-   * Returns minimal data optimized for hub manager dashboard
+    * Returns full non-sensitive parcel payloads for hub manager views
    */
   async findAllForHub(
     hubId: string,
@@ -2031,7 +2080,23 @@ export class ParcelsService {
 
       const [parcels, total] = await this.parcelRepository.findAndCount({
         where,
-        relations: ['store', 'delivery_coverage_area', 'customer'],
+        relations: [
+          'merchant',
+          'merchant.user',
+          'store',
+          'store.hub',
+          'store.merchant',
+          'store.merchant.user',
+          'delivery_coverage_area',
+          'customer',
+          'assignedRider',
+          'assignedRider.user',
+          'assignedRider.hub',
+          'currentHub',
+          'originHub',
+          'destinationHub',
+          'thirdPartyProvider',
+        ],
         order: { [sortBy]: order },
         skip: (page - 1) * limit,
         take: limit,
@@ -2048,35 +2113,7 @@ export class ParcelsService {
         hasPrev: page > 1,
       };
 
-      // Return minimal data for hub managers
-      const items = parcels.map((parcel) => ({
-        id: parcel.id,
-        parcel_tx_id: parcel.parcel_tx_id,
-        tracking_number: parcel.tracking_number,
-        merchant_order_id: parcel.merchant_order_id,
-        store_name: parcel.store?.business_name || 'N/A',
-        customer_name: parcel.customer_name,
-        customer_phone: parcel.customer_phone,
-        customer_address: parcel.customer_address,
-        delivery_area: parcel.delivery_coverage_area
-          ? {
-              id: parcel.delivery_coverage_area.id,
-              area: parcel.delivery_coverage_area.area,
-              zone: parcel.delivery_coverage_area.zone,
-              city: parcel.delivery_coverage_area.city,
-              division: parcel.delivery_coverage_area.division,
-            }
-          : null,
-        delivery_charge: parcel.delivery_charge,
-        weight_charge: parcel.weight_charge,
-        cod_charge: parcel.cod_charge,
-        total_charge: parcel.total_charge,
-        is_cod: parcel.is_cod,
-        cod_amount: parcel.cod_amount,
-        status: parcel.status,
-        special_instructions: parcel.special_instructions,
-        created_at: parcel.created_at,
-      }));
+      const items = parcels;
 
       this.logger.log(`Retrieved ${items.length} parcels for hub ${hubId}`);
 
@@ -2126,7 +2163,23 @@ export class ParcelsService {
         store_id: In(storeIds),
         status: In([ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB]),
       },
-      relations: ['store', 'delivery_coverage_area', 'assignedRider'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'delivery_coverage_area',
+        'customer',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
       order: { [sortBy]: order },
       skip: (page - 1) * limit,
       take: limit,
@@ -2493,9 +2546,20 @@ export class ParcelsService {
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
       .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
       .leftJoinAndSelect('parcel.pickupRequest', 'pickupRequest')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect(
         'parcel.delivery_coverage_area',
         'delivery_coverage_area',
@@ -2526,7 +2590,23 @@ export class ParcelsService {
     // Find parcel - load all required fields to avoid null constraint issues
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
-      relations: ['merchant', 'customer', 'store'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!parcel) {
@@ -2596,7 +2676,23 @@ export class ParcelsService {
     // Reload parcel with updated data
     const updatedParcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
-      relations: ['merchant', 'customer', 'store'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!updatedParcel) {
@@ -2876,7 +2972,23 @@ export class ParcelsService {
 
     const parcels = await this.parcelRepository.find({
       where,
-      relations: ['merchant', 'customer', 'store'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
       order: { assigned_at: 'DESC' },
     });
 
@@ -2910,11 +3022,20 @@ export class ParcelsService {
       where,
       relations: [
         'merchant',
+        'merchant.user',
         'customer',
         'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
         'assignedRider',
         'assignedRider.user',
+        'assignedRider.hub',
         'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
       ],
       order: { updated_at: 'DESC' },
     });
@@ -2946,11 +3067,20 @@ export class ParcelsService {
       where,
       relations: [
         'merchant',
+        'merchant.user',
         'customer',
         'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
         'assignedRider',
         'assignedRider.user',
+        'assignedRider.hub',
         'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
       ],
       order: { updated_at: 'DESC' },
     });
@@ -2963,6 +3093,23 @@ export class ParcelsService {
   async riderAcceptParcel(parcelId: string, riderId: string) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!parcel) {
@@ -2997,7 +3144,23 @@ export class ParcelsService {
   async getParcelForDelivery(parcelId: string, riderId: string) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
-      relations: ['customer'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!parcel) {
@@ -3095,7 +3258,23 @@ export class ParcelsService {
   ) {
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId, assigned_rider_id: riderId },
-      relations: ['assignedRider'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!parcel) {
@@ -3348,9 +3527,21 @@ export class ParcelsService {
 
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
       .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.destination_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', { status: ParcelStatus.IN_TRANSIT })
       .andWhere('parcel.received_at_destination_hub IS NULL')
@@ -3376,7 +3567,23 @@ export class ParcelsService {
     // Find parcel
     const parcel = await this.parcelRepository.findOne({
       where: { id: parcelId },
-      relations: ['originHub', 'destinationHub', 'store', 'customer'],
+      relations: [
+        'merchant',
+        'merchant.user',
+        'originHub',
+        'destinationHub',
+        'currentHub',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'customer',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'thirdPartyProvider',
+      ],
     });
 
     if (!parcel) {
@@ -3517,9 +3724,21 @@ export class ParcelsService {
 
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
       .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
       .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.origin_hub_id = :hubId', { hubId })
       .andWhere('parcel.is_inter_hub_transfer = :isTransfer', {
         isTransfer: true,
@@ -3576,8 +3795,20 @@ export class ParcelsService {
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.cod_cleared_at IS NOT NULL'); // Only show parcels AFTER COD collection
 
@@ -3685,7 +3916,18 @@ export class ParcelsService {
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
@@ -3766,7 +4008,17 @@ export class ParcelsService {
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'provider')
       .where('parcel.current_hub_id = :hubId', { hubId })
@@ -3847,9 +4099,20 @@ export class ParcelsService {
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .leftJoinAndSelect('parcel.assignedRider', 'rider')
+      .leftJoinAndSelect('rider.user', 'riderUser')
+      .leftJoinAndSelect('rider.hub', 'riderHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', {
         status: ParcelStatus.DELIVERY_RESCHEDULED,
@@ -3887,8 +4150,20 @@ export class ParcelsService {
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
       .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', {
         status: ParcelStatus.RETURN_TO_MERCHANT,
@@ -4370,6 +4645,7 @@ export class ParcelsService {
       : null;
 
     return {
+      ...toParcelListItem(parcel),
       parcel_id: parcel.id,
       parcel_tx_id: parcel.parcel_tx_id || null,
       tracking_number: parcel.tracking_number,

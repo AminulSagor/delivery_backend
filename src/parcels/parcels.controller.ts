@@ -34,7 +34,10 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
 import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
-import { toParcelListItem } from '../common/interfaces/responses.interface';
+import {
+  toParcelListItem,
+  toParcelDetail,
+} from '../common/interfaces/responses.interface';
 
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -100,12 +103,17 @@ export class ParcelsController {
       userId,
       merchantId,
     );
+
+    const detailedParcel = await this.parcelsService.findOne(
+      parcel.id,
+      merchantId,
+      false,
+      null,
+      null,
+    );
+
     return {
-      id: parcel.id,
-      parcel_tx_id: parcel.parcel_tx_id,
-      tracking_number: parcel.tracking_number,
-      total_charge: parcel.total_charge,
-      receivable_amount: parcel.receivable_amount,
+      parcel: toParcelDetail(detailedParcel),
       message: 'Parcel created successfully',
     };
   }
@@ -130,7 +138,7 @@ export class ParcelsController {
         order,
       );
       return {
-        parcels: result.items,
+        parcels: result.items.map(toParcelListItem),
         pagination: result.pagination,
         message: 'Parcels retrieved successfully',
       };
@@ -150,7 +158,7 @@ export class ParcelsController {
         order,
       );
       return {
-        parcels: result.items,
+        parcels: result.items.map(toParcelListItem),
         pagination: result.pagination,
         message: 'Parcels retrieved successfully',
       };
@@ -166,7 +174,7 @@ export class ParcelsController {
       order,
     );
     return {
-      parcels: result.items,
+      parcels: result.items.map(toParcelListItem),
       pagination: result.pagination,
       message: 'Parcels retrieved successfully',
     };
@@ -283,7 +291,7 @@ export class ParcelsController {
       isHubManager ? hubId : null,
     );
     return {
-      parcel,
+      parcel: toParcelDetail(parcel),
       message: 'Parcel retrieved successfully',
     };
   }
@@ -309,10 +317,17 @@ export class ParcelsController {
       merchantId,
       isAdmin,
     );
+
+    const detailedParcel = await this.parcelsService.findOne(
+      parcel.id,
+      isAdmin ? null : merchantId,
+      isAdmin,
+      null,
+      null,
+    );
+
     return {
-      id: parcel.id,
-      parcel_tx_id: parcel.parcel_tx_id,
-      tracking_number: parcel.tracking_number,
+      parcel: toParcelDetail(detailedParcel),
       message: 'Parcel updated successfully',
     };
   }
@@ -339,11 +354,16 @@ export class ParcelsController {
       isAdmin ? null : hubId,
     );
 
+    const detailedParcel = await this.parcelsService.findOne(
+      parcel.id,
+      null,
+      isAdmin,
+      null,
+      isAdmin ? null : hubId,
+    );
+
     return {
-      id: parcel.id,
-      parcel_tx_id: parcel.parcel_tx_id,
-      tracking_number: parcel.tracking_number,
-      total_charge: parcel.total_charge,
+      parcel: toParcelDetail(detailedParcel),
       message: 'Parcel charges updated successfully',
     };
   }

@@ -1,6 +1,6 @@
 /**
- * Clean response interfaces for API endpoints
- * Only includes fields that frontend actually needs
+ * Response interfaces and mappers for API endpoints.
+ * Returns full non-sensitive business data for store/rider/parcel payloads.
  */
 
 import { StoreStatus } from 'src/stores/entities/store.entity';
@@ -245,119 +245,324 @@ export interface HubDetail extends HubListItem {
 
 // ===== HELPER FUNCTIONS =====
 
-export function toParcelListItem(parcel: any): ParcelListItem {
+function toSafeUser(user: any) {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    full_name: user.full_name ?? null,
+    phone: user.phone ?? null,
+    email: user.email ?? null,
+    role: user.role ?? null,
+    is_active: user.is_active ?? null,
+    created_at: user.created_at ?? null,
+    updated_at: user.updated_at ?? null,
+  };
+}
+
+function toCoverageAreaSummary(coverageArea: any) {
+  if (!coverageArea) {
+    return null;
+  }
+
+  return {
+    id: coverageArea.id,
+    division: coverageArea.division,
+    city: coverageArea.city,
+    city_id: coverageArea.city_id,
+    zone: coverageArea.zone,
+    zone_id: coverageArea.zone_id,
+    area: coverageArea.area,
+    area_id: coverageArea.area_id,
+    inside_dhaka_flag: coverageArea.inside_dhaka_flag,
+    created_at: coverageArea.created_at ?? null,
+    updated_at: coverageArea.updated_at ?? null,
+  };
+}
+
+function toHubSummary(hub: any) {
+  if (!hub) {
+    return null;
+  }
+
+  return {
+    id: hub.id,
+    hub_code: hub.hub_code ?? null,
+    branch_name: hub.branch_name ?? null,
+    area: hub.area ?? null,
+    address: hub.address ?? null,
+    manager_name: hub.manager_name ?? null,
+    manager_phone: hub.manager_phone ?? null,
+    manager_user_id: hub.manager_user_id ?? null,
+    status: hub.status ?? null,
+    is_active: hub.is_active ?? null,
+    created_at: hub.created_at ?? null,
+    updated_at: hub.updated_at ?? null,
+  };
+}
+
+function toMerchantSummary(merchant: any) {
+  if (!merchant) {
+    return null;
+  }
+
+  return {
+    id: merchant.id,
+    user_id: merchant.user_id ?? null,
+    thana: merchant.thana ?? null,
+    district: merchant.district ?? null,
+    full_address: merchant.full_address ?? null,
+    secondary_number: merchant.secondary_number ?? null,
+    status: merchant.status ?? null,
+    is_advance_payment_disabled: !!merchant.is_advance_payment_disabled,
+    approved_at: merchant.approved_at ?? null,
+    approved_by: merchant.approved_by ?? null,
+    created_at: merchant.created_at ?? null,
+    updated_at: merchant.updated_at ?? null,
+    user: toSafeUser(merchant.user),
+  };
+}
+
+function toCustomerSummary(customer: any) {
+  if (!customer) {
+    return null;
+  }
+
+  return {
+    id: customer.id,
+    customer_name: customer.customer_name ?? null,
+    phone_number: customer.phone_number ?? null,
+    secondary_number: customer.secondary_number ?? null,
+    customer_address: customer.customer_address ?? null,
+    delivery_coverage_area_id: customer.delivery_coverage_area_id ?? null,
+    created_at: customer.created_at ?? null,
+    updated_at: customer.updated_at ?? null,
+  };
+}
+
+function toThirdPartyProviderSummary(provider: any) {
+  if (!provider) {
+    return null;
+  }
+
+  return {
+    id: provider.id,
+    provider_code: provider.provider_code,
+    provider_name: provider.provider_name,
+    description: provider.description ?? null,
+    is_active: provider.is_active,
+    created_at: provider.created_at ?? null,
+    updated_at: provider.updated_at ?? null,
+  };
+}
+
+function toFullStoreSummary(store: any) {
+  if (!store) {
+    return null;
+  }
+
+  return {
+    id: store.id,
+    store_code: store.store_code ?? null,
+    merchant_id: store.merchant_id ?? null,
+    business_name: store.business_name,
+    business_address: store.business_address,
+    phone_number: store.phone_number,
+    email: store.email ?? null,
+    facebook_page: store.facebook_page ?? null,
+    hub_id: store.hub_id ?? null,
+    is_default: !!store.is_default,
+    status: store.status ?? null,
+    district: store.district ?? null,
+    thana: store.thana ?? null,
+    area: store.area ?? null,
+    carrybee_store_id: store.carrybee_store_id ?? null,
+    carrybee_city_id: store.carrybee_city_id ?? null,
+    carrybee_zone_id: store.carrybee_zone_id ?? null,
+    carrybee_area_id: store.carrybee_area_id ?? null,
+    is_carrybee_synced: !!store.is_carrybee_synced,
+    carrybee_synced_at: store.carrybee_synced_at ?? null,
+    auto_assign_to_carrybee: !!store.auto_assign_to_carrybee,
+    created_at: store.created_at ?? null,
+    updated_at: store.updated_at ?? null,
+    performance: store.performance || {
+      total_parcels_handled: 0,
+      successfully_delivered: 0,
+      total_returns: 0,
+    },
+    hub: toHubSummary(store.hub),
+    merchant: toMerchantSummary(store.merchant),
+  };
+}
+
+function toFullRiderSummary(rider: any) {
+  if (!rider) {
+    return null;
+  }
+
+  return {
+    id: rider.id,
+    rider_code: rider.rider_code ?? null,
+    user_id: rider.user_id ?? null,
+    hub_id: rider.hub_id ?? null,
+    photo: rider.photo ?? null,
+    guardian_mobile_no: rider.guardian_mobile_no ?? null,
+    bike_type: rider.bike_type ?? null,
+    nid_number: rider.nid_number ?? null,
+    license_no: rider.license_no ?? null,
+    present_address: rider.present_address ?? null,
+    permanent_address: rider.permanent_address ?? null,
+    fixed_salary: rider.fixed_salary ?? null,
+    commission_per_delivery: rider.commission_per_delivery ?? null,
+    bank_name: rider.bank_name ?? null,
+    bank_account_number: rider.bank_account_number ?? null,
+    bank_branch: rider.bank_branch ?? null,
+    nid_front_photo: rider.nid_front_photo ?? null,
+    nid_back_photo: rider.nid_back_photo ?? null,
+    license_front_photo: rider.license_front_photo ?? null,
+    license_back_photo: rider.license_back_photo ?? null,
+    parent_nid_front_photo: rider.parent_nid_front_photo ?? null,
+    parent_nid_back_photo: rider.parent_nid_back_photo ?? null,
+    approval_status: rider.approval_status ?? null,
+    approved_at: rider.approved_at ?? null,
+    approved_by: rider.approved_by ?? null,
+    is_active: !!rider.is_active,
+    created_at: rider.created_at ?? null,
+    updated_at: rider.updated_at ?? null,
+    user: toSafeUser(rider.user),
+    hub: toHubSummary(rider.hub),
+    approver: toSafeUser(rider.approver),
+  };
+}
+
+export function toParcelListItem(parcel: any): any {
+  const deliveryCharge = Number(parcel.delivery_charge ?? 0);
+  const weightCharge = Number(parcel.weight_charge ?? 0);
+  const codCharge = Number(parcel.cod_charge ?? 0);
+  const totalCharge = Number(parcel.total_charge ?? 0);
+  const computedDiscount = Math.max(
+    0,
+    Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) /
+      100,
+  );
+
   return {
     id: parcel.id,
+    customer_id: parcel.customer_id ?? null,
+    merchant_id: parcel.merchant_id ?? null,
+    store_id: parcel.store_id ?? null,
+    pickup_request_id: parcel.pickup_request_id ?? null,
     parcel_tx_id: parcel.parcel_tx_id || null,
     tracking_number: parcel.tracking_number,
-    merchant_order_id: parcel.merchant_order_id,
+    merchant_order_id: parcel.merchant_order_id ?? null,
+    delivery_area_text: parcel.delivery_area ?? null,
+    delivery_coverage_area_id: parcel.delivery_coverage_area_id ?? null,
     customer_name: parcel.customer_name,
     customer_phone: parcel.customer_phone,
     customer_secondary_phone: parcel.customer_secondary_phone || null,
     customer_address: parcel.customer_address,
-    product_description: parcel.product_description,
-    product_weight: parcel.product_weight,
-    total_charge: parcel.total_charge,
-    cod_amount: parcel.cod_amount,
-    is_cod: parcel.is_cod,
+    product_description: parcel.product_description ?? null,
+    product_price: parcel.product_price ?? null,
+    product_weight: parcel.product_weight ?? null,
+    parcel_type: parcel.parcel_type ?? null,
+    delivery_charge: parcel.delivery_charge ?? 0,
+    weight_charge: parcel.weight_charge ?? 0,
+    cod_charge: parcel.cod_charge ?? 0,
+    discount: computedDiscount,
+    total_charge: parcel.total_charge ?? 0,
+    is_cod: !!parcel.is_cod,
+    cod_amount: parcel.cod_amount ?? 0,
+    is_exchange: !!parcel.is_exchange,
+    receivable_amount: parcel.receivable_amount ?? 0,
+    cod_collected_amount: parcel.cod_collected_amount ?? 0,
+    return_charge: parcel.return_charge ?? 0,
+    delivery_charge_applicable: !!parcel.delivery_charge_applicable,
+    return_charge_applicable: !!parcel.return_charge_applicable,
+    financial_status: parcel.financial_status ?? null,
+    invoice_id: parcel.invoice_id ?? null,
+    clearance_required: !!parcel.clearance_required,
+    clearance_done: !!parcel.clearance_done,
+    clearance_invoice_id: parcel.clearance_invoice_id ?? null,
+    paid_amount: parcel.paid_amount ?? null,
     status: parcel.status,
-    delivery_type: parcel.delivery_type,
-    created_at: parcel.created_at,
-    store: parcel.store
-      ? {
-          id: parcel.store.id,
-          business_name: parcel.store.business_name,
-        }
-      : undefined,
-    delivery_area: parcel.delivery_coverage_area
-      ? {
-          id: parcel.delivery_coverage_area.id,
-          area: parcel.delivery_coverage_area.area,
-          zone: parcel.delivery_coverage_area.zone,
-          city: parcel.delivery_coverage_area.city,
-          division: parcel.delivery_coverage_area.division,
-        }
-      : null,
-    assigned_rider: parcel.assignedRider
-      ? {
-          id: parcel.assignedRider.id,
-          full_name:
-            parcel.assignedRider.user?.full_name ||
-            parcel.assignedRider.full_name,
-          phone: parcel.assignedRider.user?.phone || parcel.assignedRider.phone,
-        }
-      : null,
+    payment_status: parcel.payment_status ?? null,
+    paid_to_merchant: !!parcel.paid_to_merchant,
+    paid_to_merchant_at: parcel.paid_to_merchant_at ?? null,
+    cod_cleared_at: parcel.cod_cleared_at ?? null,
+    delivery_type: parcel.delivery_type ?? null,
+    assigned_rider_id: parcel.assigned_rider_id ?? null,
+    assigned_at: parcel.assigned_at ?? null,
+    rider_accepted_at: parcel.rider_accepted_at ?? null,
+    out_for_delivery_at: parcel.out_for_delivery_at ?? null,
+    reschedule_count: parcel.reschedule_count ?? 0,
+    special_instructions: parcel.special_instructions ?? null,
+    admin_notes: parcel.admin_notes ?? null,
+    return_reason: parcel.return_reason ?? null,
+    current_hub_id: parcel.current_hub_id ?? null,
+    origin_hub_id: parcel.origin_hub_id ?? null,
+    destination_hub_id: parcel.destination_hub_id ?? null,
+    is_inter_hub_transfer: !!parcel.is_inter_hub_transfer,
+    transferred_at: parcel.transferred_at ?? null,
+    received_at_destination_hub: parcel.received_at_destination_hub ?? null,
+    transfer_notes: parcel.transfer_notes ?? null,
+    delivery_provider: parcel.delivery_provider ?? null,
+    third_party_provider_id: parcel.third_party_provider_id ?? null,
+    issue_type: parcel.issue_type ?? null,
+    issue_description: parcel.issue_description ?? null,
+    issue_reported_by_id: parcel.issue_reported_by_id ?? null,
+    issue_reported_at: parcel.issue_reported_at ?? null,
+    is_issue_resolved: !!parcel.is_issue_resolved,
+    carrybee_consignment_id: parcel.carrybee_consignment_id ?? null,
+    carrybee_delivery_fee: parcel.carrybee_delivery_fee ?? null,
+    carrybee_cod_fee: parcel.carrybee_cod_fee ?? null,
+    assigned_to_carrybee_at: parcel.assigned_to_carrybee_at ?? null,
+    recipient_carrybee_city_id: parcel.recipient_carrybee_city_id ?? null,
+    recipient_carrybee_zone_id: parcel.recipient_carrybee_zone_id ?? null,
+    recipient_carrybee_area_id: parcel.recipient_carrybee_area_id ?? null,
+    original_parcel_id: parcel.original_parcel_id ?? null,
+    is_return_parcel: !!parcel.is_return_parcel,
+    picked_up_at: parcel.picked_up_at ?? null,
+    delivered_at: parcel.delivered_at ?? null,
+    created_at: parcel.created_at ?? null,
+    updated_at: parcel.updated_at ?? null,
+
+    merchant: toMerchantSummary(parcel.merchant),
+    store: toFullStoreSummary(parcel.store),
+    customer: toCustomerSummary(parcel.customer),
+
+    delivery_area: toCoverageAreaSummary(parcel.delivery_coverage_area),
+    delivery_coverage_area: toCoverageAreaSummary(parcel.delivery_coverage_area),
+
+    assigned_rider: toFullRiderSummary(parcel.assignedRider),
+    current_hub: toHubSummary(parcel.currentHub),
+    origin_hub: toHubSummary(parcel.originHub),
+    destination_hub: toHubSummary(parcel.destinationHub),
+    third_party_provider: toThirdPartyProviderSummary(parcel.thirdPartyProvider),
   };
 }
 
-export function toParcelDetail(parcel: any): ParcelDetail {
+export function toParcelDetail(parcel: any): any {
   return {
     ...toParcelListItem(parcel),
-    product_price: parcel.product_price,
-    delivery_charge: parcel.delivery_charge,
-    weight_charge: parcel.weight_charge,
-    cod_charge: parcel.cod_charge,
-    payment_status: parcel.payment_status,
-    special_instructions: parcel.special_instructions,
-    assigned_at: parcel.assigned_at,
-    picked_up_at: parcel.picked_up_at,
-    delivered_at: parcel.delivered_at,
-    current_hub: parcel.currentHub
-      ? {
-          id: parcel.currentHub.id,
-          branch_name: parcel.currentHub.branch_name,
-        }
-      : null,
   };
 }
 
-export function toParcelActionResponse(parcel: any): ParcelActionResponse {
-  return {
-    id: parcel.id,
-    parcel_tx_id: parcel.parcel_tx_id || null,
-    tracking_number: parcel.tracking_number,
-    status: parcel.status,
-  };
+export function toParcelActionResponse(parcel: any): any {
+  return toParcelDetail(parcel);
 }
 
-export function toRiderListItem(rider: any): RiderListItem {
-  return {
-    id: rider.id,
-    full_name: rider.user?.full_name || rider.full_name,
-    phone: rider.user?.phone || rider.phone,
-    email: rider.user?.email || rider.email || null,
-    photo: rider.photo,
-    bike_type: rider.bike_type,
-    is_active: rider.is_active,
-    hub: rider.hub
-      ? {
-          id: rider.hub.id,
-          branch_name: rider.hub.branch_name,
-        }
-      : null,
-  };
+export function toRiderListItem(rider: any): any {
+  return toFullRiderSummary(rider);
 }
 
-export function toRiderDetail(rider: any): RiderDetail {
-  return {
-    ...toRiderListItem(rider),
-    guardian_mobile_no: rider.guardian_mobile_no,
-    nid_number: rider.nid_number,
-    license_no: rider.license_no,
-    present_address: rider.present_address,
-    permanent_address: rider.permanent_address,
-    fixed_salary: rider.fixed_salary,
-    commission_per_delivery: rider.commission_per_delivery,
-    created_at: rider.created_at,
-  };
+export function toRiderDetail(rider: any): any {
+  return toFullRiderSummary(rider);
 }
 
-export function toRiderActionResponse(rider: any): RiderActionResponse {
-  return {
-    id: rider.id,
-    full_name: rider.user?.full_name || rider.full_name,
-    is_active: rider.is_active,
-  };
+export function toRiderActionResponse(rider: any): any {
+  return toFullRiderSummary(rider);
 }
 
 export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
@@ -400,42 +605,12 @@ export function toPickupRequestActionResponse(
   };
 }
 
-export function toStoreListItem(store: any): StoreListItem {
-  return {
-    id: store.id,
-    store_code: store.store_code || null,
-    business_name: store.business_name,
-    business_address: store.business_address,
-    phone_number: store.phone_number,
-    email: store.email,
-    facebook_page: store.facebook_page || null,
-    is_default: store.is_default,
-    is_carrybee_synced: store.is_carrybee_synced || false,
-    performance: store.performance || {
-      total_parcels_handled: 0,
-      successfully_delivered: 0,
-      total_returns: 0,
-    },
-    hub: store.hub
-      ? {
-          id: store.hub.id,
-          branch_name: store.hub.branch_name,
-        }
-      : null,
-  };
+export function toStoreListItem(store: any): any {
+  return toFullStoreSummary(store);
 }
 
-export function toStoreDetail(store: any): StoreDetail {
-  return {
-    ...toStoreListItem(store),
-    district: store.district || null,
-    thana: store.thana || null,
-    area: store.area || null,
-    facebook_page: store.facebook_page || null,
-    carrybee_store_id: store.carrybee_store_id || null,
-    created_at: store.created_at,
-    status: store.status,
-  };
+export function toStoreDetail(store: any): any {
+  return toFullStoreSummary(store);
 }
 
 export function toHubListItem(hub: any): HubListItem {
