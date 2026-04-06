@@ -16,7 +16,7 @@ Auth: Rider JWT
 ### GET `/riders/profile/payout-methods/available`
 - Body: none
 - Response: `{"success":true,"data":{"available_methods":["BANK_ACCOUNT","BKASH","NAGAD","CASH"]},"message":"Available payout methods retrieved successfully"}`
-- Comment: returns not-yet-added method types.
+- Comment: returns all supported method types.
 
 ### GET `/riders/profile/payout-methods`
 - Body: none
@@ -43,4 +43,6 @@ Auth: Rider JWT
 - 400: Use set-default endpoint to update default method
 - 400: Method type cannot be changed. Create a new payout method instead.
 - 404: Payout method not found
-- 409: <METHOD_TYPE> payout method already exists
+
+## Behavior Note
+- Rider can add multiple payout methods with the same `method_type`.

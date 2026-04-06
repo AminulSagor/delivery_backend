@@ -746,15 +746,7 @@ export class RidersService {
   ): Promise<PayoutMethodType[]> {
     await this.ensureRiderOwnership(userId, riderId);
 
-    const existingMethods = await this.riderPayoutMethodRepository.find({
-      where: { rider_id: riderId },
-      select: ['method_type'],
-    });
-
-    const usedMethods = existingMethods.map((m) => m.method_type);
-    const allMethods = Object.values(PayoutMethodType);
-
-    return allMethods.filter((method) => !usedMethods.includes(method));
+    return Object.values(PayoutMethodType);
   }
 
   /**
@@ -780,16 +772,6 @@ export class RidersService {
     dto: AddRiderPayoutMethodDto,
   ) {
     await this.ensureRiderOwnership(userId, riderId);
-
-    const existing = await this.riderPayoutMethodRepository.findOne({
-      where: { rider_id: riderId, method_type: dto.method_type },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        `${dto.method_type} payout method already exists`,
-      );
-    }
 
     if (dto.is_active !== undefined) {
       throw new BadRequestException(
