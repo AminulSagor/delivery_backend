@@ -43,6 +43,10 @@ Auth: Rider JWT
 - 400: Use set-default endpoint to update default method
 - 400: Method type cannot be changed. Create a new payout method instead.
 - 404: Payout method not found
+- 409: Bank account number already exists
+- 409: bKash number already exists
+- 409: Nagad number already exists
 
 ## Behavior Note
 - Rider can add multiple payout methods with the same `method_type`.
+- Within a rider account, payout identifiers must be unique (`account_number`, `bkash_number`, `nagad_number`).

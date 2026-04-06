@@ -779,6 +779,22 @@ export class RidersService {
       );
     }
 
+    const bankAccountNumber = dto.account_number ?? dto.account_no;
+    if (
+      dto.method_type === PayoutMethodType.BANK_ACCOUNT &&
+      bankAccountNumber
+    ) {
+      await this.ensureUniqueBankAccountNumber(riderId, bankAccountNumber);
+    }
+
+    if (dto.method_type === PayoutMethodType.BKASH && dto.bkash_number) {
+      await this.ensureUniqueBkashNumber(riderId, dto.bkash_number);
+    }
+
+    if (dto.method_type === PayoutMethodType.NAGAD && dto.nagad_number) {
+      await this.ensureUniqueNagadNumber(riderId, dto.nagad_number);
+    }
+
     const payoutMethod = this.riderPayoutMethodRepository.create({
       rider_id: riderId,
       method_type: dto.method_type,
@@ -853,6 +869,18 @@ export class RidersService {
     }
 
     if (method.method_type === PayoutMethodType.BANK_ACCOUNT) {
+      const accountNumber = dto.account_number ?? dto.account_no;
+      if (
+        accountNumber !== undefined &&
+        accountNumber !== method.account_number
+      ) {
+        await this.ensureUniqueBankAccountNumber(
+          riderId,
+          accountNumber,
+          method.id,
+        );
+      }
+
       if (dto.bank_name !== undefined) {
         method.bank_name = dto.bank_name;
       }
@@ -866,7 +894,6 @@ export class RidersService {
         method.account_holder_name = accountHolderName;
       }
 
-      const accountNumber = dto.account_number ?? dto.account_no;
       if (accountNumber !== undefined) {
         method.account_number = accountNumber;
       }
@@ -877,6 +904,13 @@ export class RidersService {
     }
 
     if (method.method_type === PayoutMethodType.BKASH) {
+      if (
+        dto.bkash_number !== undefined &&
+        dto.bkash_number !== method.bkash_number
+      ) {
+        await this.ensureUniqueBkashNumber(riderId, dto.bkash_number, method.id);
+      }
+
       if (dto.bkash_number !== undefined) {
         method.bkash_number = dto.bkash_number;
       }
@@ -891,6 +925,13 @@ export class RidersService {
     }
 
     if (method.method_type === PayoutMethodType.NAGAD) {
+      if (
+        dto.nagad_number !== undefined &&
+        dto.nagad_number !== method.nagad_number
+      ) {
+        await this.ensureUniqueNagadNumber(riderId, dto.nagad_number, method.id);
+      }
+
       if (dto.nagad_number !== undefined) {
         method.nagad_number = dto.nagad_number;
       }
@@ -1002,6 +1043,69 @@ export class RidersService {
 
     firstActiveMethod.is_default = true;
     await this.riderPayoutMethodRepository.save(firstActiveMethod);
+  }
+
+  private async ensureUniqueBankAccountNumber(
+    riderId: string,
+    accountNumber: string,
+    excludeMethodId?: string,
+  ): Promise<void> {
+    const where: Record<string, any> = {
+      rider_id: riderId,
+      method_type: PayoutMethodType.BANK_ACCOUNT,
+      account_number: accountNumber,
+    };
+
+    if (excludeMethodId) {
+      where.id = Not(excludeMethodId);
+    }
+
+    const existing = await this.riderPayoutMethodRepository.findOne({ where });
+    if (existing) {
+      throw new ConflictException('Bank account number already exists');
+    }
+  }
+
+  private async ensureUniqueBkashNumber(
+    riderId: string,
+    bkashNumber: string,
+    excludeMethodId?: string,
+  ): Promise<void> {
+    const where: Record<string, any> = {
+      rider_id: riderId,
+      method_type: PayoutMethodType.BKASH,
+      bkash_number: bkashNumber,
+    };
+
+    if (excludeMethodId) {
+      where.id = Not(excludeMethodId);
+    }
+
+    const existing = await this.riderPayoutMethodRepository.findOne({ where });
+    if (existing) {
+      throw new ConflictException('bKash number already exists');
+    }
+  }
+
+  private async ensureUniqueNagadNumber(
+    riderId: string,
+    nagadNumber: string,
+    excludeMethodId?: string,
+  ): Promise<void> {
+    const where: Record<string, any> = {
+      rider_id: riderId,
+      method_type: PayoutMethodType.NAGAD,
+      nagad_number: nagadNumber,
+    };
+
+    if (excludeMethodId) {
+      where.id = Not(excludeMethodId);
+    }
+
+    const existing = await this.riderPayoutMethodRepository.findOne({ where });
+    if (existing) {
+      throw new ConflictException('Nagad number already exists');
+    }
   }
 
   private toRiderPayoutMethodResponse(method: RiderPayoutMethod) {
