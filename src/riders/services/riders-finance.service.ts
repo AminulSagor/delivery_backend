@@ -75,8 +75,12 @@ export class RiderFinanceService {
       todayEnd,
     );
 
-    // 5. Tasks for today cards (pending pickups + pending deliveries)
-    const tasksForToday = await this.calculateTasksForToday(riderId);
+    // 5. Tasks for today cards (pickups + deliveries + today's returned parcels)
+    const tasksForToday = await this.calculateTasksForToday(
+      riderId,
+      todayStart,
+      todayEnd,
+    );
 
     // 6. Detailed Summary (Default Today, or Custom Date Range)
     const summaryStart = startDate
@@ -89,7 +93,10 @@ export class RiderFinanceService {
       summaryEnd,
     );
 
-    const totalTasksToday = tasksForToday.pickups + tasksForToday.deliveries;
+    const totalTasksToday =
+      tasksForToday.pickups +
+      tasksForToday.deliveries +
+      tasksForToday.returned;
 
     return {
       earnings: {
@@ -100,24 +107,23 @@ export class RiderFinanceService {
         total: totalTasksToday,
         pickups: tasksForToday.pickups,
         deliveries: tasksForToday.deliveries,
+        returned: tasksForToday.returned,
       },
       cards: {
         tasks_for_today: {
           title: 'Tasks for Today',
-          value: totalTasksToday,
-          subtitle: `${tasksForToday.pickups} pickups, ${tasksForToday.deliveries} deliveries`,
+          total: totalTasksToday,
           pickups: tasksForToday.pickups,
           deliveries: tasksForToday.deliveries,
+          returned: tasksForToday.returned,
         },
         cod_collected: {
           title: 'COD Collected',
-          value: codSummary.total_collected_amount,
-          subtitle: 'Today',
+          total: codSummary.total_collected_amount,
         },
         earning_today: {
           title: 'Earning Today',
-          value: earningsToday,
-          subtitle: 'Today',
+          total: earningsToday,
         },
       },
       lifetime_cash_collection_30_days: lifetimeCashCollection,
@@ -205,7 +211,11 @@ export class RiderFinanceService {
     };
   }
 
-  private async calculateTasksForToday(riderId: string) {
+  private async calculateTasksForToday(
+    riderId: string,
+    todayStart: Date,
+    todayEnd: Date,
+  ) {
     // Keep this consistent with dashboard logic so app cards match across endpoints.
     const pickups = await this.pickupRequestRepository.count({
       where: {
@@ -221,9 +231,18 @@ export class RiderFinanceService {
       },
     });
 
+    const returned = await this.parcelRepository.count({
+      where: {
+        assigned_rider_id: riderId,
+        status: ParcelStatus.RETURNED,
+        updated_at: Between(todayStart, todayEnd),
+      },
+    });
+
     return {
       pickups,
       deliveries,
+      returned,
     };
   }
 

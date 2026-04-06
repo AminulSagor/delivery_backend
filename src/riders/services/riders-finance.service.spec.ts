@@ -74,6 +74,7 @@ describe('RiderFinanceService', () => {
       // Mock Tasks for Today
       mockPickupRepo.count.mockResolvedValueOnce(5); // pending pickups today
       mockParcelRepo.count.mockResolvedValueOnce(12); // pending deliveries today
+      mockParcelRepo.count.mockResolvedValueOnce(2); // today's returned parcels
 
       // Mock Detailed Counts
       // order: delivered, partially, exchanged, paidReturn, returned, returnToMerchant
@@ -91,15 +92,16 @@ describe('RiderFinanceService', () => {
 
       expect(result.earnings.today).toBe(5 * 20); // 100
       expect(result.earnings.this_month).toBe(100 * 20); // 2000
-      expect(result.tasks_for_today.total).toBe(17);
+      expect(result.tasks_for_today.total).toBe(19);
       expect(result.tasks_for_today.pickups).toBe(5);
       expect(result.tasks_for_today.deliveries).toBe(12);
-      expect(result.cards.tasks_for_today.value).toBe(17);
-      expect(result.cards.tasks_for_today.subtitle).toBe(
-        '5 pickups, 12 deliveries',
-      );
-      expect(result.cards.cod_collected.value).toBe(1000);
-      expect(result.cards.earning_today.value).toBe(100);
+      expect(result.tasks_for_today.returned).toBe(2);
+      expect(result.cards.tasks_for_today.total).toBe(19);
+      expect(result.cards.tasks_for_today.pickups).toBe(5);
+      expect(result.cards.tasks_for_today.deliveries).toBe(12);
+      expect(result.cards.tasks_for_today.returned).toBe(2);
+      expect(result.cards.cod_collected.total).toBe(1000);
+      expect(result.cards.earning_today.total).toBe(100);
       expect(result.lifetime_cash_collection_30_days).toBe(5000);
       expect(result.cod_summary_today.total_collected_amount).toBe(1000);
       expect(result.cod_summary_today.total_pending).toBe(2000);
