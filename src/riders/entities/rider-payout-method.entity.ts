@@ -16,7 +16,7 @@ import {
 } from '../../common/enums/account-type.enum';
 
 @Entity('rider_payout_methods')
-@Index(['rider_id', 'method_type'], { unique: true })
+@Index(['rider_id', 'method_type'])
 @Index(['rider_id', 'is_default'])
 @Index(['rider_id', 'is_active'])
 export class RiderPayoutMethod {
