@@ -3092,6 +3092,38 @@ export class ParcelsService {
   }
 
   /**
+   * Get finance summary parcel detail for rider (status-agnostic lookup).
+   */
+  async getFinanceSummaryParcelDetail(parcelId: string, riderId: string) {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, assigned_rider_id: riderId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found or not assigned to you');
+    }
+
+    return parcel;
+  }
+
+  /**
    * Get single delivery details for rider by tab context.
    */
   async getRiderDeliveryDetail(

@@ -376,28 +376,39 @@ None
 
 Use one endpoint for all metrics:
 
+- `GET /riders/finance/summary/detail/:id`
 - `GET /riders/finance/summary/detail/:id?metric=<metric>`
 
-Backend automatically routes and validates metric/status internally.
+Notes:
+- `metric` is optional.
+- If `metric` is not provided, backend auto-detects from item status and returns detected metric.
+- If `metric` is provided, backend enforces strict metric-status match validation.
 
 ### Request Body Variants
 All are GET endpoints, so request body is not used.
 
-#### Delivery metric detail variant
+#### Delivery detail variant (auto-detect)
+Request URL:
+GET {{baseUrl}}/riders/finance/summary/detail/f11b0845-4d99-4764-894b-06773f42d252
+
+Body:
+None
+
+#### Delivery metric detail variant (strict)
 Request URL:
 GET {{baseUrl}}/riders/finance/summary/detail/f11b0845-4d99-4764-894b-06773f42d252?metric=delivered
 
 Body:
 None
 
-#### Return metric detail variant
+#### Return metric detail variant (strict)
 Request URL:
 GET {{baseUrl}}/riders/finance/summary/detail/2dd63ef4-93af-4f14-9e58-8c9e2d069d03?metric=return
 
 Body:
 None
 
-#### Pickup metric detail variant
+#### Pickup metric detail variant (strict)
 Request URL:
 GET {{baseUrl}}/riders/finance/summary/detail/6b66dd59-5904-44ad-aa10-9157061abfaa?metric=pickup
 
@@ -447,6 +458,15 @@ None
 }
 ```
 
+#### 404 Detail not found for rider (auto-detect mode)
+```json
+{
+  "statusCode": 404,
+  "message": "Finance summary detail not found for this rider",
+  "error": "Not Found"
+}
+```
+
 #### 403 Forbidden (pickup detail ownership violation)
 ```json
 {
@@ -477,19 +497,19 @@ None
    - `GET /riders/finance/summary/breakdown?metric=delivered&startDate=<from summary date_range.start>&endDate=<from summary date_range.end>`
 4. Render list
 5. On list item click call:
-  - `GET /riders/finance/summary/detail/:id?metric=delivered`
+  - `GET /riders/finance/summary/detail/:id`
 
 ### Pickup Card Click Flow
 1. Breakdown:
    - `GET /riders/finance/summary/breakdown?metric=pickup&startDate=...&endDate=...`
 2. On item click:
-  - `GET /riders/finance/summary/detail/:id?metric=pickup`
+  - `GET /riders/finance/summary/detail/:id`
 
 ### Return Card Click Flow
 1. Breakdown:
    - `GET /riders/finance/summary/breakdown?metric=return&startDate=...&endDate=...`
 2. On item click:
-  - `GET /riders/finance/summary/detail/:id?metric=return`
+  - `GET /riders/finance/summary/detail/:id`
 
 ---
 
