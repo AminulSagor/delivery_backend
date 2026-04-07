@@ -195,13 +195,22 @@ export class StaffService {
   /**
    * Get single staff by ID
    */
-  async findOne(id: string): Promise<Staff> {
+  async findOne(id: string, scopeHubId?: string): Promise<Staff> {
+    const whereClause: any = { id };
+    if (scopeHubId) {
+      whereClause.hub_id = scopeHubId;
+    }
+
     const staff = await this.staffRepository.findOne({
-      where: { id },
+      where: whereClause,
       relations: ['user', 'hub'],
     });
 
     if (!staff) {
+      if (scopeHubId) {
+        throw new NotFoundException('Staff not found in your hub');
+      }
+
       throw new NotFoundException(`Staff with ID "${id}" not found`);
     }
 
@@ -211,8 +220,22 @@ export class StaffService {
   /**
    * Update staff
    */
-  async update(id: string, updateStaffDto: UpdateStaffDto): Promise<Staff> {
-    const staff = await this.findOne(id);
+  async update(
+    id: string,
+    updateStaffDto: UpdateStaffDto,
+    scopeHubId?: string,
+  ): Promise<Staff> {
+    const staff = await this.findOne(id, scopeHubId);
+
+    if (
+      scopeHubId &&
+      updateStaffDto.hub_id &&
+      updateStaffDto.hub_id !== scopeHubId
+    ) {
+      throw new BadRequestException(
+        'Hub manager can only assign staff within your hub',
+      );
+    }
 
     // If updating hub, verify it exists
     if (updateStaffDto.hub_id) {
@@ -345,7 +368,7 @@ export class StaffService {
       await queryRunner.commitTransaction();
 
       // Return updated staff
-      return await this.findOne(id);
+      return await this.findOne(id, scopeHubId);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -357,8 +380,8 @@ export class StaffService {
   /**
    * Delete staff (soft delete by setting is_active to false)
    */
-  async remove(id: string): Promise<void> {
-    const staff = await this.findOne(id);
+  async remove(id: string, scopeHubId?: string): Promise<void> {
+    const staff = await this.findOne(id, scopeHubId);
 
     await this.staffRepository.update(id, { is_active: false });
     await this.userRepository.update(staff.user_id, { is_active: false });
@@ -367,8 +390,8 @@ export class StaffService {
   /**
    * Deactivate staff
    */
-  async deactivate(id: string): Promise<Staff> {
-    const staff = await this.findOne(id);
+  async deactivate(id: string, scopeHubId?: string): Promise<Staff> {
+    const staff = await this.findOne(id, scopeHubId);
     staff.is_active = false;
 
     // Also deactivate user
@@ -384,7 +407,7 @@ export class StaffService {
     await this.staffRepository.save(staff);
 
     // Return with relations
-    return await this.findOne(id);
+    return await this.findOne(id, scopeHubId);
   }
 
   /**

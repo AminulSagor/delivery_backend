@@ -50,6 +50,7 @@ import {
   toHubListItem,
   toHubDetail,
   toParcelListItem,
+  toParcelDetail,
   toParcelActionResponse,
 } from '../common/interfaces/responses.interface';
 import {
@@ -509,6 +510,121 @@ export class HubsController {
         pagination: result.pagination,
       },
       message: 'Parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Get parcel detail for Hub Panel dashboard view (Hub Manager)
+   * Provides grouped response for dashboard sections and action controls.
+   */
+  @Get('dashboard/parcels/:id')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardParcelDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    if (!user.hubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const parcel = await this.parcelsService.findOne(
+      id,
+      null,
+      false,
+      null,
+      user.hubId,
+    );
+
+    const detail = toParcelDetail(parcel);
+
+    const codAmount = Number(detail.cod_amount ?? 0);
+    const deliveryCharge = Number(detail.delivery_charge ?? 0);
+    const weightCharge = Number(detail.weight_charge ?? 0);
+    const codCharge = Number(detail.cod_charge ?? 0);
+    const totalCharge = Number(detail.total_charge ?? 0);
+    const discount = Number(detail.discount ?? 0);
+
+    const assignedRider = detail.assigned_rider
+      ? {
+          ...detail.assigned_rider,
+          rider_id: detail.assigned_rider.id,
+          rider_name:
+            detail.assigned_rider.user?.full_name ??
+            detail.assigned_rider.full_name ??
+            null,
+          phone:
+            detail.assigned_rider.user?.phone ??
+            detail.assigned_rider.phone ??
+            null,
+        }
+      : null;
+
+    const customerInfo = {
+      ...(detail.customer ?? {}),
+      customer_id: detail.customer?.id ?? detail.customer_id ?? null,
+      customer_name: detail.customer?.customer_name ?? detail.customer_name ?? null,
+      phone_number: detail.customer?.phone_number ?? detail.customer_phone ?? null,
+      secondary_number:
+        detail.customer?.secondary_number ?? detail.customer_secondary_phone ?? null,
+      customer_address:
+        detail.customer?.customer_address ?? detail.customer_address ?? null,
+      // Backward-compatible aliases for existing clients.
+      phone: detail.customer?.phone_number ?? detail.customer_phone ?? null,
+      secondary_phone:
+        detail.customer?.secondary_number ?? detail.customer_secondary_phone ?? null,
+      address: detail.customer?.customer_address ?? detail.customer_address ?? null,
+    };
+
+    return {
+      success: true,
+      data: {
+        parcel_id: detail.id,
+        tracking_number: detail.tracking_number,
+
+        merchant_info: {
+          merchant_id: detail.merchant?.id ?? null,
+          merchant_name: detail.merchant?.user?.full_name ?? null,
+          store_name: detail.store?.business_name ?? null,
+          phone: detail.store?.phone_number ?? detail.merchant?.user?.phone ?? null,
+          address: detail.store?.business_address ?? detail.merchant?.full_address ?? null,
+        },
+
+        assigned_rider: assignedRider,
+
+        customer_info: customerInfo,
+
+        live_status_controls: {
+          current_status: detail.status,
+        },
+
+        package_information: {
+          product_description: detail.product_description,
+          special_instructions: detail.special_instructions,
+          admin_notes: detail.admin_notes,
+        },
+
+        financial_summary: {
+          cod_amount: codAmount,
+          delivery_charge: deliveryCharge,
+          weight_charge: weightCharge,
+          cod_charge: codCharge,
+          discount,
+          total_charge: totalCharge,
+          total_payable: Number((codAmount - totalCharge).toFixed(2)),
+        },
+
+        parcel_details: {
+          parcel_weight: detail.product_weight,
+          parcel_type: detail.parcel_type,
+          delivery_type: detail.delivery_type,
+          is_cod: !!detail.is_cod,
+          is_exchange: !!detail.is_exchange,
+        },
+      },
+      message: 'Hub dashboard parcel detail retrieved successfully',
     };
   }
 
