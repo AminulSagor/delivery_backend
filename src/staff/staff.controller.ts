@@ -12,6 +12,8 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   ParseBoolPipe,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -19,6 +21,7 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import {
   toStaffListItem,
@@ -60,12 +63,25 @@ export class StaffController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findAll(
+    @CurrentUser() user: any,
     @Query('hubId') hubId?: string,
     @Query('isActive') isActive?: string,
   ) {
+    const effectiveHubId =
+      user.role === UserRole.HUB_MANAGER ? user.hubId || null : hubId;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
     const isActiveBoolean =
       isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    const staff = await this.staffService.findAll(hubId, isActiveBoolean);
+    const staff = await this.staffService.findAll(
+      effectiveHubId || undefined,
+      isActiveBoolean,
+    );
 
     return {
       success: true,
@@ -122,8 +138,29 @@ export class StaffController {
    */
   @Get('hub/:hubId/count')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async getStaffCountByHub(@Param('hubId', ParseUUIDPipe) hubId: string) {
-    const count = await this.staffService.getStaffCountByHub(hubId);
+  async getStaffCountByHub(
+    @Param('hubId', ParseUUIDPipe) hubId: string,
+    @CurrentUser() user: any,
+  ) {
+    let effectiveHubId = hubId;
+
+    if (user.role === UserRole.HUB_MANAGER) {
+      if (!user.hubId) {
+        throw new BadRequestException(
+          'Your account is not assigned to any hub. Please contact admin.',
+        );
+      }
+
+      if (hubId !== user.hubId) {
+        throw new ForbiddenException(
+          'You do not have permission to access another hub',
+        );
+      }
+
+      effectiveHubId = user.hubId;
+    }
+
+    const count = await this.staffService.getStaffCountByHub(effectiveHubId);
 
     return {
       success: true,
@@ -138,8 +175,19 @@ export class StaffController {
    */
   @Get('details/:id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async getStaffDetails(@Param('id', ParseUUIDPipe) id: string) {
-    const staff = await this.staffService.findOne(id);
+  async getStaffDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const scopeHubId = user.role === UserRole.HUB_MANAGER ? user.hubId : null;
+
+    if (user.role === UserRole.HUB_MANAGER && !scopeHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const staff = await this.staffService.findOne(id, scopeHubId || undefined);
 
     return {
       success: true,
@@ -154,8 +202,19 @@ export class StaffController {
    */
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const staff = await this.staffService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const scopeHubId = user.role === UserRole.HUB_MANAGER ? user.hubId : null;
+
+    if (user.role === UserRole.HUB_MANAGER && !scopeHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const staff = await this.staffService.findOne(id, scopeHubId || undefined);
 
     return {
       success: true,
@@ -204,8 +263,21 @@ export class StaffController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateStaffDto: UpdateStaffDto,
+    @CurrentUser() user: any,
   ) {
-    const staff = await this.staffService.update(id, updateStaffDto);
+    const scopeHubId = user.role === UserRole.HUB_MANAGER ? user.hubId : null;
+
+    if (user.role === UserRole.HUB_MANAGER && !scopeHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const staff = await this.staffService.update(
+      id,
+      updateStaffDto,
+      scopeHubId || undefined,
+    );
 
     return {
       success: true,
@@ -220,8 +292,19 @@ export class StaffController {
    */
   @Patch(':id/deactivate')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    const staff = await this.staffService.deactivate(id);
+  async deactivate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const scopeHubId = user.role === UserRole.HUB_MANAGER ? user.hubId : null;
+
+    if (user.role === UserRole.HUB_MANAGER && !scopeHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const staff = await this.staffService.deactivate(id, scopeHubId || undefined);
 
     return {
       success: true,
@@ -253,8 +336,19 @@ export class StaffController {
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.staffService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const scopeHubId = user.role === UserRole.HUB_MANAGER ? user.hubId : null;
+
+    if (user.role === UserRole.HUB_MANAGER && !scopeHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    await this.staffService.remove(id, scopeHubId || undefined);
 
     return {
       success: true,
