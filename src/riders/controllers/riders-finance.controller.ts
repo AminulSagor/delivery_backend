@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Query,
@@ -110,6 +111,74 @@ export class RiderFinanceController {
     @Query() query: RiderFinanceSummaryDetailQueryDto,
   ) {
     const metric = query.metric;
+
+    const metricByParcelStatus: Partial<Record<ParcelStatus, RiderFinanceSummaryMetric>> = {
+      [ParcelStatus.DELIVERED]: RiderFinanceSummaryMetric.DELIVERED,
+      [ParcelStatus.PARTIAL_DELIVERY]:
+        RiderFinanceSummaryMetric.PARTIALLY_DELIVERED,
+      [ParcelStatus.PAID_RETURN]: RiderFinanceSummaryMetric.PAID_RETURN,
+      [ParcelStatus.EXCHANGE]: RiderFinanceSummaryMetric.EXCHANGED,
+      [ParcelStatus.RETURNED]: RiderFinanceSummaryMetric.RETURN,
+      [ParcelStatus.RETURN_TO_MERCHANT]:
+        RiderFinanceSummaryMetric.RETURN_TO_MERCHANT,
+    };
+
+    if (!metric) {
+      try {
+        const parcel = await this.parcelsService.getFinanceSummaryParcelDetail(
+          id,
+          user.riderId,
+        );
+
+        const detectedMetric = metricByParcelStatus[parcel.status];
+
+        if (!detectedMetric) {
+          throw new BadRequestException(
+            `Parcel status ${parcel.status} is not available in finance summary detail`,
+          );
+        }
+
+        return {
+          success: true,
+          data: {
+            metric: detectedMetric,
+            item_type: 'parcel',
+            detail: toParcelDetail(parcel),
+          },
+          message: 'Finance summary detail retrieved successfully',
+        };
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+      }
+
+      try {
+        const pickup =
+          await this.pickupRequestsService.getFinanceSummaryPickupDetail(
+            id,
+            user.riderId,
+          );
+
+        return {
+          success: true,
+          data: {
+            metric: RiderFinanceSummaryMetric.PICKUP,
+            item_type: 'pickup_request',
+            detail: toPickupRequestDetail(pickup),
+          },
+          message: 'Finance summary detail retrieved successfully',
+        };
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+      }
+
+      throw new NotFoundException(
+        'Finance summary detail not found for this rider',
+      );
+    }
 
     if (metric === RiderFinanceSummaryMetric.PICKUP) {
       const pickup = await this.pickupRequestsService.getRiderPickupDetail(

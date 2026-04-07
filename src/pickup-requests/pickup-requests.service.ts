@@ -1151,6 +1151,47 @@ export class PickupRequestsService {
   }
 
   /**
+   * Get finance summary pickup detail for rider.
+   * Finance summary uses completed pickup events (PICKED_UP).
+   */
+  async getFinanceSummaryPickupDetail(
+    pickupId: string,
+    riderId: string,
+  ): Promise<PickupRequest> {
+    const pickup = await this.pickupRequestRepository.findOne({
+      where: {
+        id: pickupId,
+        completed_by_rider_id: riderId,
+        status: PickupRequestStatus.PICKED_UP,
+      },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'hub',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'completedByRider',
+        'completedByRider.user',
+        'completedByRider.hub',
+        'parcels',
+      ],
+    });
+
+    if (!pickup) {
+      throw new NotFoundException(
+        'Pickup request not found or not available for this rider',
+      );
+    }
+
+    return pickup;
+  }
+
+  /**
    * Rider completes pickup with actual count
    *
    * Flow:
