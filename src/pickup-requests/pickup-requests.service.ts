@@ -1079,6 +1079,78 @@ export class PickupRequestsService {
   }
 
   /**
+   * Get single pickup request details for rider drill-down view.
+   *
+   * tab=pending   -> only CONFIRMED pickups assigned to this rider
+   * tab=completed -> only PICKED_UP pickups completed by this rider
+   * tab=all       -> either of the above
+   */
+  async getRiderPickupDetail(
+    pickupId: string,
+    riderId: string,
+    tab: 'pending' | 'completed' | 'all' = 'all',
+  ): Promise<PickupRequest> {
+    const normalizedTab =
+      tab === 'pending' || tab === 'completed' || tab === 'all'
+        ? tab
+        : 'all';
+
+    const pickup = await this.pickupRequestRepository.findOne({
+      where: { id: pickupId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'hub',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'completedByRider',
+        'completedByRider.user',
+        'completedByRider.hub',
+        'parcels',
+      ],
+    });
+
+    if (!pickup) {
+      throw new NotFoundException('Pickup request not found');
+    }
+
+    const isPendingForRider =
+      pickup.status === PickupRequestStatus.CONFIRMED &&
+      pickup.assigned_rider_id === riderId;
+
+    const isCompletedForRider =
+      pickup.status === PickupRequestStatus.PICKED_UP &&
+      pickup.completed_by_rider_id === riderId;
+
+    if (normalizedTab === 'pending' && !isPendingForRider) {
+      throw new ForbiddenException('This pending pickup is not assigned to you');
+    }
+
+    if (normalizedTab === 'completed' && !isCompletedForRider) {
+      throw new ForbiddenException(
+        'This completed pickup is not available for this rider',
+      );
+    }
+
+    if (
+      normalizedTab === 'all' &&
+      !isPendingForRider &&
+      !isCompletedForRider
+    ) {
+      throw new ForbiddenException(
+        'You do not have permission to view this pickup request',
+      );
+    }
+
+    return pickup;
+  }
+
+  /**
    * Rider completes pickup with actual count
    *
    * Flow:

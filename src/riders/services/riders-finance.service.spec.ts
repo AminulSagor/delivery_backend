@@ -5,10 +5,12 @@ import { Rider } from '../entities/rider.entity';
 import { Parcel, ParcelStatus } from '../../parcels/entities/parcel.entity';
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
 import { Repository } from 'typeorm';
+import { endOfDay, startOfDay } from 'date-fns';
 
 const mockRider = {
   id: 'rider-1',
   commission_per_delivery: 20,
+  created_at: new Date('2025-01-15T08:00:00.000Z'),
 };
 
 const mockRiderRepo = {
@@ -36,6 +38,9 @@ describe('RiderFinanceService', () => {
   let service: RiderFinanceService;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RiderFinanceService,
@@ -49,6 +54,10 @@ describe('RiderFinanceService', () => {
     }).compile();
 
     service = module.get<RiderFinanceService>(RiderFinanceService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should be defined', () => {
@@ -108,6 +117,11 @@ describe('RiderFinanceService', () => {
       expect(result.summary.delivered).toBe(10);
       expect(result.summary.pickup).toBe(15);
       expect(result.summary.total_parcel).toBe(10 + 2 + 1 + 0 + 3 + 0 + 15); // 31
+
+      const expectedSummaryStart = startOfDay(new Date(mockRider.created_at));
+      const expectedSummaryEnd = endOfDay(new Date());
+      expect(result.summary.date_range.start).toEqual(expectedSummaryStart);
+      expect(result.summary.date_range.end).toEqual(expectedSummaryEnd);
     });
   });
 });

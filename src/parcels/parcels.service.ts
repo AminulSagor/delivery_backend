@@ -15,7 +15,12 @@ import {
   PaginatedResponse,
   PaginationMeta,
 } from '../common/dto/pagination.dto';
-import { Parcel, ParcelStatus, PaymentStatus } from './entities/parcel.entity';
+import {
+  Parcel,
+  ParcelIssueType,
+  ParcelStatus,
+  PaymentStatus,
+} from './entities/parcel.entity';
 import { FinancialStatus } from '../common/enums/financial-status.enum';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
@@ -3087,6 +3092,128 @@ export class ParcelsService {
   }
 
   /**
+   * Get single delivery details for rider by tab context.
+   */
+  async getRiderDeliveryDetail(
+    parcelId: string,
+    riderId: string,
+    tab: 'pending' | 'completed' | 'all' = 'all',
+  ): Promise<Parcel> {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, assigned_rider_id: riderId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found or not assigned to you');
+    }
+
+    const pendingStatuses = [ParcelStatus.ASSIGNED_TO_RIDER];
+    const completedStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    const allowedStatuses =
+      tab === 'pending'
+        ? pendingStatuses
+        : tab === 'completed'
+          ? completedStatuses
+          : [...pendingStatuses, ...completedStatuses];
+
+    if (!allowedStatuses.includes(parcel.status)) {
+      throw new BadRequestException(
+        `Parcel status ${parcel.status} is not available in ${tab} delivery tab`,
+      );
+    }
+
+    // Keep this consistent with the completed list endpoint behavior.
+    if (tab === 'completed' && parcel.cod_cleared_at) {
+      throw new BadRequestException(
+        'This parcel is already cleared and is not available in completed deliveries',
+      );
+    }
+
+    return parcel;
+  }
+
+  /**
+   * Get single return details for rider by tab context.
+   */
+  async getRiderReturnDetail(
+    parcelId: string,
+    riderId: string,
+    tab: 'pending' | 'completed' | 'all' = 'all',
+  ): Promise<Parcel> {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, assigned_rider_id: riderId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found or not assigned to you');
+    }
+
+    const pendingStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.DELIVERY_RESCHEDULED,
+    ];
+    const completedStatuses = [
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+
+    const allowedStatuses =
+      tab === 'pending'
+        ? pendingStatuses
+        : tab === 'completed'
+          ? completedStatuses
+          : [...pendingStatuses, ...completedStatuses];
+
+    if (!allowedStatuses.includes(parcel.status)) {
+      throw new BadRequestException(
+        `Parcel status ${parcel.status} is not available in ${tab} return tab`,
+      );
+    }
+
+    return parcel;
+  }
+
+  /**
    * Rider accepts parcel assignment (optional - for tracking when rider picks up from hub)
    * Note: This is optional. Rider can directly initiate delivery without accepting first.
    */
@@ -3302,6 +3429,72 @@ export class ParcelsService {
 
     this.logger.log(
       `[PARCEL RETURNED TO HUB] Parcel: ${parcel.tracking_number}, Rider: ${riderId}`,
+    );
+
+    return parcel;
+  }
+
+  /**
+   * Rider reports delivery issue to hub manager/admin queue
+   */
+  async riderReportIssue(
+    parcelId: string,
+    riderId: string,
+    issueType: ParcelIssueType,
+    note: string,
+  ) {
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, assigned_rider_id: riderId },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found or not assigned to you');
+    }
+
+    const blockedStatuses = [
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.CANCELLED,
+    ];
+
+    if (blockedStatuses.includes(parcel.status)) {
+      throw new BadRequestException(
+        `Cannot report issue for parcel with status: ${parcel.status}`,
+      );
+    }
+
+    const normalizedNote = note.trim();
+    if (!normalizedNote) {
+      throw new BadRequestException('Issue note is required');
+    }
+
+    parcel.issue_type = issueType;
+    parcel.issue_description = normalizedNote;
+    parcel.issue_reported_by_id = riderId;
+    parcel.issue_reported_at = new Date();
+    parcel.is_issue_resolved = false;
+
+    await this.parcelRepository.save(parcel);
+
+    this.logger.log(
+      `[DELIVERY ISSUE REPORTED] Parcel: ${parcel.tracking_number}, Rider: ${riderId}, Type: ${issueType}`,
     );
 
     return parcel;
@@ -4871,7 +5064,7 @@ export class ParcelsService {
    * Get Parcel Reports with filters
    */
   async getParcelReports(
-    hubId: string,
+    hubId: string | null,
     query: ParcelReportQueryDto,
   ): Promise<{ data: any[]; total: number }> {
     const { search, issue_type, page = '1', limit = '10' } = query;
@@ -4885,9 +5078,12 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.assignedRider', 'rider')
       .leftJoinAndSelect('rider.user', 'riderUser')
-      .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.issue_type IS NOT NULL') // Only fetch parcels with issues
+      .where('parcel.issue_type IS NOT NULL') // Only fetch parcels with issues
       .andWhere('parcel.is_issue_resolved = :resolved', { resolved: false });
+
+    if (hubId) {
+      qb.andWhere('parcel.current_hub_id = :hubId', { hubId });
+    }
 
     // 1. Search by Parcel ID or Customer Name
     if (search) {
@@ -4940,9 +5136,14 @@ export class ParcelsService {
   /**
    * Get Single Parcel Report by ID
    */
-  async getParcelReportById(hubId: string, parcelId: string) {
+  async getParcelReportById(hubId: string | null, parcelId: string) {
+    const where: any = { id: parcelId };
+    if (hubId) {
+      where.current_hub_id = hubId;
+    }
+
     const parcel = await this.parcelRepository.findOne({
-      where: { id: parcelId, current_hub_id: hubId },
+      where,
       relations: [
         'merchant', // User entity
         'merchant.user',
@@ -4989,9 +5190,18 @@ export class ParcelsService {
   /**
    * Resolve a single report
    */
-  async resolveReport(parcelId: string, dto: ResolveReportDto, hubId: string) {
+  async resolveReport(
+    parcelId: string,
+    dto: ResolveReportDto,
+    hubId: string | null,
+  ) {
+    const where: any = { id: parcelId };
+    if (hubId) {
+      where.current_hub_id = hubId;
+    }
+
     const parcel = await this.parcelRepository.findOne({
-      where: { id: parcelId, current_hub_id: hubId },
+      where,
     });
     if (!parcel) throw new NotFoundException('Parcel not found');
 
@@ -5007,13 +5217,18 @@ export class ParcelsService {
   /**
    * Bulk Resolve
    */
-  async bulkResolveReports(dto: BulkResolveReportDto, hubId: string) {
+  async bulkResolveReports(dto: BulkResolveReportDto, hubId: string | null) {
     // 4. Bulk Action Logic
+    const where: any = {
+      id: In(dto.parcel_ids),
+    };
+
+    if (hubId) {
+      where.current_hub_id = hubId;
+    }
+
     const parcels = await this.parcelRepository.find({
-      where: {
-        id: In(dto.parcel_ids),
-        current_hub_id: hubId,
-      },
+      where,
     });
 
     for (const parcel of parcels) {

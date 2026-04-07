@@ -22,7 +22,7 @@ GET {{baseUrl}}/riders/finance/summary?startDate=2026-04-01&endDate=2026-04-06
 Body:
 None
 
-### Variant 2: Without Date Range (defaults to today)
+### Variant 2: Without Date Range (defaults to last 90 days)
 Request URL:
 GET {{baseUrl}}/riders/finance/summary
 
