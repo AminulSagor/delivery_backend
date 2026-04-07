@@ -24,6 +24,7 @@ import { UpdateRiderPasswordDto } from './dto/update-rider-password.dto';
 import { AddRiderPayoutMethodDto } from './dto/add-rider-payout-method.dto';
 import { UpdateRiderPayoutMethodDto } from './dto/update-rider-payout-method.dto';
 import { FailedDeliveryDto, ReturnParcelDto } from './dto/delivery-action.dto';
+import { ReportDeliveryIssueDto } from './dto/report-delivery-issue.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -35,8 +36,9 @@ import {
   toRiderDetail,
   toRiderActionResponse,
   toParcelListItem,
+  toParcelDetail,
   toParcelActionResponse,
-  toPickupRequestListItem,
+  toPickupRequestDetail,
 } from '../common/interfaces/responses.interface';
 import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum';
 // import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
@@ -518,6 +520,29 @@ export class RidersController {
   }
 
   /**
+   * PICKUP DETAIL - Rider opens a pickup item to see full request details
+   */
+  @Get('pickups/:id')
+  @Roles(UserRole.RIDER)
+  async getPickupDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Query('tab') tab: 'pending' | 'completed' | 'all' = 'all',
+  ) {
+    const pickup = await this.pickupRequestsService.getRiderPickupDetail(
+      id,
+      user.riderId,
+      tab,
+    );
+
+    return {
+      success: true,
+      data: toPickupRequestDetail(pickup),
+      message: 'Pickup request details retrieved successfully',
+    };
+  }
+
+  /**
    * DELIVERY SECTION - Pending & Completed tabs
    * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
    * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
@@ -544,6 +569,29 @@ export class RidersController {
   }
 
   /**
+   * DELIVERY DETAIL - Rider opens a delivery item to see full parcel details
+   */
+  @Get('deliveries/:id')
+  @Roles(UserRole.RIDER)
+  async getDeliveryDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Query('tab') tab: 'pending' | 'completed' | 'all' = 'all',
+  ) {
+    const parcel = await this.parcelsService.getRiderDeliveryDetail(
+      id,
+      user.riderId,
+      tab,
+    );
+
+    return {
+      success: true,
+      data: toParcelDetail(parcel),
+      message: 'Delivery details retrieved successfully',
+    };
+  }
+
+  /**
    * RETURN SECTION - Pending & Completed tabs
    * Pending: RETURNED, DELIVERY_RESCHEDULED (need to return to hub or reattempt)
    * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
@@ -563,6 +611,29 @@ export class RidersController {
       success: true,
       data: parcels.map(toParcelListItem),
       count: parcels.length,
+    };
+  }
+
+  /**
+   * RETURN DETAIL - Rider opens a return item to see full parcel details
+   */
+  @Get('returns/:id')
+  @Roles(UserRole.RIDER)
+  async getReturnDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Query('tab') tab: 'pending' | 'completed' | 'all' = 'all',
+  ) {
+    const parcel = await this.parcelsService.getRiderReturnDetail(
+      id,
+      user.riderId,
+      tab,
+    );
+
+    return {
+      success: true,
+      data: toParcelDetail(parcel),
+      message: 'Return details retrieved successfully',
     };
   }
 
@@ -712,6 +783,33 @@ export class RidersController {
       data: toParcelListItem(parcel),
       message:
         'Delivery info retrieved. Use /delivery-verifications/parcels/:id/initiate to complete delivery.',
+    };
+  }
+
+  /**
+   * Rider reports a delivery issue for a parcel
+   * Submits the report to hub manager and admin review queue
+   */
+  @Post('parcels/:id/report')
+  @Roles(UserRole.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async reportDeliveryIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReportDeliveryIssueDto,
+    @CurrentUser() user: any,
+  ) {
+    const parcel = await this.parcelsService.riderReportIssue(
+      id,
+      user.riderId,
+      dto.issue_type,
+      dto.note,
+    );
+
+    return {
+      success: true,
+      data: toParcelActionResponse(parcel),
+      message:
+        'Delivery issue submitted to hub manager and admin successfully',
     };
   }
 

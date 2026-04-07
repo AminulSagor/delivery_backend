@@ -10,6 +10,7 @@ import {
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
 import { PickupRequestStatus } from '../../common/enums/pickup-request-status.enum';
 import { startOfDay, endOfDay, startOfMonth, subDays } from 'date-fns';
+import { RiderFinanceSummaryMetric } from '../dto/rider-finance-summary-breakdown-query.dto';
 
 @Injectable()
 export class RiderFinanceService {
@@ -33,6 +34,32 @@ export class RiderFinanceService {
     if (!rider)
       throw new NotFoundException('Rider profile not found for this user');
     return this.getFinanceSummary(rider.id, startDate, endDate);
+  }
+
+  async getFinanceSummaryBreakdownByUserId(
+    userId: string,
+    metric: RiderFinanceSummaryMetric,
+    startDate?: Date,
+    endDate?: Date,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const rider = await this.riderRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider profile not found for this user');
+    }
+
+    return this.getFinanceSummaryBreakdown(
+      rider.id,
+      metric,
+      startDate,
+      endDate,
+      page,
+      limit,
+    );
   }
 
   async getFinanceSummary(riderId: string, startDate?: Date, endDate?: Date) {
@@ -82,11 +109,12 @@ export class RiderFinanceService {
       todayEnd,
     );
 
-    // 6. Detailed Summary (Default Today, or Custom Date Range)
-    const summaryStart = startDate
-      ? startOfDay(new Date(startDate))
-      : todayStart;
-    const summaryEnd = endDate ? endOfDay(new Date(endDate)) : todayEnd;
+    // 6. Detailed Summary (Default last 90 days inclusive, or Custom Date Range)
+    const { summaryStart, summaryEnd } = this.resolveSummaryDateRange(
+      startDate,
+      endDate,
+      rider.created_at,
+    );
     const detailedSummary = await this.calculateDetailedSummary(
       riderId,
       summaryStart,
@@ -135,6 +163,210 @@ export class RiderFinanceService {
         },
         ...detailedSummary,
       },
+    };
+  }
+
+  async getFinanceSummaryBreakdown(
+    riderId: string,
+    metric: RiderFinanceSummaryMetric,
+    startDate?: Date,
+    endDate?: Date,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider not found');
+    }
+
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+
+    const { summaryStart, summaryEnd } = this.resolveSummaryDateRange(
+      startDate,
+      endDate,
+      rider.created_at,
+    );
+
+    if (metric === RiderFinanceSummaryMetric.PICKUP) {
+      const pickupWhere = {
+        completed_by_rider_id: riderId,
+        status: PickupRequestStatus.PICKED_UP,
+        picked_up_at: Between(summaryStart, summaryEnd),
+      };
+
+      const [pickupRequests, totalRequests] =
+        await this.pickupRequestRepository.findAndCount({
+          where: pickupWhere,
+          relations: [
+            'store',
+            'merchant',
+            'merchant.user',
+            'hub',
+            'completedByRider',
+            'completedByRider.user',
+            'assignedRider',
+            'assignedRider.user',
+          ],
+          order: { picked_up_at: 'DESC' },
+          skip,
+          take: safeLimit,
+        });
+
+      const { totalPickedUpCount } = await this.pickupRequestRepository
+        .createQueryBuilder('pr')
+        .select('SUM(pr.picked_up_count)', 'totalPickedUpCount')
+        .where('pr.completed_by_rider_id = :riderId', { riderId })
+        .andWhere('pr.status = :status', {
+          status: PickupRequestStatus.PICKED_UP,
+        })
+        .andWhere('pr.picked_up_at BETWEEN :start AND :end', {
+          start: summaryStart,
+          end: summaryEnd,
+        })
+        .getRawOne();
+
+      const total = Number(totalPickedUpCount) || 0;
+      const totalPages = Math.ceil(totalRequests / safeLimit);
+
+      return {
+        metric,
+        item_type: 'pickup_request' as const,
+        date_range: {
+          start: summaryStart,
+          end: summaryEnd,
+        },
+        total,
+        list_count: totalRequests,
+        items: pickupRequests,
+        pagination: {
+          total: totalRequests,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+          hasNext: safePage < totalPages,
+          hasPrev: safePage > 1,
+        },
+      };
+    }
+
+    const parcelMetricConfig: Record<
+      Exclude<RiderFinanceSummaryMetric, RiderFinanceSummaryMetric.PICKUP>,
+      {
+        status: ParcelStatus;
+        dateField: 'delivered_at' | 'updated_at';
+      }
+    > = {
+      [RiderFinanceSummaryMetric.DELIVERED]: {
+        status: ParcelStatus.DELIVERED,
+        dateField: 'delivered_at',
+      },
+      [RiderFinanceSummaryMetric.PARTIALLY_DELIVERED]: {
+        status: ParcelStatus.PARTIAL_DELIVERY,
+        dateField: 'delivered_at',
+      },
+      [RiderFinanceSummaryMetric.RETURN]: {
+        status: ParcelStatus.RETURNED,
+        dateField: 'updated_at',
+      },
+      [RiderFinanceSummaryMetric.PAID_RETURN]: {
+        status: ParcelStatus.PAID_RETURN,
+        dateField: 'updated_at',
+      },
+      [RiderFinanceSummaryMetric.EXCHANGED]: {
+        status: ParcelStatus.EXCHANGE,
+        dateField: 'delivered_at',
+      },
+      [RiderFinanceSummaryMetric.RETURN_TO_MERCHANT]: {
+        status: ParcelStatus.RETURN_TO_MERCHANT,
+        dateField: 'updated_at',
+      },
+    };
+
+    const config = parcelMetricConfig[metric];
+
+    const where: any = {
+      assigned_rider_id: riderId,
+      status: config.status,
+      [config.dateField]: Between(summaryStart, summaryEnd),
+    };
+
+    const [parcels, total] = await this.parcelRepository.findAndCount({
+      where,
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+      order: {
+        [config.dateField]: 'DESC',
+      } as any,
+      skip,
+      take: safeLimit,
+    });
+
+    const totalPages = Math.ceil(total / safeLimit);
+
+    return {
+      metric,
+      item_type: 'parcel' as const,
+      date_range: {
+        start: summaryStart,
+        end: summaryEnd,
+      },
+      total,
+      list_count: total,
+      items: parcels,
+      pagination: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages,
+        hasNext: safePage < totalPages,
+        hasPrev: safePage > 1,
+      },
+    };
+  }
+
+  private resolveSummaryDateRange(
+    startDate?: Date,
+    endDate?: Date,
+    riderCreatedAt?: Date,
+  ) {
+    const todayStart = startOfDay(new Date());
+    const todayEnd = endOfDay(new Date());
+    const defaultSummaryStart = riderCreatedAt
+      ? startOfDay(new Date(riderCreatedAt))
+      : startOfDay(new Date('1970-01-01T00:00:00.000Z'));
+    const hasCustomSummaryRange = Boolean(startDate || endDate);
+
+    const summaryStart = startDate
+      ? startOfDay(new Date(startDate))
+      : hasCustomSummaryRange
+        ? todayStart
+        : defaultSummaryStart;
+
+    const summaryEnd = endDate ? endOfDay(new Date(endDate)) : todayEnd;
+
+    return {
+      summaryStart,
+      summaryEnd,
     };
   }
 

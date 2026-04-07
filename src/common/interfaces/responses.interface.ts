@@ -172,6 +172,36 @@ export interface PickupRequestActionResponse {
   assigned_rider_id: string | null;
 }
 
+export interface PickupRequestDetail extends PickupRequestListItem {
+  merchant_id: string;
+  store_id: string;
+  hub_id: string;
+  assigned_rider_id: string | null;
+  completed_by_rider_id: string | null;
+  actual_parcels: number;
+  picked_up_count: number;
+  requested_at: Date;
+  confirmed_at: Date | null;
+  picked_up_at: Date | null;
+  cancelled_at: Date | null;
+  updated_at: Date;
+  merchant?: any;
+  hub?: any;
+  assigned_rider_full?: any;
+  completed_by_rider?: any;
+  parcels?: Array<{
+    id: string;
+    parcel_tx_id: string | null;
+    tracking_number: string;
+    status: string;
+    total_charge: number;
+    cod_amount: number;
+    is_cod: boolean;
+    created_at: Date;
+    updated_at: Date;
+  }>;
+}
+
 // ===== STORE RESPONSES =====
 
 export interface StoreListItem {
@@ -590,6 +620,41 @@ export function toPickupRequestListItem(pickup: any): PickupRequestListItem {
           phone: pickup.assignedRider.user?.phone || pickup.assignedRider.phone,
         }
       : null,
+  };
+}
+
+export function toPickupRequestDetail(pickup: any): PickupRequestDetail {
+  return {
+    ...toPickupRequestListItem(pickup),
+    merchant_id: pickup.merchant_id,
+    store_id: pickup.store_id,
+    hub_id: pickup.hub_id,
+    assigned_rider_id: pickup.assigned_rider_id ?? null,
+    completed_by_rider_id: pickup.completed_by_rider_id ?? null,
+    actual_parcels: pickup.actual_parcels ?? 0,
+    picked_up_count: pickup.picked_up_count ?? 0,
+    requested_at: pickup.requested_at,
+    confirmed_at: pickup.confirmed_at ?? null,
+    picked_up_at: pickup.picked_up_at ?? null,
+    cancelled_at: pickup.cancelled_at ?? null,
+    updated_at: pickup.updated_at,
+    merchant: toMerchantSummary(pickup.merchant),
+    hub: toHubSummary(pickup.hub),
+    assigned_rider_full: toFullRiderSummary(pickup.assignedRider),
+    completed_by_rider: toFullRiderSummary(pickup.completedByRider),
+    parcels: Array.isArray(pickup.parcels)
+      ? pickup.parcels.map((parcel: any) => ({
+          id: parcel.id,
+          parcel_tx_id: parcel.parcel_tx_id ?? null,
+          tracking_number: parcel.tracking_number,
+          status: parcel.status,
+          total_charge: parcel.total_charge ?? 0,
+          cod_amount: parcel.cod_amount ?? 0,
+          is_cod: !!parcel.is_cod,
+          created_at: parcel.created_at,
+          updated_at: parcel.updated_at,
+        }))
+      : [],
   };
 }
 

@@ -899,14 +899,23 @@ export class HubsController {
    * 1, 2, 5. Get List of Parcel Reports (Search, Filter, Pagination)
    */
   @Get('parcels/reports')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getParcelReports(
     @CurrentUser() user: any,
     @Query() query: ParcelReportQueryDto,
   ) {
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? query.hub_id || null : user.hubId || null;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
     const { data, total } = await this.parcelsService.getParcelReports(
-      user.hubId,
+      effectiveHubId,
       query,
     );
 
@@ -927,14 +936,23 @@ export class HubsController {
    * Get Single Parcel Report Details
    */
   @Get('parcels/reports/:id')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getSingleParcelReport(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ) {
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? null : user.hubId || null;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
     const report = await this.parcelsService.getParcelReportById(
-      user.hubId,
+      effectiveHubId,
       id,
     );
 
@@ -949,14 +967,23 @@ export class HubsController {
    * 3. Update Status (Resolve Single Report)
    */
   @Patch('parcels/reports/:id/resolve')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async resolveParcelReport(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResolveReportDto,
     @CurrentUser() user: any,
   ) {
-    await this.parcelsService.resolveReport(id, dto, user.hubId);
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? null : user.hubId || null;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    await this.parcelsService.resolveReport(id, dto, effectiveHubId);
     return {
       success: true,
       message: 'Parcel report resolved successfully',
@@ -967,13 +994,22 @@ export class HubsController {
    * 4. Bulk Action (Resolve Multiple)
    */
   @Post('parcels/reports/bulk-resolve')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async bulkResolveParcelReports(
     @Body() dto: BulkResolveReportDto,
     @CurrentUser() user: any,
   ) {
-    await this.parcelsService.bulkResolveReports(dto, user.hubId);
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? null : user.hubId || null;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    await this.parcelsService.bulkResolveReports(dto, effectiveHubId);
     return {
       success: true,
       message: `${dto.parcel_ids.length} parcel reports resolved successfully`,
