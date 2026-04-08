@@ -34,6 +34,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
 import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
+import { LifetimeSummaryQueryDto } from './dto/lifetime-summary-query.dto';
 import {
   toParcelListItem,
   toParcelDetail,
@@ -246,12 +247,19 @@ export class ParcelsController {
   @Get('lifetime-summary')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT)
-  async getLifetimeSummary(@CurrentUser('merchantId') merchantId: string) {
+  async getLifetimeSummary(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query() query: LifetimeSummaryQueryDto,
+  ) {
     if (!merchantId) {
       throw new ForbiddenException('merchantId missing in auth token');
     }
 
-    const summary = await this.parcelsService.getLifetimeSummary(merchantId);
+    const summary = await this.parcelsService.getLifetimeSummary(
+      merchantId,
+      query.startDate,
+      query.endDate,
+    );
 
     return {
       success: true,
