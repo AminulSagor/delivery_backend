@@ -79,39 +79,7 @@ Authorization: Bearer <hub_manager_access_token>
       "address": "Sector 18, Uttora, Dhaka"
     },
     "live_status_controls": {
-      "current_status": "IN_TRANSIT",
-      "managerial_actions": [
-        {
-          "key": "UPDATE_STATUS_MANUALLY",
-          "enabled": false,
-          "endpoint": null,
-          "note": "No generic manual status endpoint exists for hub managers"
-        },
-        {
-          "key": "REASSIGN_RIDER",
-          "enabled": false,
-          "method": "POST",
-          "endpoint": "/hubs/parcels/assign-rider"
-        },
-        {
-          "key": "RESCHEDULE_DELIVERY",
-          "enabled": true,
-          "method": "PATCH",
-          "endpoint": "/hubs/parcels/8d1b8ea8-2f84-4a35-b6b8-c5b7f3ea8c6d/reschedule-delivery"
-        },
-        {
-          "key": "RETURN_TO_MERCHANT",
-          "enabled": false,
-          "method": "PATCH",
-          "endpoint": "/hubs/parcels/8d1b8ea8-2f84-4a35-b6b8-c5b7f3ea8c6d/return-to-merchant"
-        },
-        {
-          "key": "CANCEL_DELIVERY",
-          "enabled": false,
-          "endpoint": null,
-          "note": "No dedicated cancel-delivery endpoint exists for hub managers"
-        }
-      ]
+      "current_status": "IN_TRANSIT"
     },
     "package_information": {
       "product_description": "Mobile accessories",
@@ -129,10 +97,50 @@ Authorization: Bearer <hub_manager_access_token>
     },
     "parcel_details": {
       "parcel_weight": 2.5,
-      "parcel_type": "ACCESSORIES",
-      "delivery_type": "EXPRESS",
+      "parcel_type": 1,
+      "parcel_type_key": "PARCEL",
+      "parcel_type_label": "Parcel",
+      "delivery_type": 2,
+      "delivery_type_key": "EXPRESS",
+      "delivery_type_label": "Express Delivery",
       "is_cod": true,
       "is_exchange": false
+    },
+    "enum_mappings": {
+      "parcel_type": [
+        {
+          "value": 1,
+          "key": "PARCEL",
+          "label": "Parcel"
+        },
+        {
+          "value": 2,
+          "key": "BOOK",
+          "label": "Book"
+        },
+        {
+          "value": 3,
+          "key": "DOCUMENT",
+          "label": "Document"
+        }
+      ],
+      "delivery_type": [
+        {
+          "value": 1,
+          "key": "NORMAL",
+          "label": "Normal Delivery"
+        },
+        {
+          "value": 2,
+          "key": "EXPRESS",
+          "label": "Express Delivery"
+        },
+        {
+          "value": 3,
+          "key": "SAME_DAY",
+          "label": "Same Day"
+        }
+      ]
     }
   },
   "message": "Hub dashboard parcel detail retrieved successfully"
@@ -468,19 +476,14 @@ Success:
 
 ---
 
-## 4) Actions Not Currently Implemented for Hub Manager
+## 4) Action Endpoint Notes
 
-The dashboard control metadata intentionally marks these as disabled:
-1. UPDATE_STATUS_MANUALLY
-2. CANCEL_DELIVERY
+`managerial_actions` is no longer included in `GET /hubs/dashboard/parcels/:id` response.
 
-Current API state:
-- No generic hub manager manual status update endpoint.
-- No dedicated hub manager cancel delivery endpoint.
-
-UI recommendation:
-- Render disabled button using managerial_actions.enabled.
-- Show managerial_actions.note as tooltip/help text.
+Use these explicit endpoints for actions:
+1. `POST /hubs/parcels/assign-rider`
+2. `PATCH /hubs/parcels/:id/reschedule-delivery`
+3. `PATCH /hubs/parcels/:id/return-to-merchant`
 
 ---
 
@@ -509,9 +512,18 @@ UI recommendation:
 - data.customer_info.secondary_phone
 - data.customer_info.address
 
-### Live Status and Controls
+### Live Status
 - Current status: data.live_status_controls.current_status
-- Action list: data.live_status_controls.managerial_actions
+
+### Enum Mappings
+- data.parcel_details.parcel_type
+- data.parcel_details.parcel_type_key
+- data.parcel_details.parcel_type_label
+- data.parcel_details.delivery_type
+- data.parcel_details.delivery_type_key
+- data.parcel_details.delivery_type_label
+- data.enum_mappings.parcel_type[]
+- data.enum_mappings.delivery_type[]
 
 ### Package Information
 - data.package_information.product_description
