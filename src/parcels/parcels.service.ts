@@ -1652,6 +1652,8 @@ export class ParcelsService {
     storeId?: string,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    days?: number,
+    paymentStatus?: PaymentStatus,
   ): Promise<PaginatedResponse<Parcel>> {
     try {
       if (!merchantId) throw new ForbiddenException('Merchant ID is required');
@@ -1665,6 +1667,18 @@ export class ParcelsService {
 
       if (storeId) {
         where.store_id = storeId;
+      }
+
+      if (paymentStatus) {
+        where.payment_status = paymentStatus;
+      }
+
+      if (days) {
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - (days - 1));
+        startDate.setHours(0, 0, 0, 0);
+        where.created_at = Between(startDate, endDate) as any;
       }
 
       const [items, total] = await this.parcelRepository.findAndCount({
@@ -2106,6 +2120,8 @@ export class ParcelsService {
     merchantId?: string,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    days?: number,
+    paymentStatus?: PaymentStatus,
   ): Promise<PaginatedResponse<Parcel>> {
     try {
       const where: FindOptionsWhere<Parcel> = {};
@@ -2116,6 +2132,18 @@ export class ParcelsService {
 
       if (merchantId) {
         where.merchant_id = merchantId;
+      }
+
+      if (paymentStatus) {
+        where.payment_status = paymentStatus;
+      }
+
+      if (days) {
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - (days - 1));
+        startDate.setHours(0, 0, 0, 0);
+        where.created_at = Between(startDate, endDate) as any;
       }
 
       const [items, total] = await this.parcelRepository.findAndCount({
@@ -2178,6 +2206,8 @@ export class ParcelsService {
     status?: ParcelStatus,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    days?: number,
+    paymentStatus?: PaymentStatus,
   ): Promise<PaginatedResponse<any>> {
     try {
       // Get all stores assigned to this hub
@@ -2214,6 +2244,18 @@ export class ParcelsService {
         // By default, only show parcels that need to be received (PENDING or PICKED_UP)
         // IN_HUB parcels should appear in the for-assignment endpoint
         where.status = In([ParcelStatus.PENDING, ParcelStatus.PICKED_UP]);
+      }
+
+      if (paymentStatus) {
+        where.payment_status = paymentStatus;
+      }
+
+      if (days) {
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - (days - 1));
+        startDate.setHours(0, 0, 0, 0);
+        where.created_at = Between(startDate, endDate);
       }
 
       const [parcels, total] = await this.parcelRepository.findAndCount({
