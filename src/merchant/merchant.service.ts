@@ -33,6 +33,8 @@ import {
   UpdateTinDto,
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
+import { MerchantDashboardQueryDto } from './dto/merchant-dashboard-query.dto';
+import { MerchantDeliveryPerformanceQueryDto } from './dto/merchant-delivery-performance-query.dto';
 
 @Injectable()
 export class MerchantService {
@@ -440,6 +442,712 @@ export class MerchantService {
       range_start: start,
       range_end: end,
     };
+  }
+
+  async getMerchantDashboard(
+    merchantId: string,
+    query: MerchantDashboardQueryDto,
+  ) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+    });
+
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+
+    const assignedStatuses: ParcelStatus[] = [
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+      ParcelStatus.OUT_FOR_DELIVERY,
+    ];
+
+    const returnedPerformanceStatuses = this.getReturnedPerformanceStatuses();
+
+    const pendingDeliveryStatuses: ParcelStatus[] = [
+      ParcelStatus.PENDING,
+      ParcelStatus.PICKED_UP,
+      ParcelStatus.IN_HUB,
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+      ParcelStatus.OUT_FOR_DELIVERY,
+      ParcelStatus.OUT_FOR_PICKUP,
+      ParcelStatus.IN_TRANSIT,
+      ParcelStatus.FAILED_DELIVERY,
+      ParcelStatus.DELIVERY_RESCHEDULED,
+    ];
+
+    const todayRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('parcel.status', 'status')
+      .addSelect('COUNT(parcel.id)', 'count')
+      .addSelect('COALESCE(SUM(parcel.product_price), 0)', 'amount')
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .andWhere('parcel.created_at >= :todayStart', { todayStart })
+      .andWhere('parcel.created_at < :todayEnd', { todayEnd })
+      .groupBy('parcel.status')
+      .getRawMany();
+
+    const todayByStatus = new Map<string, { count: number; amount: number }>();
+    let newParcelsCount = 0;
+    let newParcelsAmount = 0;
+
+    for (const row of todayRows) {
+      const count = this.toCount(row.count);
+      const amount = this.toMoney(row.amount);
+
+      todayByStatus.set(row.status, { count, amount });
+      newParcelsCount += count;
+      newParcelsAmount += amount;
+    }
+
+    const pickup = this.getStatusSummary(todayByStatus, [ParcelStatus.PICKED_UP]);
+    const inTransit = this.getStatusSummary(todayByStatus, [
+      ParcelStatus.IN_TRANSIT,
+    ]);
+    const assigned = this.getStatusSummary(todayByStatus, assignedStatuses);
+    const delivered = this.getStatusSummary(todayByStatus, [
+      ParcelStatus.DELIVERED,
+    ]);
+    const deliveryRescheduled = this.getStatusSummary(todayByStatus, [
+      ParcelStatus.DELIVERY_RESCHEDULED,
+    ]);
+
+    const performanceRange = this.normalizePerformanceRange(
+      query.performance_range,
+    );
+    const deliveryPerformance = await this.buildDeliveryPerformanceSummary(
+      merchantId,
+      performanceRange,
+      todayStart,
+      todayEnd,
+    );
+    const cashOnDeliveryDetails = await this.buildCashOnDeliveryDetails(
+      merchantId,
+      todayStart,
+      todayEnd,
+    );
+
+    const lifetimeRange = this.resolveDashboardLifetimeRange(
+      query.lifetime_start_date,
+      query.lifetime_end_date,
+    );
+
+    const lifetimeSummaryQb = this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COUNT(parcel.id)', 'total_count')
+      .addSelect('COALESCE(SUM(parcel.product_price), 0)', 'total_amount')
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :deliveredStatus THEN 1 ELSE 0 END)',
+        'delivered_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :deliveredStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'delivered_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :partialDeliveryStatus THEN 1 ELSE 0 END)',
+        'partially_delivered_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :partialDeliveryStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'partially_delivered_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :paidReturnStatus THEN 1 ELSE 0 END)',
+        'paid_return_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :paidReturnStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'paid_return_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :exchangeStatus THEN 1 ELSE 0 END)',
+        'exchange_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :exchangeStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'exchange_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status IN (:...pendingDeliveryStatuses) THEN 1 ELSE 0 END)',
+        'pending_delivery_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status IN (:...pendingDeliveryStatuses) THEN parcel.product_price ELSE 0 END), 0)',
+        'pending_delivery_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :pendingReturnStatus THEN 1 ELSE 0 END)',
+        'pending_return_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :pendingReturnStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'pending_return_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status = :returnToMerchantStatus THEN 1 ELSE 0 END)',
+        'return_to_merchant_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status = :returnToMerchantStatus THEN parcel.product_price ELSE 0 END), 0)',
+        'return_to_merchant_amount',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status IN (:...returnPercentageStatuses) THEN 1 ELSE 0 END)',
+        'return_percentage_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.status IN (:...returnPercentageStatuses) THEN parcel.product_price ELSE 0 END), 0)',
+        'return_percentage_amount',
+      )
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .setParameters({
+        deliveredStatus: ParcelStatus.DELIVERED,
+        partialDeliveryStatus: ParcelStatus.PARTIAL_DELIVERY,
+        paidReturnStatus: ParcelStatus.PAID_RETURN,
+        exchangeStatus: ParcelStatus.EXCHANGE,
+        pendingReturnStatus: ParcelStatus.RETURNED_TO_HUB,
+        returnToMerchantStatus: ParcelStatus.RETURN_TO_MERCHANT,
+        pendingDeliveryStatuses,
+        returnPercentageStatuses: returnedPerformanceStatuses,
+      });
+
+    if (lifetimeRange.start && lifetimeRange.endExclusive) {
+      lifetimeSummaryQb
+        .andWhere('parcel.created_at >= :lifetimeStart', {
+          lifetimeStart: lifetimeRange.start,
+        })
+        .andWhere('parcel.created_at < :lifetimeEndExclusive', {
+          lifetimeEndExclusive: lifetimeRange.endExclusive,
+        });
+    }
+
+    const lifetimeRaw = await lifetimeSummaryQb.getRawOne();
+
+    const lifetimeTotalCount = this.toCount(lifetimeRaw?.total_count);
+    const returnPercentageCount = this.toCount(lifetimeRaw?.return_percentage_count);
+    const returnPercentage =
+      lifetimeTotalCount > 0
+        ? Number(((returnPercentageCount / lifetimeTotalCount) * 100).toFixed(2))
+        : 0;
+
+    return {
+      generated_at: new Date().toISOString(),
+      date_context: {
+        timezone: 'UTC',
+        today_start: todayStart.toISOString(),
+        today_end: todayEnd.toISOString(),
+      },
+      summary_for_todays_parcel: {
+        new_parcels: {
+          count: newParcelsCount,
+          amount: this.toMoney(newParcelsAmount),
+        },
+        pick_up: pickup,
+        in_transit: inTransit,
+        assigned,
+        delivered,
+        delivery_on_reschedule: deliveryRescheduled,
+      },
+      delivery_performance: deliveryPerformance,
+      cash_on_delivery_details: cashOnDeliveryDetails,
+      summary_for_lifetime_parcel: {
+        date_range: {
+          start_date: lifetimeRange.startDate,
+          end_date: lifetimeRange.endDate,
+        },
+        total_parcel: {
+          count: lifetimeTotalCount,
+          amount: this.toMoney(lifetimeRaw?.total_amount),
+        },
+        delivered: {
+          count: this.toCount(lifetimeRaw?.delivered_count),
+          amount: this.toMoney(lifetimeRaw?.delivered_amount),
+        },
+        partially_delivered: {
+          count: this.toCount(lifetimeRaw?.partially_delivered_count),
+          amount: this.toMoney(lifetimeRaw?.partially_delivered_amount),
+        },
+        paid_return: {
+          count: this.toCount(lifetimeRaw?.paid_return_count),
+          amount: this.toMoney(lifetimeRaw?.paid_return_amount),
+        },
+        exchange: {
+          count: this.toCount(lifetimeRaw?.exchange_count),
+          amount: this.toMoney(lifetimeRaw?.exchange_amount),
+        },
+        pending_delivery: {
+          count: this.toCount(lifetimeRaw?.pending_delivery_count),
+          amount: this.toMoney(lifetimeRaw?.pending_delivery_amount),
+        },
+        return_percentage: {
+          percentage: returnPercentage,
+          count: returnPercentageCount,
+          amount: this.toMoney(lifetimeRaw?.return_percentage_amount),
+        },
+        pending_return: {
+          count: this.toCount(lifetimeRaw?.pending_return_count),
+          amount: this.toMoney(lifetimeRaw?.pending_return_amount),
+        },
+        return_to_merchant: {
+          count: this.toCount(lifetimeRaw?.return_to_merchant_count),
+          amount: this.toMoney(lifetimeRaw?.return_to_merchant_amount),
+        },
+      },
+    };
+  }
+
+  async getMerchantCashOnDeliveryDetails(merchantId: string) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+    });
+
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+
+    return this.buildCashOnDeliveryDetails(merchantId, todayStart, todayEnd);
+  }
+
+  async getMerchantDeliveryPerformance(
+    merchantId: string,
+    query: MerchantDeliveryPerformanceQueryDto,
+  ) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+    });
+
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+
+    const performanceRange = this.normalizePerformanceRange(
+      query.performance_range,
+    );
+
+    if (query.month && performanceRange !== 'monthly') {
+      throw new BadRequestException(
+        'month filter is only supported when performance_range is monthly',
+      );
+    }
+
+    if (performanceRange === 'monthly' && query.month) {
+      const monthRange = this.resolvePerformanceMonthRange(query.month);
+      return this.buildDeliveryPerformanceSummaryByWindow(
+        merchantId,
+        performanceRange,
+        monthRange.start,
+        monthRange.endExclusive,
+      );
+    }
+
+    return this.buildDeliveryPerformanceSummary(
+      merchantId,
+      performanceRange,
+      todayStart,
+      todayEnd,
+    );
+  }
+
+  private async buildCashOnDeliveryDetails(
+    merchantId: string,
+    todayStart: Date,
+    todayEnd: Date,
+  ) {
+    const codRaw = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .addSelect('COALESCE(SUM(parcel.cod_amount), 0)', 'total_cod_amount')
+      .addSelect(
+        'COALESCE(SUM(GREATEST(parcel.cod_amount - parcel.cod_collected_amount, 0)), 0)',
+        'total_pending',
+      )
+      .addSelect('COALESCE(SUM(parcel.delivery_charge), 0)', 'total_delivery_charge')
+      .addSelect('COALESCE(SUM(parcel.weight_charge), 0)', 'total_weight_charge')
+      .addSelect('COALESCE(SUM(parcel.cod_charge), 0)', 'total_cod_charge')
+      .addSelect('COALESCE(SUM(parcel.return_charge), 0)', 'total_return_charge')
+      .addSelect(
+        'COALESCE(SUM(parcel.total_charge + COALESCE(parcel.return_charge, 0)), 0)',
+        'total_fee',
+      )
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .andWhere('parcel.is_cod = true')
+      .andWhere('parcel.status != :cancelledStatus', {
+        cancelledStatus: ParcelStatus.CANCELLED,
+      })
+      .getRawOne();
+
+    const todayCollectionRaw = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'todays_collection')
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .andWhere('parcel.is_cod = true')
+      .andWhere('parcel.cod_collected_amount > 0')
+      .andWhere('parcel.delivered_at >= :todayStart', { todayStart })
+      .andWhere('parcel.delivered_at < :todayEnd', { todayEnd })
+      .andWhere('parcel.status != :cancelledStatus', {
+        cancelledStatus: ParcelStatus.CANCELLED,
+      })
+      .getRawOne();
+
+    const totalCollected = this.toMoney(codRaw?.total_collected);
+    const totalPending = this.toMoney(codRaw?.total_pending);
+    const totalCodAmount = this.toMoney(codRaw?.total_cod_amount);
+    const totalDeliveryCharge = this.toMoney(codRaw?.total_delivery_charge);
+    const totalWeightCharge = this.toMoney(codRaw?.total_weight_charge);
+    const totalCodCharge = this.toMoney(codRaw?.total_cod_charge);
+    const totalReturnCharge = this.toMoney(codRaw?.total_return_charge);
+    const totalFee = this.toMoney(codRaw?.total_fee);
+    const todaysCollection = this.toMoney(todayCollectionRaw?.todays_collection);
+    const totalReceivable = this.toMoney(totalCodAmount - totalFee);
+
+    return {
+      collection_status: {
+        total_collected: totalCollected,
+        total_pending: totalPending,
+      },
+      total_cash_on_delivery_amount: totalCodAmount,
+      todays_collection: todaysCollection,
+      total_fee: totalFee,
+      total_receivable: totalReceivable,
+      fee_breakdown: {
+        total_delivery_charge: totalDeliveryCharge,
+        total_weight_charge: totalWeightCharge,
+        total_cod_charge: totalCodCharge,
+        total_return_charge: totalReturnCharge,
+      },
+    };
+  }
+
+  private normalizePerformanceRange(
+    range?: 'weekly' | 'monthly',
+  ): 'weekly' | 'monthly' {
+    return range === 'monthly' ? 'monthly' : 'weekly';
+  }
+
+  private getDeliveredPerformanceStatuses(): ParcelStatus[] {
+    return [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+    ];
+  }
+
+  private getReturnedPerformanceStatuses(): ParcelStatus[] {
+    return [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.RETURNED_TO_HUB,
+    ];
+  }
+
+  private async buildDeliveryPerformanceSummary(
+    merchantId: string,
+    performanceRange: 'weekly' | 'monthly',
+    todayStart: Date,
+    todayEnd: Date,
+  ) {
+    const performanceDays = performanceRange === 'monthly' ? 30 : 7;
+
+    const performanceStart = new Date(todayStart);
+    performanceStart.setUTCDate(performanceStart.getUTCDate() - (performanceDays - 1));
+    return this.buildDeliveryPerformanceSummaryByWindow(
+      merchantId,
+      performanceRange,
+      performanceStart,
+      todayEnd,
+    );
+  }
+
+  private async buildDeliveryPerformanceSummaryByWindow(
+    merchantId: string,
+    performanceRange: 'weekly' | 'monthly',
+    rangeStart: Date,
+    rangeEndExclusive: Date,
+  ) {
+    const totalDays = Math.max(
+      1,
+      Math.floor(
+        (rangeEndExclusive.getTime() - rangeStart.getTime()) /
+          (24 * 60 * 60 * 1000),
+      ),
+    );
+
+    const deliveredPerformanceStatuses = this.getDeliveredPerformanceStatuses();
+    const returnedPerformanceStatuses = this.getReturnedPerformanceStatuses();
+
+    const performanceRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select("DATE_TRUNC('day', parcel.created_at)", 'bucket')
+      .addSelect('COUNT(parcel.id)', 'total_count')
+      .addSelect(
+        'SUM(CASE WHEN parcel.status IN (:...deliveredPerformanceStatuses) THEN 1 ELSE 0 END)',
+        'delivered_count',
+      )
+      .addSelect(
+        'SUM(CASE WHEN parcel.status IN (:...returnedPerformanceStatuses) THEN 1 ELSE 0 END)',
+        'returned_count',
+      )
+      .where('parcel.merchant_id = :merchantId', { merchantId })
+      .andWhere('parcel.created_at >= :rangeStart', { rangeStart })
+      .andWhere('parcel.created_at < :rangeEndExclusive', { rangeEndExclusive })
+      .setParameters({
+        deliveredPerformanceStatuses,
+        returnedPerformanceStatuses,
+      })
+      .groupBy('bucket')
+      .orderBy('bucket', 'ASC')
+      .getRawMany();
+
+    const performanceByDate = new Map<
+      string,
+      { delivered: number; returned: number; total_parcel: number }
+    >();
+
+    for (const row of performanceRows) {
+      const date = new Date(row.bucket).toISOString().substring(0, 10);
+      performanceByDate.set(date, {
+        delivered: this.toCount(row.delivered_count),
+        returned: this.toCount(row.returned_count),
+        total_parcel: this.toCount(row.total_count),
+      });
+    }
+
+    const trend: Array<{
+      day: string;
+      date: string;
+      delivered: number;
+      returned: number;
+      total_parcel: number;
+    }> = [];
+
+    for (let i = 0; i < totalDays; i++) {
+      const bucketDate = new Date(rangeStart);
+      bucketDate.setUTCDate(rangeStart.getUTCDate() + i);
+
+      const date = bucketDate.toISOString().substring(0, 10);
+      const day = bucketDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        timeZone: 'UTC',
+      });
+
+      const metrics = performanceByDate.get(date) || {
+        delivered: 0,
+        returned: 0,
+        total_parcel: 0,
+      };
+
+      trend.push({
+        day,
+        date,
+        delivered: metrics.delivered,
+        returned: metrics.returned,
+        total_parcel: metrics.total_parcel,
+      });
+    }
+
+    const totals = trend.reduce(
+      (acc, item) => {
+        acc.delivered += item.delivered;
+        acc.returned += item.returned;
+        acc.total_parcel += item.total_parcel;
+        return acc;
+      },
+      { delivered: 0, returned: 0, total_parcel: 0 },
+    );
+
+    return {
+      range: performanceRange,
+      start_date: rangeStart.toISOString().substring(0, 10),
+      end_date: new Date(rangeEndExclusive.getTime() - 1)
+        .toISOString()
+        .substring(0, 10),
+      totals,
+      trend,
+    };
+  }
+
+  private resolvePerformanceMonthRange(month: string): {
+    start: Date;
+    endExclusive: Date;
+  } {
+    const normalizedMonth = month.trim().toLowerCase();
+    const yearMonthMatch = normalizedMonth.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+
+    let year: number;
+    let monthIndex: number | undefined;
+
+    if (yearMonthMatch) {
+      year = Number(yearMonthMatch[1]);
+      monthIndex = Number(yearMonthMatch[2]) - 1;
+    } else {
+      const monthNameMap: Record<string, number> = {
+        jan: 0,
+        january: 0,
+        feb: 1,
+        february: 1,
+        mar: 2,
+        march: 2,
+        apr: 3,
+        april: 3,
+        may: 4,
+        jun: 5,
+        june: 5,
+        jul: 6,
+        july: 6,
+        aug: 7,
+        august: 7,
+        sep: 8,
+        sept: 8,
+        september: 8,
+        oct: 9,
+        october: 9,
+        nov: 10,
+        november: 10,
+        dec: 11,
+        december: 11,
+      };
+
+      monthIndex = monthNameMap[normalizedMonth];
+      if (monthIndex === undefined) {
+        throw new BadRequestException(
+          'month must be in YYYY-MM format or month name like april',
+        );
+      }
+
+      year = new Date().getUTCFullYear();
+    }
+
+    const start = new Date(Date.UTC(year, monthIndex, 1));
+    const endExclusive = new Date(Date.UTC(year, monthIndex + 1, 1));
+
+    return {
+      start,
+      endExclusive,
+    };
+  }
+
+  private getStatusSummary(
+    statusMap: Map<string, { count: number; amount: number }>,
+    statuses: ParcelStatus[],
+  ) {
+    const summary = statuses.reduce(
+      (acc, status) => {
+        const item = statusMap.get(status);
+        if (!item) {
+          return acc;
+        }
+
+        acc.count += item.count;
+        acc.amount += item.amount;
+        return acc;
+      },
+      { count: 0, amount: 0 },
+    );
+
+    return {
+      count: summary.count,
+      amount: this.toMoney(summary.amount),
+    };
+  }
+
+  private resolveDashboardLifetimeRange(
+    startDate?: string,
+    endDate?: string,
+  ): {
+    start: Date | null;
+    endExclusive: Date | null;
+    startDate: string | null;
+    endDate: string | null;
+  } {
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      throw new BadRequestException(
+        'lifetime_start_date and lifetime_end_date must be provided together',
+      );
+    }
+
+    if (!startDate || !endDate) {
+      return {
+        start: null,
+        endExclusive: null,
+        startDate: null,
+        endDate: null,
+      };
+    }
+
+    const start = this.parseDateOnlyAsUtc(startDate, 'lifetime_start_date');
+    const end = this.parseDateOnlyAsUtc(endDate, 'lifetime_end_date');
+
+    if (start > end) {
+      throw new BadRequestException(
+        'lifetime_start_date must be less than or equal to lifetime_end_date',
+      );
+    }
+
+    const endExclusive = new Date(end);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+
+    return {
+      start,
+      endExclusive,
+      startDate,
+      endDate,
+    };
+  }
+
+  private parseDateOnlyAsUtc(value: string, fieldName: string): Date {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new BadRequestException(`${fieldName} must be in YYYY-MM-DD format`);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+
+    // Guard against invalid calendar dates (e.g. 2026-02-30).
+    if (
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day
+    ) {
+      throw new BadRequestException(`${fieldName} is not a valid calendar date`);
+    }
+
+    return parsed;
+  }
+
+  private toCount(value: unknown): number {
+    return Number(value || 0);
+  }
+
+  private toMoney(value: unknown): number {
+    const parsed = Number(value || 0);
+    return Math.round((parsed + Number.EPSILON) * 100) / 100;
   }
 
   async findMerchantsAssignedToHub(hubId: string) {

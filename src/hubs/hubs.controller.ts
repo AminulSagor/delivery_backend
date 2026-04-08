@@ -44,6 +44,11 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { ParcelType, ParcelTypeLabel } from '../common/enums/parcel-type.enum';
+import {
+  DeliveryType,
+  DeliveryTypeLabel,
+} from '../common/enums/delivery-type.enum';
 import { HubParcelQueryDto } from './dto/hub-parcel-query.dto';
 import { DeliveryOutcomeQueryDto } from './dto/delivery-outcome-query.dto';
 import {
@@ -546,6 +551,23 @@ export class HubsController {
     const codCharge = Number(detail.cod_charge ?? 0);
     const totalCharge = Number(detail.total_charge ?? 0);
     const discount = Number(detail.discount ?? 0);
+    const parcelTypeValue =
+      typeof detail.parcel_type === 'number' ? detail.parcel_type : null;
+    const deliveryTypeValue =
+      typeof detail.delivery_type === 'number' ? detail.delivery_type : null;
+
+    const parcelTypeKey = parcelTypeValue
+      ? (ParcelType[parcelTypeValue] ?? null)
+      : null;
+    const parcelTypeLabel = parcelTypeValue
+      ? (ParcelTypeLabel[parcelTypeValue as ParcelType] ?? null)
+      : null;
+    const deliveryTypeKey = deliveryTypeValue
+      ? (DeliveryType[deliveryTypeValue] ?? null)
+      : null;
+    const deliveryTypeLabel = deliveryTypeValue
+      ? (DeliveryTypeLabel[deliveryTypeValue as DeliveryType] ?? null)
+      : null;
 
     const assignedRider = detail.assigned_rider
       ? {
@@ -619,9 +641,50 @@ export class HubsController {
         parcel_details: {
           parcel_weight: detail.product_weight,
           parcel_type: detail.parcel_type,
+          parcel_type_key: parcelTypeKey,
+          parcel_type_label: parcelTypeLabel,
           delivery_type: detail.delivery_type,
+          delivery_type_key: deliveryTypeKey,
+          delivery_type_label: deliveryTypeLabel,
           is_cod: !!detail.is_cod,
           is_exchange: !!detail.is_exchange,
+        },
+
+        enum_mappings: {
+          parcel_type: [
+            {
+              value: ParcelType.PARCEL,
+              key: ParcelType[ParcelType.PARCEL],
+              label: ParcelTypeLabel[ParcelType.PARCEL],
+            },
+            {
+              value: ParcelType.BOOK,
+              key: ParcelType[ParcelType.BOOK],
+              label: ParcelTypeLabel[ParcelType.BOOK],
+            },
+            {
+              value: ParcelType.DOCUMENT,
+              key: ParcelType[ParcelType.DOCUMENT],
+              label: ParcelTypeLabel[ParcelType.DOCUMENT],
+            },
+          ],
+          delivery_type: [
+            {
+              value: DeliveryType.NORMAL,
+              key: DeliveryType[DeliveryType.NORMAL],
+              label: DeliveryTypeLabel[DeliveryType.NORMAL],
+            },
+            {
+              value: DeliveryType.EXPRESS,
+              key: DeliveryType[DeliveryType.EXPRESS],
+              label: DeliveryTypeLabel[DeliveryType.EXPRESS],
+            },
+            {
+              value: DeliveryType.SAME_DAY,
+              key: DeliveryType[DeliveryType.SAME_DAY],
+              label: DeliveryTypeLabel[DeliveryType.SAME_DAY],
+            },
+          ],
         },
       },
       message: 'Hub dashboard parcel detail retrieved successfully',

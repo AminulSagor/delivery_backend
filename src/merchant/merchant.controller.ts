@@ -37,6 +37,8 @@ import {
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
 import { MerchantOverviewQueryDto } from './dto/merchant-overview.dto';
+import { MerchantDashboardQueryDto } from './dto/merchant-dashboard-query.dto';
+import { MerchantDeliveryPerformanceQueryDto } from './dto/merchant-delivery-performance-query.dto';
 import { UpdateAdvancePaymentToggleDto } from './dto/update-advance-payment-toggle.dto';
 
 @Controller('merchants')
@@ -111,6 +113,59 @@ export class MerchantController {
       success: true,
       data,
       message: 'Merchant overview retrieved successfully',
+    };
+  }
+
+  @Get('dashboard/summary')
+  @Roles(UserRole.MERCHANT)
+  async getDashboardSummary(
+    @Request() req,
+    @Query() query: MerchantDashboardQueryDto,
+  ) {
+    const data = await this.merchantService.getMerchantDashboard(
+      req.user.merchantId,
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Merchant dashboard summary retrieved successfully',
+    };
+  }
+
+  @Get('dashboard/cash-on-delivery-details')
+  @Roles(UserRole.MERCHANT)
+  async getDashboardCashOnDeliveryDetails(@Request() req) {
+    const cashOnDeliveryDetails =
+      await this.merchantService.getMerchantCashOnDeliveryDetails(
+        req.user.merchantId,
+      );
+
+    return {
+      success: true,
+      data: {
+        cash_on_delivery_details: cashOnDeliveryDetails,
+      },
+      message: 'Merchant cash on delivery details retrieved successfully',
+    };
+  }
+
+  @Get('dashboard/delivery-performance')
+  @Roles(UserRole.MERCHANT)
+  async getDashboardDeliveryPerformance(
+    @Request() req,
+    @Query() query: MerchantDeliveryPerformanceQueryDto,
+  ) {
+    const data = await this.merchantService.getMerchantDeliveryPerformance(
+      req.user.merchantId,
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Merchant delivery performance retrieved successfully',
     };
   }
 
