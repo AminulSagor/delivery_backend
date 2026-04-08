@@ -459,7 +459,11 @@ export class ParcelsService {
    * Get lifetime parcel summary for merchant
    * Shows count and total COD amount for each status category (all time)
    */
-  async getLifetimeSummary(merchantId: string): Promise<{
+  async getLifetimeSummary(
+    merchantId: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{
     summary: {
       new_parcels: { count: number; amount: number };
       pickup: { count: number; amount: number };
@@ -473,6 +477,8 @@ export class ParcelsService {
     };
     total: { count: number; amount: number };
   }> {
+    const dateRange = this.resolveLifetimeSummaryDateRange(startDate, endDate);
+
     // Helper function to calculate count and amount
     const calculateStats = async (
       whereCondition: FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[],
@@ -492,109 +498,159 @@ export class ParcelsService {
     };
 
     // 1. New Parcels (PENDING)
-    const newParcels = await calculateStats({
-      merchant_id: merchantId,
-      status: ParcelStatus.PENDING,
-    });
+    const newParcels = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.PENDING,
+        },
+        dateRange,
+      ),
+    );
 
     // 2. Pickup (PICKED_UP, OUT_FOR_PICKUP)
-    const pickup = await calculateStats([
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.PICKED_UP,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.OUT_FOR_PICKUP,
-      },
-    ]);
+    const pickup = await calculateStats(
+      this.applyCreatedAtDateRange(
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PICKED_UP,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.OUT_FOR_PICKUP,
+          },
+        ],
+        dateRange,
+      ),
+    );
 
     // 3. In Transit (IN_TRANSIT, IN_HUB)
-    const inTransit = await calculateStats([
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.IN_TRANSIT,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.IN_HUB,
-      },
-    ]);
+    const inTransit = await calculateStats(
+      this.applyCreatedAtDateRange(
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.IN_TRANSIT,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.IN_HUB,
+          },
+        ],
+        dateRange,
+      ),
+    );
 
     // 4. Assigned (ASSIGNED_TO_RIDER, ASSIGNED_TO_THIRD_PARTY)
-    const assigned = await calculateStats([
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.ASSIGNED_TO_RIDER,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
-      },
-    ]);
+    const assigned = await calculateStats(
+      this.applyCreatedAtDateRange(
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.ASSIGNED_TO_RIDER,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+          },
+        ],
+        dateRange,
+      ),
+    );
 
     // 5. Out for Delivery
-    const outForDelivery = await calculateStats({
-      merchant_id: merchantId,
-      status: ParcelStatus.OUT_FOR_DELIVERY,
-    });
+    const outForDelivery = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.OUT_FOR_DELIVERY,
+        },
+        dateRange,
+      ),
+    );
 
     // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN)
-    const delivered = await calculateStats([
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.DELIVERED,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.PARTIAL_DELIVERY,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.EXCHANGE,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.PAID_RETURN,
-      },
-    ]);
+    const delivered = await calculateStats(
+      this.applyCreatedAtDateRange(
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.DELIVERED,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PARTIAL_DELIVERY,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.EXCHANGE,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PAID_RETURN,
+          },
+        ],
+        dateRange,
+      ),
+    );
 
     // 7. Delivery Rescheduled
-    const deliveryRescheduled = await calculateStats({
-      merchant_id: merchantId,
-      status: ParcelStatus.DELIVERY_RESCHEDULED,
-    });
+    const deliveryRescheduled = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.DELIVERY_RESCHEDULED,
+        },
+        dateRange,
+      ),
+    );
 
     // 8. Returned (RETURNED, PAID_RETURN, RETURN_TO_MERCHANT, RETURNED_TO_HUB)
-    const returned = await calculateStats([
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.RETURNED,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.PAID_RETURN,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.RETURN_TO_MERCHANT,
-      },
-      {
-        merchant_id: merchantId,
-        status: ParcelStatus.RETURNED_TO_HUB,
-      },
-    ]);
+    const returned = await calculateStats(
+      this.applyCreatedAtDateRange(
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURNED,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PAID_RETURN,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURN_TO_MERCHANT,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURNED_TO_HUB,
+          },
+        ],
+        dateRange,
+      ),
+    );
 
     // 9. Cancelled
-    const cancelled = await calculateStats({
-      merchant_id: merchantId,
-      status: ParcelStatus.CANCELLED,
-    });
+    const cancelled = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.CANCELLED,
+        },
+        dateRange,
+      ),
+    );
 
     // Calculate total (all parcels)
-    const total = await calculateStats({
-      merchant_id: merchantId,
-    });
+    const total = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+        },
+        dateRange,
+      ),
+    );
 
     return {
       summary: {
@@ -609,6 +665,83 @@ export class ParcelsService {
         cancelled: cancelled,
       },
       total: total,
+    };
+  }
+
+  private resolveLifetimeSummaryDateRange(
+    startDate?: string,
+    endDate?: string,
+  ): { start: Date; endInclusive: Date } | null {
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      throw new BadRequestException(
+        'startDate and endDate must be provided together',
+      );
+    }
+
+    if (!startDate || !endDate) {
+      return null;
+    }
+
+    const start = this.parseDateOnlyAsUtc(startDate, 'startDate');
+    const end = this.parseDateOnlyAsUtc(endDate, 'endDate');
+
+    if (start > end) {
+      throw new BadRequestException(
+        'startDate must be less than or equal to endDate',
+      );
+    }
+
+    const endInclusive = new Date(end);
+    endInclusive.setUTCHours(23, 59, 59, 999);
+
+    return {
+      start,
+      endInclusive,
+    };
+  }
+
+  private parseDateOnlyAsUtc(value: string, fieldName: string): Date {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new BadRequestException(`${fieldName} must be in YYYY-MM-DD format`);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day
+    ) {
+      throw new BadRequestException(`${fieldName} is not a valid calendar date`);
+    }
+
+    return parsed;
+  }
+
+  private applyCreatedAtDateRange(
+    whereCondition: FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[],
+    dateRange: { start: Date; endInclusive: Date } | null,
+  ): FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[] {
+    if (!dateRange) {
+      return whereCondition;
+    }
+
+    const createdAtCondition = Between(dateRange.start, dateRange.endInclusive);
+
+    if (Array.isArray(whereCondition)) {
+      return whereCondition.map((condition) => ({
+        ...condition,
+        created_at: createdAtCondition,
+      }));
+    }
+
+    return {
+      ...whereCondition,
+      created_at: createdAtCondition,
     };
   }
 
