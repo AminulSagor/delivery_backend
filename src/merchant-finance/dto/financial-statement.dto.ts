@@ -13,15 +13,24 @@ export class MerchantEarningsGraphQueryDto {
 }
 
 export interface MerchantFinancialStatement {
-  available_balance: number;
-  pending_payments: number;
-  month: string;
-  last_payout: {
-    amount: number | null;
-    paid_at: Date | null;
+  merchant_available_balance: {
+    total: number;
   };
-  earning_this_month: number;
-  lifetime_earnings: number;
+  pending_payment: {
+    total: number;
+    month: string;
+  };
+  last_payout: {
+    total: number;
+    last_payout: string | null;
+  };
+  earning_this_month: {
+    total: number;
+    month: string;
+  };
+  lifetime_earning: {
+    total: number;
+  };
 }
 
 export interface MerchantEarningsGraphPoint {

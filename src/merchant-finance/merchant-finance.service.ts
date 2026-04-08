@@ -221,19 +221,29 @@ export class MerchantFinanceService {
       Number(finance.pending_balance) +
       Number(finance.invoiced_balance) +
       Number(finance.processing_balance);
+    const currentMonth = this.formatMonthName(monthStart);
 
     return {
-      available_balance: this.roundMoney(availableBalance),
-      pending_payments: this.roundMoney(pendingPayments),
-      month: this.formatMonthName(monthStart),
-      last_payout: {
-        amount: lastPayout ? this.roundMoney(Number(lastPayout.amount)) : null,
-        paid_at: lastPayout?.created_at || null,
+      merchant_available_balance: {
+        total: this.roundMoney(availableBalance),
       },
-      earning_this_month: this.roundMoney(
-        Number(monthlyEarningRaw?.earnings || 0),
-      ),
-      lifetime_earnings: this.roundMoney(Number(finance.total_earned)),
+      pending_payment: {
+        total: this.roundMoney(pendingPayments),
+        month: currentMonth,
+      },
+      last_payout: {
+        total: lastPayout ? this.roundMoney(Number(lastPayout.amount)) : 0,
+        last_payout: lastPayout
+          ? this.formatDayMonthYear(lastPayout.created_at)
+          : null,
+      },
+      earning_this_month: {
+        total: this.roundMoney(Number(monthlyEarningRaw?.earnings || 0)),
+        month: currentMonth,
+      },
+      lifetime_earning: {
+        total: this.roundMoney(Number(finance.total_earned)),
+      },
     };
   }
 
@@ -374,6 +384,15 @@ export class MerchantFinanceService {
   private formatWeekdayShort(date: Date): string {
     return new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
+      timeZone: 'UTC',
+    }).format(date);
+  }
+
+  private formatDayMonthYear(date: Date): string {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
       timeZone: 'UTC',
     }).format(date);
   }
