@@ -26,6 +26,7 @@ import {
   HoldBalanceDto,
   ReleaseHoldDto,
 } from './dto/adjust-balance.dto';
+import { MerchantEarningsGraphQueryDto } from './dto/financial-statement.dto';
 
 @Controller('merchant-finance')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -56,6 +57,64 @@ export class MerchantFinanceController {
       return {
         success: false,
         message: error.message || 'Failed to get finance overview',
+        error: error.name,
+      };
+    }
+  }
+
+  /**
+   * Get current merchant's financial statement cards
+   * GET /merchant-finance/my/financial-statement
+   */
+  @Get('my/financial-statement')
+  @Roles(UserRole.MERCHANT)
+  @HttpCode(HttpStatus.OK)
+  async getMyFinancialStatement(@Req() req: any) {
+    try {
+      const statement = await this.financeService.getMerchantFinancialStatement(
+        req.user.userId,
+      );
+
+      return {
+        success: true,
+        data: statement,
+        message: 'Financial statement retrieved successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Failed to get financial statement',
+        error: error.name,
+      };
+    }
+  }
+
+  /**
+   * Get current merchant's earnings graph data
+   * GET /merchant-finance/my/financial-statement/graph
+   */
+  @Get('my/financial-statement/graph')
+  @Roles(UserRole.MERCHANT)
+  @HttpCode(HttpStatus.OK)
+  async getMyFinancialStatementGraph(
+    @Query() query: MerchantEarningsGraphQueryDto,
+    @Req() req: any,
+  ) {
+    try {
+      const graph = await this.financeService.getMerchantEarningsGraph(
+        req.user.userId,
+        query,
+      );
+
+      return {
+        success: true,
+        data: graph,
+        message: 'Financial statement graph retrieved successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Failed to get financial statement graph',
         error: error.name,
       };
     }

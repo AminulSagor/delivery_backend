@@ -35,10 +35,23 @@ import {
   TransactionListResponse,
   AdminFinanceSummary,
 } from './dto/finance-dashboard.dto';
+import {
+  MerchantEarningsGraph,
+  MerchantEarningsGraphPoint,
+  MerchantEarningsGraphQueryDto,
+  MerchantFinancialStatement,
+} from './dto/financial-statement.dto';
 
 @Injectable()
 export class MerchantFinanceService {
   private readonly logger = new Logger(MerchantFinanceService.name);
+  private readonly earningsReferenceTypes: FinanceReferenceType[] = [
+    FinanceReferenceType.PARCEL_DELIVERED,
+    FinanceReferenceType.PARCEL_PARTIAL_DELIVERY,
+    FinanceReferenceType.PARCEL_EXCHANGE,
+    FinanceReferenceType.PARCEL_PAID_RETURN,
+    FinanceReferenceType.RETURN_CHARGE,
+  ];
 
   constructor(
     @InjectRepository(MerchantFinance)
@@ -153,6 +166,236 @@ export class MerchantFinanceService {
         last_withdrawal_at: finance.last_withdrawal_at,
       },
     };
+  }
+
+  /**
+   * Get financial statement cards for merchant dashboard
+   */
+  async getMerchantFinancialStatement(
+    merchantId: string,
+  ): Promise<MerchantFinancialStatement> {
+    const finance = await this.getOrCreateFinance(merchantId);
+    const now = new Date();
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
+
+    const monthlyEarningRaw = await this.transactionRepository
+      .createQueryBuilder('txn')
+      .select(
+        `COALESCE(SUM(CASE
+          WHEN txn.transaction_type = :creditType THEN txn.amount
+          WHEN txn.transaction_type = :debitType THEN -txn.amount
+          ELSE 0
+        END), 0)`,
+        'earnings',
+      )
+      .where('txn.merchant_id = :merchantId', { merchantId })
+      .andWhere('txn.reference_type IN (:...referenceTypes)', {
+        referenceTypes: this.earningsReferenceTypes,
+      })
+      .andWhere('txn.created_at >= :monthStart', { monthStart })
+      .andWhere('txn.created_at < :monthEnd', { monthEnd })
+      .setParameters({
+        creditType: FinanceTransactionType.CREDIT,
+        debitType: FinanceTransactionType.DEBIT,
+      })
+      .getRawOne<{ earnings: string | null }>();
+
+    const lastPayout = await this.transactionRepository.findOne({
+      where: {
+        merchant_id: merchantId,
+        reference_type: FinanceReferenceType.INVOICE_PAID,
+      },
+      order: { created_at: 'DESC' },
+    });
+
+    const availableBalance = Math.max(
+      0,
+      Number(finance.current_balance) - Number(finance.hold_amount),
+    );
+    const pendingPayments =
+      Number(finance.pending_balance) +
+      Number(finance.invoiced_balance) +
+      Number(finance.processing_balance);
+
+    return {
+      available_balance: this.roundMoney(availableBalance),
+      pending_payments: this.roundMoney(pendingPayments),
+      month: this.formatMonthName(monthStart),
+      last_payout: {
+        amount: lastPayout ? this.roundMoney(Number(lastPayout.amount)) : null,
+        paid_at: lastPayout?.created_at || null,
+      },
+      earning_this_month: this.roundMoney(
+        Number(monthlyEarningRaw?.earnings || 0),
+      ),
+      lifetime_earnings: this.roundMoney(Number(finance.total_earned)),
+    };
+  }
+
+  /**
+   * Get earnings graph data as a separate endpoint payload
+   */
+  async getMerchantEarningsGraph(
+    merchantId: string,
+    query: MerchantEarningsGraphQueryDto,
+  ): Promise<MerchantEarningsGraph> {
+    const range: 'weekly' | 'monthly' =
+      query.range === 'monthly' ? 'monthly' : 'weekly';
+
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+    let month: string | null = null;
+    let monthLabel: string | null = null;
+
+    if (range === 'weekly') {
+      const todayStart = this.getUtcStartOfDay(now);
+      start = this.addUtcDays(todayStart, -6);
+      end = this.addUtcDays(todayStart, 1);
+    } else {
+      const monthDate = this.parseMonthToUtcDate(query.month);
+      start = new Date(
+        Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1),
+      );
+      end = new Date(
+        Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1),
+      );
+      month = `${monthDate.getUTCFullYear()}-${String(
+        monthDate.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
+      monthLabel = this.formatMonthName(start);
+    }
+
+    const rows = await this.transactionRepository
+      .createQueryBuilder('txn')
+      .select("DATE_TRUNC('day', txn.created_at)", 'bucket')
+      .addSelect(
+        `COALESCE(SUM(CASE
+          WHEN txn.transaction_type = :creditType THEN txn.amount
+          WHEN txn.transaction_type = :debitType THEN -txn.amount
+          ELSE 0
+        END), 0)`,
+        'earnings',
+      )
+      .where('txn.merchant_id = :merchantId', { merchantId })
+      .andWhere('txn.reference_type IN (:...referenceTypes)', {
+        referenceTypes: this.earningsReferenceTypes,
+      })
+      .andWhere('txn.created_at >= :start', { start })
+      .andWhere('txn.created_at < :end', { end })
+      .groupBy("DATE_TRUNC('day', txn.created_at)")
+      .orderBy("DATE_TRUNC('day', txn.created_at)", 'ASC')
+      .setParameters({
+        creditType: FinanceTransactionType.CREDIT,
+        debitType: FinanceTransactionType.DEBIT,
+      })
+      .getRawMany<{ bucket: string; earnings: string }>();
+
+    const earningsByDate = new Map<string, number>();
+
+    rows.forEach((row) => {
+      const dayKey = this.getUtcDateKey(new Date(row.bucket));
+      earningsByDate.set(dayKey, this.roundMoney(Number(row.earnings) || 0));
+    });
+
+    const points: MerchantEarningsGraphPoint[] = [];
+
+    for (let cursor = new Date(start); cursor < end; cursor = this.addUtcDays(cursor, 1)) {
+      const date = this.getUtcDateKey(cursor);
+      const earnings = this.roundMoney(earningsByDate.get(date) || 0);
+
+      points.push({
+        label: range === 'weekly' ? this.formatWeekdayShort(cursor) : `${cursor.getUTCDate()}`,
+        date,
+        earnings,
+      });
+    }
+
+    const totalEarnings = this.roundMoney(
+      points.reduce((sum, point) => sum + point.earnings, 0),
+    );
+    const dailyAverage =
+      points.length > 0
+        ? this.roundMoney(totalEarnings / points.length)
+        : 0;
+    const peakPoint =
+      points.length > 0
+        ? points.reduce((peak, point) =>
+            point.earnings > peak.earnings ? point : peak,
+          )
+        : null;
+
+    return {
+      range,
+      month,
+      month_label: monthLabel,
+      points,
+      summary: {
+        peak_day: peakPoint?.label || null,
+        peak_day_earnings: peakPoint?.earnings || 0,
+        total_earnings: totalEarnings,
+        daily_average: dailyAverage,
+      },
+    };
+  }
+
+  private getUtcStartOfDay(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
+  private addUtcDays(date: Date, days: number): Date {
+    return new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate() + days,
+      ),
+    );
+  }
+
+  private getUtcDateKey(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  private formatMonthName(date: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      timeZone: 'UTC',
+    }).format(date);
+  }
+
+  private formatWeekdayShort(date: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(date);
+  }
+
+  private parseMonthToUtcDate(month?: string): Date {
+    if (!month) {
+      return new Date();
+    }
+
+    const [yearString, monthString] = month.split('-');
+    const year = Number(yearString);
+    const monthIndex = Number(monthString);
+
+    if (!year || !monthIndex || monthIndex < 1 || monthIndex > 12) {
+      throw new BadRequestException('Invalid month format. Use YYYY-MM');
+    }
+
+    return new Date(Date.UTC(year, monthIndex - 1, 1));
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 
   // ===== TRANSACTION RECORDING =====
