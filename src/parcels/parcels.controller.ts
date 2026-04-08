@@ -123,7 +123,17 @@ export class ParcelsController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findAll(@CurrentUser() user: any, @Query() query: ParcelQueryDto) {
-    const { status, storeId, merchantId, page, limit, sortBy, order } = query;
+    const {
+      status,
+      storeId,
+      merchantId,
+      page,
+      limit,
+      sortBy,
+      order,
+      days,
+      paymentStatus,
+    } = query;
     // Merchant view - only their parcels
     if (user.role === UserRole.MERCHANT) {
       if (!user.merchantId) {
@@ -137,6 +147,8 @@ export class ParcelsController {
         storeId,
         sortBy,
         order,
+        days,
+        paymentStatus,
       );
       return {
         parcels: result.items.map(toParcelListItem),
@@ -157,6 +169,8 @@ export class ParcelsController {
         status,
         sortBy,
         order,
+        days,
+        paymentStatus,
       );
       return {
         parcels: result.items.map(toParcelListItem),
@@ -173,6 +187,8 @@ export class ParcelsController {
       merchantId,
       sortBy,
       order,
+      days,
+      paymentStatus,
     );
     return {
       parcels: result.items.map(toParcelListItem),
