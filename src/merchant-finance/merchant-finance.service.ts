@@ -254,19 +254,37 @@ export class MerchantFinanceService {
     merchantId: string,
     query: MerchantEarningsGraphQueryDto,
   ): Promise<MerchantEarningsGraph> {
-    const range: 'weekly' | 'monthly' =
-      query.range === 'monthly' ? 'monthly' : 'weekly';
+    const responseRange = query.range || '7d';
+    const effectiveRange = this.normalizeGraphRange(responseRange);
 
     const now = new Date();
     let start: Date;
     let end: Date;
     let month: string | null = null;
     let monthLabel: string | null = null;
+    let bucketExpression = "DATE_TRUNC('day', txn.created_at)";
+    let bucketMode: 'hour' | 'day' | 'month' = 'day';
 
-    if (range === 'weekly') {
+    if (effectiveRange === '24h') {
+      const currentHourStart = this.getUtcStartOfHour(now);
+      start = this.addUtcHours(currentHourStart, -23);
+      end = this.addUtcHours(currentHourStart, 1);
+      bucketExpression = "DATE_TRUNC('hour', txn.created_at)";
+      bucketMode = 'hour';
+    } else if (effectiveRange === '7d') {
       const todayStart = this.getUtcStartOfDay(now);
       start = this.addUtcDays(todayStart, -6);
       end = this.addUtcDays(todayStart, 1);
+    } else if (effectiveRange === '30d') {
+      const todayStart = this.getUtcStartOfDay(now);
+      start = this.addUtcDays(todayStart, -29);
+      end = this.addUtcDays(todayStart, 1);
+    } else if (effectiveRange === '12m') {
+      const currentMonthStart = this.getUtcStartOfMonth(now);
+      start = this.addUtcMonths(currentMonthStart, -11);
+      end = this.addUtcMonths(currentMonthStart, 1);
+      bucketExpression = "DATE_TRUNC('month', txn.created_at)";
+      bucketMode = 'month';
     } else {
       const monthDate = this.parseMonthToUtcDate(query.month);
       start = new Date(
@@ -279,11 +297,12 @@ export class MerchantFinanceService {
         monthDate.getUTCMonth() + 1,
       ).padStart(2, '0')}`;
       monthLabel = this.formatMonthName(start);
+      bucketMode = 'day';
     }
 
     const rows = await this.transactionRepository
       .createQueryBuilder('txn')
-      .select("DATE_TRUNC('day', txn.created_at)", 'bucket')
+      .select(bucketExpression, 'bucket')
       .addSelect(
         `COALESCE(SUM(CASE
           WHEN txn.transaction_type = :creditType THEN txn.amount
@@ -298,41 +317,91 @@ export class MerchantFinanceService {
       })
       .andWhere('txn.created_at >= :start', { start })
       .andWhere('txn.created_at < :end', { end })
-      .groupBy("DATE_TRUNC('day', txn.created_at)")
-      .orderBy("DATE_TRUNC('day', txn.created_at)", 'ASC')
+      .groupBy(bucketExpression)
+      .orderBy(bucketExpression, 'ASC')
       .setParameters({
         creditType: FinanceTransactionType.CREDIT,
         debitType: FinanceTransactionType.DEBIT,
       })
       .getRawMany<{ bucket: string; earnings: string }>();
 
-    const earningsByDate = new Map<string, number>();
+    const earningsByBucket = new Map<string, number>();
 
     rows.forEach((row) => {
-      const dayKey = this.getUtcDateKey(new Date(row.bucket));
-      earningsByDate.set(dayKey, this.roundMoney(Number(row.earnings) || 0));
+      const bucketDate = new Date(row.bucket);
+      const bucketKey =
+        bucketMode === 'hour'
+          ? this.getUtcHourKey(bucketDate)
+          : bucketMode === 'month'
+            ? this.getUtcMonthKey(bucketDate)
+            : this.getUtcDateKey(bucketDate);
+
+      earningsByBucket.set(
+        bucketKey,
+        this.roundMoney(Number(row.earnings) || 0),
+      );
     });
 
     const points: MerchantEarningsGraphPoint[] = [];
 
-    for (let cursor = new Date(start); cursor < end; cursor = this.addUtcDays(cursor, 1)) {
-      const date = this.getUtcDateKey(cursor);
-      const earnings = this.roundMoney(earningsByDate.get(date) || 0);
+    if (bucketMode === 'hour') {
+      for (
+        let cursor = new Date(start);
+        cursor < end;
+        cursor = this.addUtcHours(cursor, 1)
+      ) {
+        const date = this.getUtcHourKey(cursor);
+        const earnings = this.roundMoney(earningsByBucket.get(date) || 0);
 
-      points.push({
-        label: range === 'weekly' ? this.formatWeekdayShort(cursor) : `${cursor.getUTCDate()}`,
-        date,
-        earnings,
-      });
+        points.push({
+          label: this.formatHourLabel(cursor),
+          date,
+          earnings,
+        });
+      }
+    } else if (bucketMode === 'month') {
+      for (
+        let cursor = new Date(start);
+        cursor < end;
+        cursor = this.addUtcMonths(cursor, 1)
+      ) {
+        const date = this.getUtcMonthKey(cursor);
+        const earnings = this.roundMoney(earningsByBucket.get(date) || 0);
+
+        points.push({
+          label: this.formatMonthShort(cursor),
+          date,
+          earnings,
+        });
+      }
+    } else {
+      for (
+        let cursor = new Date(start);
+        cursor < end;
+        cursor = this.addUtcDays(cursor, 1)
+      ) {
+        const date = this.getUtcDateKey(cursor);
+        const earnings = this.roundMoney(earningsByBucket.get(date) || 0);
+
+        points.push({
+          label:
+            effectiveRange === '7d'
+              ? this.formatWeekdayShort(cursor)
+              : `${cursor.getUTCDate()}`,
+          date,
+          earnings,
+        });
+      }
     }
 
     const totalEarnings = this.roundMoney(
       points.reduce((sum, point) => sum + point.earnings, 0),
     );
-    const dailyAverage =
-      points.length > 0
-        ? this.roundMoney(totalEarnings / points.length)
-        : 0;
+    const periodDays = Math.max(
+      1,
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const dailyAverage = this.roundMoney(totalEarnings / periodDays);
     const peakPoint =
       points.length > 0
         ? points.reduce((peak, point) =>
@@ -341,7 +410,7 @@ export class MerchantFinanceService {
         : null;
 
     return {
-      range,
+      range: responseRange,
       month,
       month_label: monthLabel,
       points,
@@ -352,6 +421,37 @@ export class MerchantFinanceService {
         daily_average: dailyAverage,
       },
     };
+  }
+
+  private normalizeGraphRange(
+    range: MerchantEarningsGraphQueryDto['range'],
+  ): '24h' | '7d' | '30d' | '12m' | 'monthly' {
+    if (range === 'weekly') {
+      return '7d';
+    }
+
+    if (
+      range === '24h' ||
+      range === '7d' ||
+      range === '30d' ||
+      range === '12m' ||
+      range === 'monthly'
+    ) {
+      return range;
+    }
+
+    return '7d';
+  }
+
+  private getUtcStartOfHour(date: Date): Date {
+    return new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        date.getUTCHours(),
+      ),
+    );
   }
 
   private getUtcStartOfDay(date: Date): Date {
@@ -370,8 +470,37 @@ export class MerchantFinanceService {
     );
   }
 
+  private addUtcHours(date: Date, hours: number): Date {
+    return new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        date.getUTCHours() + hours,
+      ),
+    );
+  }
+
+  private getUtcStartOfMonth(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  }
+
+  private addUtcMonths(date: Date, months: number): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
+    );
+  }
+
   private getUtcDateKey(date: Date): string {
     return date.toISOString().slice(0, 10);
+  }
+
+  private getUtcHourKey(date: Date): string {
+    return `${date.toISOString().slice(0, 13)}:00:00Z`;
+  }
+
+  private getUtcMonthKey(date: Date): string {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
   }
 
   private formatMonthName(date: Date): string {
@@ -386,6 +515,18 @@ export class MerchantFinanceService {
       weekday: 'short',
       timeZone: 'UTC',
     }).format(date);
+  }
+
+  private formatMonthShort(date: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(date);
+  }
+
+  private formatHourLabel(date: Date): string {
+    const hour = String(date.getUTCHours()).padStart(2, '0');
+    return `${hour}:00`;
   }
 
   private formatDayMonthYear(date: Date): string {

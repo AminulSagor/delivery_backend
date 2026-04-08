@@ -2,8 +2,8 @@ import { IsIn, IsOptional, Matches } from 'class-validator';
 
 export class MerchantEarningsGraphQueryDto {
   @IsOptional()
-  @IsIn(['weekly', 'monthly'])
-  range?: 'weekly' | 'monthly' = 'weekly';
+  @IsIn(['24h', '7d', '30d', '12m', 'monthly', 'weekly'])
+  range?: '24h' | '7d' | '30d' | '12m' | 'monthly' | 'weekly' = '7d';
 
   @IsOptional()
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
@@ -40,7 +40,7 @@ export interface MerchantEarningsGraphPoint {
 }
 
 export interface MerchantEarningsGraph {
-  range: 'weekly' | 'monthly';
+  range: '24h' | '7d' | '30d' | '12m' | 'monthly' | 'weekly';
   month: string | null;
   month_label: string | null;
   points: MerchantEarningsGraphPoint[];
