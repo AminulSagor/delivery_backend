@@ -156,7 +156,7 @@ export class ParcelsService {
       this.logger.log(
         `[ASSIGN SMS SENT] Parcel: ${parcel.tracking_number}, To: ${parcel.customer_phone}`,
       );
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(
         `[ASSIGN SMS FAILED] Parcel: ${parcel.tracking_number}, Error: ${error.message}`,
       );
@@ -1230,7 +1230,7 @@ export class ParcelsService {
           this.logger.log(
             `[PICKUP REQUEST] Linked parcel to pickup request: ${pickupRequest.id}`,
           );
-        } catch (error) {
+        } catch (error: any) {
           this.logger.error(
             `[PICKUP REQUEST ERROR] Could not create/find pickup request for store ${createParcelDto.store_id}, merchant ${merchantId}: ${error.message}`,
             error.stack,
@@ -1274,7 +1274,7 @@ export class ParcelsService {
         );
         customer = result.customer;
         isNewCustomer = result.isNew;
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(`[CUSTOMER ERROR] ${error.message}`, error.stack);
         throw new BadRequestException(
           'Failed to process customer information. Please check the customer details.',
@@ -1289,7 +1289,7 @@ export class ParcelsService {
           isCod,
           codAmount,
         );
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(`[PRICING ERROR] ${error.message}`, error.stack);
         throw new BadRequestException(
           'Failed to calculate pricing. Please try again or contact support.',
@@ -1303,7 +1303,7 @@ export class ParcelsService {
           isExchange: createParcelDto.is_exchange,
         });
         parcelTxId = await this.generateParcelTxId(parcelPrefix);
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `[TRACKING/TX_ID ERROR] ${error.message}`,
           error.stack,
@@ -1362,13 +1362,13 @@ export class ParcelsService {
             await this.pickupRequestsService.updateActualParcelsCount(
               pickupRequest.id,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.warn(
               `[PICKUP REQUEST] Could not update parcel count: ${error.message}`,
             );
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(`[PARCEL SAVE ERROR] ${error.message}`, error.stack);
         if (error.code === '23505')
           throw new BadRequestException(
@@ -1449,7 +1449,7 @@ export class ParcelsService {
               `[AUTO-ASSIGN SKIPPED] Parcel ${savedParcel.tracking_number} missing Carrybee location IDs or hub assignment`,
             );
           }
-        } catch (error) {
+        } catch (error: any) {
           this.logger.error(
             `[AUTO-ASSIGN ERROR] ${error.message}`,
             error.stack,
@@ -1459,7 +1459,7 @@ export class ParcelsService {
       }
 
       return savedParcel;
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -1523,7 +1523,7 @@ export class ParcelsService {
           },
         );
         customer = result.customer;
-      } catch (error) {
+      } catch (error: any) {
         throw new BadRequestException(
           'Invalid customer details: ' + error.message,
         );
@@ -1633,7 +1633,7 @@ export class ParcelsService {
               `[AUTO-ASSIGN SKIPPED] Hub Manager - Parcel ${savedParcel.tracking_number} missing Carrybee location IDs`,
             );
           }
-        } catch (error) {
+        } catch (error: any) {
           this.logger.error(
             `[AUTO-ASSIGN ERROR] Hub Manager - ${error.message}`,
             error.stack,
@@ -1642,7 +1642,7 @@ export class ParcelsService {
       }
 
       return savedParcel;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`[HUB CREATE ERROR] ${error.message}`, error.stack);
       if (
         error instanceof NotFoundException ||
@@ -1734,7 +1734,7 @@ export class ParcelsService {
       );
 
       return { items, pagination };
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;
       this.logger.error(`[FIND PARCELS ERROR] ${error.message}`, error.stack);
       throw new InternalServerErrorException(
@@ -1798,7 +1798,7 @@ export class ParcelsService {
           'You do not have permission to view this parcel',
         );
       return parcel;
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -1930,7 +1930,7 @@ export class ParcelsService {
         total_fee: totalFee,
         receivable_amount: receivableAmount,
       };
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -2109,7 +2109,7 @@ export class ParcelsService {
           cod_amount: codAmount,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -2199,7 +2199,7 @@ export class ParcelsService {
       this.logger.log(`Retrieved ${items.length} parcels (Admin view)`);
 
       return { items, pagination };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `[FIND ALL PARCELS ERROR] ${error.message}`,
         error.stack,
@@ -2315,7 +2315,7 @@ export class ParcelsService {
       this.logger.log(`Retrieved ${items.length} parcels for hub ${hubId}`);
 
       return { items, pagination };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `[FIND PARCELS FOR HUB ERROR] ${error.message}`,
         error.stack,
@@ -2440,7 +2440,7 @@ export class ParcelsService {
       );
 
       return parcel;
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -2554,7 +2554,7 @@ export class ParcelsService {
         this.logger.log(
           `[PARCEL RECEIVED] Parcel ${parcel.tracking_number} marked as received by hub ${hubId}`,
         );
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           parcel_id: parcelId,
           success: false,
@@ -2640,7 +2640,7 @@ export class ParcelsService {
       let updatedParcel;
       try {
         updatedParcel = await this.parcelRepository.save(parcel);
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `[PARCEL UPDATE ERROR] ${error.message}`,
           error.stack,
@@ -2655,7 +2655,7 @@ export class ParcelsService {
       }
       this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${merchantId}`);
       return updatedParcel;
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -2697,7 +2697,7 @@ export class ParcelsService {
         );
       try {
         await this.parcelRepository.remove(parcel);
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `[PARCEL DELETE ERROR] ${error.message}`,
           error.stack,
@@ -2712,7 +2712,7 @@ export class ParcelsService {
       return {
         message: `Parcel ${parcel.tracking_number} has been successfully deleted`,
       };
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException ||
@@ -3073,7 +3073,7 @@ export class ParcelsService {
         );
 
         await this.sendAssignForRiderSms(parcel, rider);
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           parcel_id: parcelId,
           success: false,
@@ -4851,7 +4851,7 @@ export class ParcelsService {
           },
         });
         successCount++;
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           parcel_id: parcelId,
           success: false,
@@ -4957,7 +4957,7 @@ export class ParcelsService {
           success: true,
         });
         successCount++;
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           parcel_id: parcelId,
           success: false,
@@ -5265,7 +5265,7 @@ export class ParcelsService {
           success: true,
           tracking: newParcel.tracking_number,
         });
-      } catch (error) {
+      } catch (error: any) {
         // Failsafe: Catch any validation or DB errors during final creation
         creationResults.push({
           success: false,
