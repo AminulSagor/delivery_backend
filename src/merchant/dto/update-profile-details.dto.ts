@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsUrl, IsNotEmpty } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateProfileDetailsDto {
   // Belongs to MerchantProfile
@@ -18,7 +26,33 @@ export class UpdateProfileDetailsDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^(?:\+?88)?01[3-9]\d{8}$/, {
+    message:
+      'contact_number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
+  })
   contact_number?: string; // Maps to User.phone
+
+  @IsOptional()
+  @IsEmail()
+  contact_email?: string; // Maps to User.email
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^(?:\+?88)?01[3-9]\d{8}$/, {
+    message:
+      'optional_phone_number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
+  })
+  optional_phone_number?: string; // Maps to Merchant.secondary_number
+
+  // Backward-compatible alias
+  @ValidateIf((o) => o.optional_phone_number === undefined)
+  @IsOptional()
+  @IsString()
+  @Matches(/^(?:\+?88)?01[3-9]\d{8}$/, {
+    message:
+      'secondary_number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
+  })
+  secondary_number?: string;
 }
 
 export class UpdateNidDto {

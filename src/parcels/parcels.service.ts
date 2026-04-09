@@ -2581,8 +2581,11 @@ export class ParcelsService {
   async update(
     id: string,
     updateParcelDto: UpdateParcelDto,
-    merchantId: string,
-    isAdmin: boolean = false,
+    actor: {
+      role: UserRole;
+      merchantId?: string | null;
+      hubId?: string | null;
+    },
   ): Promise<Parcel> {
     try {
       const uuidRegex =
@@ -2592,11 +2595,72 @@ export class ParcelsService {
       const parcel = await this.parcelRepository.findOne({ where: { id } });
       if (!parcel)
         throw new NotFoundException(`Parcel with ID ${id} not found`);
-      // merchant_id references merchants table, so compare with merchantId from JWT
-      if (!isAdmin && parcel.merchant_id !== merchantId)
-        throw new ForbiddenException(
-          'You do not have permission to update this parcel',
-        );
+
+      const merchantEditableStatuses = [
+        ParcelStatus.PENDING,
+        ParcelStatus.PICKED_UP,
+        ParcelStatus.OUT_FOR_PICKUP,
+        ParcelStatus.IN_TRANSIT,
+      ];
+
+      const hubAdminEditableStatuses = [
+        ParcelStatus.PENDING,
+        ParcelStatus.PICKED_UP,
+        ParcelStatus.OUT_FOR_PICKUP,
+        ParcelStatus.IN_TRANSIT,
+        ParcelStatus.IN_HUB,
+        ParcelStatus.ASSIGNED_TO_RIDER,
+        ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+      ];
+
+      if (actor.role === UserRole.MERCHANT) {
+        if (!actor.merchantId || parcel.merchant_id !== actor.merchantId) {
+          throw new ForbiddenException(
+            'You do not have permission to update this parcel',
+          );
+        }
+
+        if (!merchantEditableStatuses.includes(parcel.status)) {
+          throw new BadRequestException(
+            `Merchant can edit only before hub receives parcel. Current status: ${parcel.status}`,
+          );
+        }
+      } else if (actor.role === UserRole.HUB_MANAGER) {
+        if (!actor.hubId) {
+          throw new ForbiddenException('Hub ID is required');
+        }
+
+        const parcelWithStore = await this.parcelRepository.findOne({
+          where: { id },
+          relations: ['store'],
+        });
+
+        if (!parcelWithStore) {
+          throw new NotFoundException(`Parcel with ID ${id} not found`);
+        }
+
+        const isPhysicallyAtHub = parcelWithStore.current_hub_id === actor.hubId;
+        const belongsToHubStore = parcelWithStore.store?.hub_id === actor.hubId;
+
+        if (!isPhysicallyAtHub && !belongsToHubStore) {
+          throw new ForbiddenException('This parcel does not belong to your hub');
+        }
+
+        if (!hubAdminEditableStatuses.includes(parcelWithStore.status)) {
+          throw new BadRequestException(
+            `Hub/Admin can edit only before rider starts delivery. Current status: ${parcelWithStore.status}`,
+          );
+        }
+      } else if (actor.role === UserRole.ADMIN) {
+        if (!hubAdminEditableStatuses.includes(parcel.status)) {
+          throw new BadRequestException(
+            `Hub/Admin can edit only before rider starts delivery. Current status: ${parcel.status}`,
+          );
+        }
+      } else {
+        throw new ForbiddenException('You do not have permission to update this parcel');
+      }
+
       if (updateParcelDto.customer_phone) {
         const phoneRegex = /^01[0-9]{9}$/;
         if (!phoneRegex.test(updateParcelDto.customer_phone))
@@ -2611,14 +2675,19 @@ export class ParcelsService {
       )
         throw new BadRequestException('Product weight cannot be negative.');
       if (updateParcelDto.store_id) {
+        const targetMerchantId = actor.merchantId || parcel.merchant_id;
         // merchantId is the merchant entity ID, use it directly for store lookup
         const store = await this.storeRepository.findOne({
-          where: { id: updateParcelDto.store_id, merchant_id: merchantId },
+          where: { id: updateParcelDto.store_id, merchant_id: targetMerchantId },
         });
         if (!store)
           throw new NotFoundException(
             'Store not found or does not belong to this merchant.',
           );
+
+        if (actor.role === UserRole.HUB_MANAGER && actor.hubId && store.hub_id !== actor.hubId) {
+          throw new ForbiddenException('Store does not belong to your hub');
+        }
       }
       if (updateParcelDto.delivery_coverage_area_id) {
         const deliveryArea = await this.coverageAreaRepository.findOne({
@@ -2653,7 +2722,9 @@ export class ParcelsService {
           'Failed to update parcel. Please try again or contact support.',
         );
       }
-      this.logger.log(`[PARCEL UPDATED] ID: ${id}, Merchant: ${merchantId}`);
+      this.logger.log(
+        `[PARCEL UPDATED] ID: ${id}, Role: ${actor.role}, Merchant: ${parcel.merchant_id}`,
+      );
       return updatedParcel;
     } catch (error: any) {
       if (
@@ -5498,19 +5569,24 @@ export class ParcelsService {
       if (!isPhysicallyAtHub && !belongsToHubStore) {
         throw new ForbiddenException(`This parcel does not belong to your hub`);
       }
+    }
 
-      // Status check: Allow editing when pending, picked up (awaiting reception), or already in hub
-      const allowedStatuses = [
-        ParcelStatus.PENDING,
-        ParcelStatus.PICKED_UP,
-        ParcelStatus.IN_HUB,
-      ];
+    // Status rule for both Hub Manager and Admin:
+    // editable only until rider starts delivery
+    const allowedStatuses = [
+      ParcelStatus.PENDING,
+      ParcelStatus.PICKED_UP,
+      ParcelStatus.OUT_FOR_PICKUP,
+      ParcelStatus.IN_TRANSIT,
+      ParcelStatus.IN_HUB,
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+    ];
 
-      if (!allowedStatuses.includes(parcel.status)) {
-        throw new BadRequestException(
-          `Parcel must be in PENDING, PICKED_UP or IN_HUB status to modify charges. Current status: ${parcel.status}`,
-        );
-      }
+    if (!allowedStatuses.includes(parcel.status)) {
+      throw new BadRequestException(
+        `Hub/Admin can edit only before rider starts delivery. Current status: ${parcel.status}`,
+      );
     }
 
     // Apply overrides (only fields provided in the DTO)

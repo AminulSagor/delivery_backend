@@ -36,6 +36,7 @@ import {
   UpdateTinDto,
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
+import { UpdateMerchantPasswordDto } from './dto/update-merchant-password.dto';
 import { MerchantOverviewQueryDto } from './dto/merchant-overview.dto';
 import { MerchantDashboardQueryDto } from './dto/merchant-dashboard-query.dto';
 import { MerchantDeliveryPerformanceQueryDto } from './dto/merchant-delivery-performance-query.dto';
@@ -505,31 +506,50 @@ export class MerchantController {
   }
 
   @Get('settings')
+  @Roles(UserRole.MERCHANT)
   getSettings(@Request() req) {
     return this.merchantService.getSettings(req.user.merchantId);
   }
 
   @Patch('profile-details')
+  @Roles(UserRole.MERCHANT)
   updateProfileDetails(@Request() req, @Body() dto: UpdateProfileDetailsDto) {
     return this.merchantService.updateProfileDetails(req.user.merchantId, dto);
   }
 
+  @Patch('profile/password')
+  @Roles(UserRole.MERCHANT)
+  async updateMyPassword(
+    @Request() req,
+    @Body() dto: UpdateMerchantPasswordDto,
+  ) {
+    await this.merchantService.updateMyPassword(req.user.merchantId, dto);
+    return {
+      success: true,
+      message: 'Password updated successfully',
+    };
+  }
+
   @Patch('documents/nid')
+  @Roles(UserRole.MERCHANT)
   updateNid(@Request() req, @Body() dto: UpdateNidDto) {
     return this.merchantService.updateNid(req.user.merchantId, dto);
   }
 
   @Patch('documents/trade-license')
+  @Roles(UserRole.MERCHANT)
   updateTradeLicense(@Request() req, @Body() dto: UpdateTradeLicenseDto) {
     return this.merchantService.updateTradeLicense(req.user.merchantId, dto);
   }
 
   @Patch('documents/tin')
+  @Roles(UserRole.MERCHANT)
   updateTin(@Request() req, @Body() dto: UpdateTinDto) {
     return this.merchantService.updateTin(req.user.merchantId, dto);
   }
 
   @Patch('documents/bin')
+  @Roles(UserRole.MERCHANT)
   updateBin(@Request() req, @Body() dto: UpdateBinDto) {
     return this.merchantService.updateBin(req.user.merchantId, dto);
   }
