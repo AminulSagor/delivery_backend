@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
@@ -33,6 +34,7 @@ import {
   UpdateTinDto,
   UpdateTradeLicenseDto,
 } from './dto/update-profile-details.dto';
+import { UpdateMerchantPasswordDto } from './dto/update-merchant-password.dto';
 import { MerchantDashboardQueryDto } from './dto/merchant-dashboard-query.dto';
 import { MerchantDeliveryPerformanceQueryDto } from './dto/merchant-delivery-performance-query.dto';
 
@@ -1523,6 +1525,7 @@ export class MerchantService {
       contact_person_name: merchant.user.full_name,
       contact_number: merchant.user.phone,
       contact_email: merchant.user.email,
+      optional_phone_number: merchant.secondary_number,
 
       // Documents Tab
       documents: {
@@ -1565,16 +1568,60 @@ export class MerchantService {
       });
       if (!merchant) throw new NotFoundException('Merchant user not found');
 
+      if (
+        dto.optional_phone_number &&
+        dto.secondary_number &&
+        dto.optional_phone_number !== dto.secondary_number
+      ) {
+        throw new BadRequestException(
+          'Use either optional_phone_number or secondary_number with the same value',
+        );
+      }
+
       // 2. Fetch Default Store
       const defaultStore = await this.storeRepo.findOne({
         where: { merchant_id: merchantId, is_default: true },
       });
 
       // 3. Update User (Contact Info)
-      if (dto.contact_person_name || dto.contact_number) {
+      if (
+        dto.contact_person_name ||
+        dto.contact_number ||
+        dto.contact_email !== undefined
+      ) {
         if (dto.contact_person_name)
           merchant.user.full_name = dto.contact_person_name;
-        if (dto.contact_number) merchant.user.phone = dto.contact_number;
+
+        if (
+          dto.contact_number &&
+          dto.contact_number !== merchant.user.phone
+        ) {
+          const existingPhone = await this.userRepo.findOne({
+            where: { phone: dto.contact_number },
+          });
+
+          if (existingPhone && existingPhone.id !== merchant.user.id) {
+            throw new ConflictException('Phone number already registered');
+          }
+
+          merchant.user.phone = dto.contact_number;
+        }
+
+        if (
+          dto.contact_email !== undefined &&
+          dto.contact_email !== merchant.user.email
+        ) {
+          const existingEmail = await this.userRepo.findOne({
+            where: { email: dto.contact_email },
+          });
+
+          if (existingEmail && existingEmail.id !== merchant.user.id) {
+            throw new ConflictException('Email already registered');
+          }
+
+          merchant.user.email = dto.contact_email;
+        }
+
         await queryRunner.manager.save(merchant.user);
       }
 
@@ -1602,6 +1649,12 @@ export class MerchantService {
 
         profile.profile_img_url = dto.profile_img_url;
         await queryRunner.manager.save(profile);
+      }
+
+      const optionalPhone = dto.optional_phone_number ?? dto.secondary_number;
+      if (optionalPhone !== undefined) {
+        merchant.secondary_number = optionalPhone;
+        await queryRunner.manager.save(merchant);
       }
 
       await queryRunner.commitTransaction();
@@ -1647,7 +1700,49 @@ export class MerchantService {
     return this.profileRepo.save(profile);
   }
 
-  // --- API 7: Get Merchants with Pending Documents (Admin) ---
+  // --- API 7: Merchant Self Password Update ---
+  async updateMyPassword(
+    merchantId: string,
+    dto: UpdateMerchantPasswordDto,
+  ): Promise<void> {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+      relations: ['user'],
+    });
+
+    if (!merchant || !merchant.user) {
+      throw new NotFoundException('Merchant user not found');
+    }
+
+    if (dto.new_password !== dto.confirm_new_password) {
+      throw new BadRequestException(
+        'New password and confirm password do not match',
+      );
+    }
+
+    if (dto.current_password === dto.new_password) {
+      throw new BadRequestException(
+        'New password must be different from current password',
+      );
+    }
+
+    const isCurrentPasswordValid = await this.usersService.comparePassword(
+      dto.current_password,
+      merchant.user.password_hash,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    merchant.user.password_hash = await this.usersService.hashPassword(
+      dto.new_password,
+    );
+
+    await this.userRepo.save(merchant.user);
+  }
+
+  // --- API 8: Get Merchants with Pending Documents (Admin) ---
   async findMerchantsWithPendingDocuments() {
     const merchants = await this.merchantRepository
       .createQueryBuilder('merchant')
@@ -1705,7 +1800,7 @@ export class MerchantService {
     });
   }
 
-  // --- API 8: Approve Individual Document (Admin) ---
+  // --- API 9: Approve Individual Document (Admin) ---
   async approveDocument(
     merchantId: string,
     documentType: 'nid' | 'trade_license' | 'tin' | 'bin',

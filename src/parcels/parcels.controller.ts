@@ -322,32 +322,41 @@ export class ParcelsController {
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateParcelDto: UpdateParcelDto,
     @CurrentUser('role') role: UserRole,
     @CurrentUser('merchantId') merchantId: string,
+    @CurrentUser('hubId') hubId: string,
   ) {
     const isAdmin = role === UserRole.ADMIN;
+    const isHubManager = role === UserRole.HUB_MANAGER;
 
-    if (!isAdmin && !merchantId) {
+    if (!isAdmin && !isHubManager && !merchantId) {
       throw new ForbiddenException('merchantId missing in auth token');
+    }
+
+    if (isHubManager && !hubId) {
+      throw new ForbiddenException('hubId missing in auth token');
     }
 
     const parcel = await this.parcelsService.update(
       id,
       updateParcelDto,
-      merchantId,
-      isAdmin,
+      {
+        role,
+        merchantId: merchantId || null,
+        hubId: hubId || null,
+      },
     );
 
     const detailedParcel = await this.parcelsService.findOne(
       parcel.id,
-      isAdmin ? null : merchantId,
+      isAdmin || isHubManager ? null : merchantId,
       isAdmin,
       null,
-      null,
+      isHubManager ? hubId : null,
     );
 
     return {
