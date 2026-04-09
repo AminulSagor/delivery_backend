@@ -77,6 +77,8 @@ Roles:
       "customer_name": "Akash",
       "phone_number": "01712121212",
       "total_orders": 40,
+      "is_new_customer": false,
+      "customer_tag": "EXISTING_CUSTOMER",
       "customer_rating": "92.5%",
       "success_rate": 92.5,
       "delivered_count": 37,
@@ -135,6 +137,8 @@ Roles:
       "name": "Akash",
       "address": "Dhaka",
       "phone": "01712121212",
+      "is_new_customer": false,
+      "customer_tag": "EXISTING_CUSTOMER",
       "last_order_placed_on": "25th April, 2025"
     },
     "order_history_breakdown": {

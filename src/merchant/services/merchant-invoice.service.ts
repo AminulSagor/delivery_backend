@@ -600,6 +600,432 @@ export class MerchantInvoiceService {
   }
 
   /**
+   * Get order-wise invoices (parcel rows linked to invoices)
+   */
+  async getOrderwiseInvoices(query: {
+    merchant_id?: string;
+    invoice_status?: InvoiceStatus;
+    order_status?: ParcelStatus;
+    from_date?: string;
+    to_date?: string;
+    search?: string;
+    sort_by?: 'order_date' | 'receivable_amount';
+    sort_order?: 'ASC' | 'DESC';
+    page?: number;
+    limit?: number;
+  }): Promise<{ orders: any[]; total: number; summary: any }> {
+    const {
+      merchant_id,
+      invoice_status,
+      order_status,
+      from_date,
+      to_date,
+      search,
+      sort_by = 'order_date',
+      sort_order = 'DESC',
+      page = 1,
+      limit = 10,
+    } = query;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoin(MerchantInvoice, 'invoice', 'invoice.id = parcel.invoice_id')
+      .leftJoin('parcel.store', 'store')
+      .leftJoin('invoice.payoutMethod', 'payoutMethod')
+      .where('parcel.invoice_id IS NOT NULL');
+
+    if (merchant_id) {
+      queryBuilder.andWhere('invoice.merchant_id = :merchant_id', {
+        merchant_id,
+      });
+    }
+
+    if (invoice_status) {
+      queryBuilder.andWhere('invoice.invoice_status = :invoice_status', {
+        invoice_status,
+      });
+    }
+
+    if (order_status) {
+      queryBuilder.andWhere('parcel.status = :order_status', {
+        order_status,
+      });
+    }
+
+    if (from_date) {
+      queryBuilder.andWhere('parcel.created_at >= :from_date', { from_date });
+    }
+
+    if (to_date) {
+      queryBuilder.andWhere('parcel.created_at <= :to_date', { to_date });
+    }
+
+    if (search) {
+      queryBuilder.andWhere(
+        `(parcel.tracking_number ILIKE :search
+          OR parcel.parcel_tx_id ILIKE :search
+          OR parcel.merchant_order_id ILIKE :search
+          OR parcel.customer_phone ILIKE :search
+          OR invoice.invoice_no ILIKE :search)`,
+        { search: `%${search}%` },
+      );
+    }
+
+    const total = await queryBuilder.getCount();
+
+    const summaryRaw = await queryBuilder
+      .clone()
+      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .addSelect('COALESCE(SUM(parcel.total_charge), 0)', 'total_fee')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.return_charge_applicable = true THEN parcel.return_charge ELSE 0 END), 0)',
+        'total_return_charge',
+      )
+      .addSelect(
+        'COALESCE(SUM(COALESCE(parcel.cod_collected_amount, 0) - COALESCE(parcel.total_charge, 0) - CASE WHEN parcel.return_charge_applicable = true THEN COALESCE(parcel.return_charge, 0) ELSE 0 END), 0)',
+        'total_receivable',
+      )
+      .getRawOne();
+
+    if (sort_by === 'receivable_amount') {
+      queryBuilder.orderBy(
+        'COALESCE(parcel.cod_collected_amount, 0) - COALESCE(parcel.total_charge, 0) - CASE WHEN parcel.return_charge_applicable = true THEN COALESCE(parcel.return_charge, 0) ELSE 0 END',
+        sort_order,
+      );
+    } else {
+      queryBuilder.orderBy('parcel.created_at', sort_order);
+    }
+
+    queryBuilder.skip((page - 1) * limit).take(limit);
+
+    const rows = await queryBuilder
+      .select('parcel.id', 'parcel_id')
+      .addSelect('parcel.parcel_tx_id', 'parcel_tx_id')
+      .addSelect('parcel.tracking_number', 'tracking_number')
+      .addSelect('parcel.merchant_order_id', 'merchant_order_id')
+      .addSelect('parcel.created_at', 'order_date')
+      .addSelect('parcel.status', 'order_status')
+      .addSelect('parcel.cod_amount', 'cod_amount')
+      .addSelect('parcel.cod_collected_amount', 'cod_collected_amount')
+      .addSelect('parcel.delivery_charge', 'delivery_charge')
+      .addSelect('parcel.cod_charge', 'cod_charge')
+      .addSelect('parcel.weight_charge', 'weight_charge')
+      .addSelect('parcel.total_charge', 'total_charge')
+      .addSelect('parcel.return_charge', 'return_charge')
+      .addSelect('parcel.return_charge_applicable', 'return_charge_applicable')
+      .addSelect('parcel.customer_name', 'customer_name')
+      .addSelect('parcel.customer_phone', 'customer_phone')
+      .addSelect('parcel.customer_address', 'customer_address')
+      .addSelect('parcel.store_id', 'store_id')
+      .addSelect('store.business_name', 'store_name')
+      .addSelect('store.phone_number', 'store_phone')
+      .addSelect('invoice.id', 'invoice_id')
+      .addSelect('invoice.invoice_no', 'invoice_no')
+      .addSelect('invoice.transaction_id', 'transaction_id')
+      .addSelect('invoice.invoice_status', 'invoice_status')
+      .addSelect('invoice.created_at', 'invoice_date')
+      .addSelect('invoice.paid_at', 'paid_at')
+      .addSelect('invoice.merchant_id', 'merchant_id')
+      .addSelect('payoutMethod.id', 'payment_method_id')
+      .addSelect('payoutMethod.method_type', 'payment_method_type')
+      .getRawMany();
+
+    const orders = rows.map((row) => {
+      const collectedAmount = Number(row.cod_collected_amount) || 0;
+      const totalFee = Number(row.total_charge) || 0;
+      const returnChargeApplicable =
+        row.return_charge_applicable === true ||
+        row.return_charge_applicable === 'true';
+      const returnCharge = returnChargeApplicable
+        ? Number(row.return_charge) || 0
+        : 0;
+      const receivableAmount = collectedAmount - totalFee - returnCharge;
+
+      return {
+        invoice_info: {
+          invoice_id: row.invoice_id,
+          invoice_no: row.invoice_no,
+          transaction_id: row.transaction_id,
+          merchant_id: row.merchant_id,
+          invoice_status: row.invoice_status,
+          invoice_date: row.invoice_date,
+          paid_at: row.paid_at,
+        },
+        order_info: {
+          parcel_id: row.parcel_id,
+          parcel_tx_id: row.parcel_tx_id,
+          tracking_number: row.tracking_number,
+          order_id: row.merchant_order_id,
+          order_date: row.order_date,
+          order_status: row.order_status,
+        },
+        customer_info: {
+          name: row.customer_name,
+          phone: row.customer_phone,
+          address: row.customer_address,
+        },
+        store_info: {
+          store_id: row.store_id,
+          store_name: row.store_name || 'N/A',
+          store_phone: row.store_phone || 'N/A',
+        },
+        financial_info: {
+          collectable_amount: Number(row.cod_amount) || 0,
+          collected_amount: collectedAmount,
+          delivery_fee: Number(row.delivery_charge) || 0,
+          cod_fee: Number(row.cod_charge) || 0,
+          weight_charge: Number(row.weight_charge) || 0,
+          total_fee: totalFee,
+          return_charge: returnCharge,
+          receivable_amount: receivableAmount,
+          currency: 'BDT',
+        },
+        payment_method:
+          row.payment_method_id && row.payment_method_type
+            ? {
+                id: row.payment_method_id,
+                method_type: row.payment_method_type,
+              }
+            : null,
+      };
+    });
+
+    return {
+      orders,
+      total,
+      summary: {
+        total_orders: total,
+        total_collected_amount: Number(summaryRaw?.total_collected) || 0,
+        total_fee: Number(summaryRaw?.total_fee) || 0,
+        total_return_charge: Number(summaryRaw?.total_return_charge) || 0,
+        total_receivable: Number(summaryRaw?.total_receivable) || 0,
+      },
+    };
+  }
+
+  /**
+   * Get invoice details across all invoices (parcel-level rows)
+   */
+  async getAllInvoiceDetails(query: {
+    merchant_id?: string;
+    invoice_status?: InvoiceStatus;
+    order_status?: ParcelStatus;
+    store_id?: string;
+    from_date?: string;
+    to_date?: string;
+    search?: string;
+    sort_by?: 'order_date' | 'receivable_amount';
+    sort_order?: 'ASC' | 'DESC';
+    page?: number;
+    limit?: number;
+  }): Promise<{ invoice_details: any[]; total: number; summary: any }> {
+    const {
+      merchant_id,
+      invoice_status,
+      order_status,
+      store_id,
+      from_date,
+      to_date,
+      search,
+      sort_by = 'order_date',
+      sort_order = 'DESC',
+      page = 1,
+      limit = 10,
+    } = query;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoin(MerchantInvoice, 'invoice', 'invoice.id = parcel.invoice_id')
+      .leftJoin('parcel.store', 'store')
+      .leftJoin('invoice.payoutMethod', 'payoutMethod')
+      .where('parcel.invoice_id IS NOT NULL');
+
+    if (merchant_id) {
+      queryBuilder.andWhere('invoice.merchant_id = :merchant_id', {
+        merchant_id,
+      });
+    }
+
+    if (invoice_status) {
+      queryBuilder.andWhere('invoice.invoice_status = :invoice_status', {
+        invoice_status,
+      });
+    }
+
+    if (order_status) {
+      queryBuilder.andWhere('parcel.status = :order_status', {
+        order_status,
+      });
+    }
+
+    if (store_id) {
+      queryBuilder.andWhere('parcel.store_id = :store_id', { store_id });
+    }
+
+    if (from_date) {
+      queryBuilder.andWhere('parcel.created_at >= :from_date', { from_date });
+    }
+
+    if (to_date) {
+      queryBuilder.andWhere('parcel.created_at <= :to_date', { to_date });
+    }
+
+    if (search) {
+      queryBuilder.andWhere(
+        `(parcel.tracking_number ILIKE :search
+          OR parcel.parcel_tx_id ILIKE :search
+          OR parcel.merchant_order_id ILIKE :search
+          OR parcel.customer_phone ILIKE :search
+          OR invoice.invoice_no ILIKE :search)`,
+        { search: `%${search}%` },
+      );
+    }
+
+    const total = await queryBuilder.getCount();
+
+    const summaryRaw = await queryBuilder
+      .clone()
+      .select('COUNT(DISTINCT invoice.id)', 'total_invoices')
+      .addSelect('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .addSelect('COALESCE(SUM(parcel.total_charge), 0)', 'total_fee')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN parcel.return_charge_applicable = true THEN parcel.return_charge ELSE 0 END), 0)',
+        'total_return_charge',
+      )
+      .addSelect(
+        'COALESCE(SUM(COALESCE(parcel.cod_collected_amount, 0) - COALESCE(parcel.total_charge, 0) - CASE WHEN parcel.return_charge_applicable = true THEN COALESCE(parcel.return_charge, 0) ELSE 0 END), 0)',
+        'total_receivable',
+      )
+      .getRawOne();
+
+    if (sort_by === 'receivable_amount') {
+      queryBuilder.orderBy(
+        'COALESCE(parcel.cod_collected_amount, 0) - COALESCE(parcel.total_charge, 0) - CASE WHEN parcel.return_charge_applicable = true THEN COALESCE(parcel.return_charge, 0) ELSE 0 END',
+        sort_order,
+      );
+    } else {
+      queryBuilder.orderBy('parcel.created_at', sort_order);
+    }
+
+    queryBuilder.skip((page - 1) * limit).take(limit);
+
+    const rows = await queryBuilder
+      .select('parcel.id', 'parcel_id')
+      .addSelect('parcel.parcel_tx_id', 'parcel_tx_id')
+      .addSelect('parcel.tracking_number', 'tracking_number')
+      .addSelect('parcel.merchant_order_id', 'order_id')
+      .addSelect('parcel.created_at', 'order_date')
+      .addSelect('parcel.status', 'order_status')
+      .addSelect('parcel.customer_name', 'customer_name')
+      .addSelect('parcel.customer_phone', 'customer_phone')
+      .addSelect('parcel.customer_address', 'customer_address')
+      .addSelect('parcel.store_id', 'store_id')
+      .addSelect('store.business_name', 'store_name')
+      .addSelect('store.phone_number', 'store_phone')
+      .addSelect('parcel.cod_amount', 'collectable_amount')
+      .addSelect('parcel.cod_collected_amount', 'collected_amount')
+      .addSelect('parcel.delivery_charge', 'delivery_fee')
+      .addSelect('parcel.cod_charge', 'cod_fee')
+      .addSelect('parcel.weight_charge', 'weight_charge')
+      .addSelect('parcel.total_charge', 'total_fee')
+      .addSelect('parcel.return_charge', 'return_charge')
+      .addSelect('parcel.return_charge_applicable', 'return_charge_applicable')
+      .addSelect('invoice.id', 'invoice_id')
+      .addSelect('invoice.invoice_no', 'invoice_no')
+      .addSelect('invoice.transaction_id', 'transaction_id')
+      .addSelect('invoice.invoice_status', 'invoice_status')
+      .addSelect('invoice.created_at', 'invoice_date')
+      .addSelect('invoice.paid_at', 'paid_at')
+      .addSelect('invoice.merchant_id', 'merchant_id')
+      .addSelect('payoutMethod.id', 'payment_method_id')
+      .addSelect('payoutMethod.method_type', 'payment_method_type')
+      .getRawMany();
+
+    const returnedStatuses = new Set([
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ]);
+
+    const invoiceDetails = rows.map((row) => {
+      const collectedAmount = Number(row.collected_amount) || 0;
+      const totalFee = Number(row.total_fee) || 0;
+      const returnChargeApplicable =
+        row.return_charge_applicable === true ||
+        row.return_charge_applicable === 'true';
+      const returnCharge = returnChargeApplicable
+        ? Number(row.return_charge) || 0
+        : 0;
+      const receivableAmount = collectedAmount - totalFee - returnCharge;
+
+      return {
+        invoice: {
+          id: row.invoice_id,
+          invoice_no: row.invoice_no,
+          transaction_id: row.transaction_id,
+          status: row.invoice_status,
+          invoice_date: row.invoice_date,
+          paid_at: row.paid_at,
+          merchant_id: row.merchant_id,
+        },
+        parcel: {
+          parcel_id: row.parcel_id,
+          parcel_tx_id: row.parcel_tx_id,
+          tracking_number: row.tracking_number,
+          order_id: row.order_id,
+          order_date: row.order_date,
+          order_status: row.order_status,
+          invoice_type: returnedStatuses.has(row.order_status)
+            ? 'RETURN'
+            : 'DELIVERY',
+        },
+        customer: {
+          name: row.customer_name,
+          phone: row.customer_phone,
+          address: row.customer_address,
+        },
+        store: {
+          store_id: row.store_id,
+          store_name: row.store_name || 'N/A',
+          store_phone: row.store_phone || 'N/A',
+        },
+        financial: {
+          collectable_amount: Number(row.collectable_amount) || 0,
+          collected_amount: collectedAmount,
+          delivery_fee: Number(row.delivery_fee) || 0,
+          cod_fee: Number(row.cod_fee) || 0,
+          weight_charge: Number(row.weight_charge) || 0,
+          total_fee: totalFee,
+          return_charge: returnCharge,
+          receivable_amount: receivableAmount,
+          currency: 'BDT',
+        },
+        payment_method:
+          row.payment_method_id && row.payment_method_type
+            ? {
+                id: row.payment_method_id,
+                method_type: row.payment_method_type,
+              }
+            : null,
+      };
+    });
+
+    return {
+      invoice_details: invoiceDetails,
+      total,
+      summary: {
+        total_orders: total,
+        total_invoices: Number(summaryRaw?.total_invoices) || 0,
+        total_collected_amount: Number(summaryRaw?.total_collected) || 0,
+        total_fee: Number(summaryRaw?.total_fee) || 0,
+        total_return_charge: Number(summaryRaw?.total_return_charge) || 0,
+        total_receivable: Number(summaryRaw?.total_receivable) || 0,
+      },
+    };
+  }
+
+  /**
    * Get invoice details with parcel list
    * Supports pagination, filtering, and sorting
    */

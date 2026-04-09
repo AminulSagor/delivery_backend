@@ -202,6 +202,7 @@ export class CustomerFraudService {
         deliveredCount,
         cancelledReturnedCount,
       );
+      const isNewCustomer = totalOrders === 0;
 
       const fraud = fraudMap.get(row.id);
       const approvedCount = Number(fraud?.approved_count || 0);
@@ -212,6 +213,8 @@ export class CustomerFraudService {
         customer_name: row.customer_name,
         phone_number: row.phone_number,
         total_orders: totalOrders,
+        is_new_customer: isNewCustomer,
+        customer_tag: isNewCustomer ? 'NEW_CUSTOMER' : 'EXISTING_CUSTOMER',
         customer_rating: `${successRate}%`,
         success_rate: successRate,
         delivered_count: deliveredCount,
@@ -275,6 +278,7 @@ export class CustomerFraudService {
       deliveredCount,
       cancelledReturnedCount,
     );
+    const isNewCustomer = totalOrders === 0;
 
     const fraudReports = await this.fraudRepo.find({
       where: { customer_id: customer.id },
@@ -304,6 +308,8 @@ export class CustomerFraudService {
         name: customer.customer_name,
         address: customer.customer_address,
         phone: customer.phone_number,
+        is_new_customer: isNewCustomer,
+        customer_tag: isNewCustomer ? 'NEW_CUSTOMER' : 'EXISTING_CUSTOMER',
         last_order_placed_on: this.formatDateWithOrdinal(
           history?.last_order_at ? new Date(history.last_order_at) : null,
         ),

@@ -22,7 +22,9 @@ import { InvoiceQueryDto } from '../dto/invoice-query.dto';
 import { UnpaidByStoreQueryDto } from '../dto/unpaid-by-store-query.dto';
 import { UpdateInvoiceStatusDto } from '../dto/update-invoice-status.dto';
 import { InvoiceDetailsQueryDto } from '../dto/invoice-details-query.dto';
+import { InvoiceDetailsFlexQueryDto } from '../dto/invoice-details-flex-query.dto';
 import { PaymentHistoryQueryDto } from '../dto/merchant-payment-dashboard.dto';
+import { OrderwiseInvoiceQueryDto } from '../dto/orderwise-invoice-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -486,6 +488,146 @@ export class MerchantInvoiceController {
         },
       },
       message: 'Invoices retrieved successfully',
+    };
+  }
+
+  /**
+   * Get order-wise invoice list across all invoices
+   * GET /merchant-invoices/orderwise
+   */
+  @Get('orderwise')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getOrderwiseInvoices(
+    @Query() query: OrderwiseInvoiceQueryDto,
+    @Req() req: any,
+  ) {
+    // If merchant role, always scope to their own invoices
+    if (req.user.role === UserRole.MERCHANT) {
+      query.merchant_id = req.user.userId;
+    }
+
+    const normalizedSortOrder = (query.sort_order || 'DESC').toUpperCase();
+    const sortOrder =
+      normalizedSortOrder === 'ASC' || normalizedSortOrder === 'DESC'
+        ? (normalizedSortOrder as 'ASC' | 'DESC')
+        : 'DESC';
+
+    const { orders, total, summary } =
+      await this.merchantInvoiceService.getOrderwiseInvoices({
+        merchant_id: query.merchant_id,
+        invoice_status: query.invoice_status,
+        order_status: query.order_status,
+        from_date: query.from_date || query.fromDate,
+        to_date: query.to_date || query.toDate,
+        search: query.search,
+        sort_by: query.sort_by || 'order_date',
+        sort_order: sortOrder,
+        page: query.page || 1,
+        limit: query.limit || 10,
+      });
+
+    return {
+      success: true,
+      data: {
+        orders,
+        pagination: {
+          total,
+          page: query.page || 1,
+          limit: query.limit || 10,
+          totalPages: Math.ceil(total / (query.limit || 10)),
+        },
+        summary,
+      },
+      message: 'Order-wise invoices retrieved successfully',
+    };
+  }
+
+  /**
+   * Get invoice details (single or all)
+   * GET /merchant-invoices/invoice-details
+   *
+   * - If `invoice_id` is provided, returns details for that invoice.
+   * - If `invoice_id` is omitted, returns parcel-level details across all matching invoices.
+   */
+  @Get('invoice-details')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getInvoiceDetailsFlexible(
+    @Query() query: InvoiceDetailsFlexQueryDto,
+    @Req() req: any,
+  ) {
+    if (req.user.role === UserRole.MERCHANT) {
+      query.merchant_id = req.user.userId;
+    }
+
+    const normalizedSortOrder = (query.sort_order || 'DESC').toUpperCase();
+    const sortOrder =
+      normalizedSortOrder === 'ASC' || normalizedSortOrder === 'DESC'
+        ? (normalizedSortOrder as 'ASC' | 'DESC')
+        : 'DESC';
+
+    if (query.invoice_id) {
+      const details = await this.merchantInvoiceService.getInvoiceDetails(
+        query.invoice_id,
+        {
+          page: query.page,
+          limit: query.limit,
+          order_status: query.order_status,
+          invoice_status: query.invoice_status,
+          store_id: query.store_id,
+          from_date: query.from_date || query.fromDate,
+          to_date: query.to_date || query.toDate,
+          sort_by: query.sort_by,
+          sort_order: sortOrder,
+        },
+      );
+
+      if (
+        req.user.role === UserRole.MERCHANT &&
+        details?.merchant?.id !== req.user.userId
+      ) {
+        return {
+          success: false,
+          message: 'Unauthorized access to this invoice',
+        };
+      }
+
+      return {
+        success: true,
+        data: details,
+        message: 'Invoice details retrieved successfully',
+      };
+    }
+
+    const { invoice_details, total, summary } =
+      await this.merchantInvoiceService.getAllInvoiceDetails({
+        merchant_id: query.merchant_id,
+        invoice_status: query.invoice_status,
+        order_status: query.order_status,
+        store_id: query.store_id,
+        from_date: query.from_date || query.fromDate,
+        to_date: query.to_date || query.toDate,
+        search: query.search,
+        sort_by: query.sort_by || 'order_date',
+        sort_order: sortOrder,
+        page: query.page || 1,
+        limit: query.limit || 10,
+      });
+
+    return {
+      success: true,
+      data: {
+        invoice_details,
+        pagination: {
+          total,
+          page: query.page || 1,
+          limit: query.limit || 10,
+          totalPages: Math.ceil(total / (query.limit || 10)),
+        },
+        summary,
+      },
+      message: 'All invoice details retrieved successfully',
     };
   }
 
