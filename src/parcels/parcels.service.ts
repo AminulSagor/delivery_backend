@@ -89,9 +89,20 @@ import { CarrybeeService } from '../carrybee/carrybee.service';
 import { SmsService } from '../utils/sms.service';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 
+type ParcelStatusFilter = ParcelStatus | 'ACTIVE';
+
 @Injectable()
 export class ParcelsService {
   private readonly logger = new Logger(ParcelsService.name);
+  private readonly activeParcelStatuses: ParcelStatus[] = [
+    ParcelStatus.PENDING,
+    ParcelStatus.PICKED_UP,
+    ParcelStatus.IN_TRANSIT,
+    ParcelStatus.IN_HUB,
+    ParcelStatus.ASSIGNED_TO_RIDER,
+    ParcelStatus.OUT_FOR_DELIVERY,
+    ParcelStatus.DELIVERY_RESCHEDULED,
+  ];
 
   private coverageCache: CoverageAreaWithNorms[] | null = null;
   private coverageByCityNorm: Map<string, CoverageAreaWithNorms[]> = new Map();
@@ -1648,7 +1659,7 @@ export class ParcelsService {
     merchantId: string,
     page: number = 1,
     limit: number = 20,
-    status?: ParcelStatus,
+    status?: ParcelStatusFilter,
     storeId?: string,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
@@ -1661,7 +1672,9 @@ export class ParcelsService {
       // merchant_id references merchants table, so use merchantId
       const where: FindOptionsWhere<Parcel> = { merchant_id: merchantId };
 
-      if (status) {
+      if (status === 'ACTIVE') {
+        where.status = In(this.activeParcelStatuses);
+      } else if (status) {
         where.status = status;
       }
 
@@ -2116,7 +2129,7 @@ export class ParcelsService {
   async findAll(
     page: number = 1,
     limit: number = 20,
-    status?: ParcelStatus,
+    status?: ParcelStatusFilter,
     merchantId?: string,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
@@ -2126,7 +2139,9 @@ export class ParcelsService {
     try {
       const where: FindOptionsWhere<Parcel> = {};
 
-      if (status) {
+      if (status === 'ACTIVE') {
+        where.status = In(this.activeParcelStatuses);
+      } else if (status) {
         where.status = status;
       }
 
@@ -2203,7 +2218,7 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 20,
-    status?: ParcelStatus,
+    status?: ParcelStatusFilter,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
@@ -2238,7 +2253,9 @@ export class ParcelsService {
         store_id: In(storeIds),
       };
 
-      if (status) {
+      if (status === 'ACTIVE') {
+        where.status = In(this.activeParcelStatuses);
+      } else if (status) {
         where.status = status;
       } else {
         // By default, only show parcels that need to be received (PENDING or PICKED_UP)
