@@ -47,10 +47,15 @@ Roles:
 
 ---
 
-## 1) Merchant: Get All Registered Customers (Fraud Screening List)
+## 1) Merchant: Get All Customers (Fraud Screening List)
 
 ### Endpoint
 `GET /customers/fraud/customers`
+
+### Behavior
+- This endpoint returns all customers in the customer registry (same customer universe used by the web customer list).
+- It is not limited to customers already in fraud list.
+- Fraud information is returned under `fraud_status` for each customer.
 
 ### Query Params
 - `page` number, optional, default `1`
@@ -98,7 +103,7 @@ Roles:
     "hasNext": false,
     "hasPrev": false
   },
-  "message": "Registered customers retrieved successfully"
+  "message": "All customers retrieved successfully"
 }
 ```
 

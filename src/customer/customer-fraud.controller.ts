@@ -27,6 +27,7 @@ import { ReviewCustomerFraudDto } from './dto/review-customer-fraud.dto';
 export class CustomerFraudController {
   constructor(private readonly fraudService: CustomerFraudService) {}
 
+  // Returns all registered customers (including non-fraud customers)
   @Get('customers')
   @Roles(UserRole.MERCHANT)
   @HttpCode(HttpStatus.OK)
@@ -38,7 +39,7 @@ export class CustomerFraudController {
       success: true,
       data: result.items,
       pagination: result.pagination,
-      message: 'Registered customers retrieved successfully',
+      message: 'All customers retrieved successfully',
     };
   }
 
