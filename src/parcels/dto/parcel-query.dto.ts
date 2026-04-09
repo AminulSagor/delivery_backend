@@ -1,12 +1,24 @@
 import { Type } from 'class-transformer';
-import { IsOptional, IsEnum, IsUUID, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsInt,
+  Min,
+  Max,
+  IsIn,
+} from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { ParcelStatus, PaymentStatus } from '../entities/parcel.entity';
 
+export type ParcelStatusQuery = ParcelStatus | 'ACTIVE';
+
 export class ParcelQueryDto extends PaginationDto {
   @IsOptional()
-  @IsEnum(ParcelStatus, { message: 'Invalid parcel status' })
-  status?: ParcelStatus;
+  @IsIn([...Object.values(ParcelStatus), 'ACTIVE'], {
+    message: 'Invalid parcel status. Use a valid status or ACTIVE',
+  })
+  status?: ParcelStatusQuery;
 
   @IsOptional()
   @Type(() => Number)
