@@ -2312,22 +2312,30 @@ export class ParcelsService {
         );
       }
 
-      const allowedSortFields = new Set([
-        'created_at',
-        'updated_at',
-        'tracking_number',
-        'parcel_tx_id',
-        'customer_name',
-        'customer_phone',
-        'cod_amount',
-        'total_charge',
-        'status',
-      ]);
-      const safeSortBy = allowedSortFields.has(sortBy) ? sortBy : 'created_at';
+      const sortFieldMap: Record<string, string> = {
+        created_at: 'parcel.created_at',
+        updated_at: 'parcel.updated_at',
+        tracking_number: 'parcel.tracking_number',
+        tracking: 'parcel.tracking_number',
+        parcel_tx_id: 'parcel.parcel_tx_id',
+        customer_name: 'parcel.customer_name',
+        customer: 'parcel.customer_name',
+        customer_phone: 'parcel.customer_phone',
+        cod_amount: 'parcel.cod_amount',
+        product_price: 'parcel.product_price',
+        total_charge: 'parcel.total_charge',
+        charge: 'parcel.total_charge',
+        status: 'parcel.status',
+        // Price alias prefers COD amount when present, otherwise product price.
+        price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
+      };
+      const normalizedSortBy = (sortBy || 'created_at').toLowerCase();
+      const safeSortBy =
+        sortFieldMap[normalizedSortBy] || sortFieldMap['created_at'];
       const safeOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
 
       queryBuilder
-        .orderBy(`parcel.${safeSortBy}`, safeOrder)
+        .orderBy(safeSortBy, safeOrder)
         .skip((page - 1) * limit)
         .take(limit);
 

@@ -467,6 +467,17 @@ function toFullRiderSummary(rider: any) {
   };
 }
 
+// Helper to calculate parcel age in days
+function calculateParcelAge(parcel: any): number | null {
+  const now = new Date();
+  const received = parcel.received_at ? new Date(parcel.received_at) : null;
+  const created = parcel.created_at ? new Date(parcel.created_at) : null;
+  const baseDate = received || created;
+  if (!baseDate) return null;
+  const diffMs = now.getTime() - baseDate.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
 export function toParcelListItem(parcel: any): any {
   const deliveryCharge = Number(parcel.delivery_charge ?? 0);
   const weightCharge = Number(parcel.weight_charge ?? 0);
@@ -477,6 +488,10 @@ export function toParcelListItem(parcel: any): any {
     Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) /
       100,
   );
+
+  // Add received_at and age fields
+  const received_at = parcel.received_at ?? null;
+  const age = calculateParcelAge(parcel);
 
   return {
     id: parcel.id,
@@ -557,6 +572,8 @@ export function toParcelListItem(parcel: any): any {
     delivered_at: parcel.delivered_at ?? null,
     created_at: parcel.created_at ?? null,
     updated_at: parcel.updated_at ?? null,
+    received_at,
+    age,
 
     merchant: toMerchantSummary(parcel.merchant),
     store: toFullStoreSummary(parcel.store),
