@@ -1,5 +1,6 @@
 import { IsOptional, IsEnum } from 'class-validator';
 import { ParcelStatus } from '../../parcels/entities/parcel.entity';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 /**
  * Rider App Sections:
@@ -33,7 +34,7 @@ export enum RiderDeliveryFilter {
   ALL = 'all',
 }
 
-export class RiderParcelQueryDto {
+export class RiderParcelQueryDto extends PaginationDto {
   @IsOptional()
   @IsEnum(ParcelStatus, { message: 'Invalid parcel status' })
   status?: ParcelStatus;

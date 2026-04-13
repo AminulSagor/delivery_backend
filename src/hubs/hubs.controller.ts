@@ -179,6 +179,15 @@ export class HubsController {
       merchantId: query.merchantId,
       page: query.page,
       limit: query.limit,
+      search: query.search,
+      sortBy: query.sortBy,
+      order: query.order,
+      customerName: query.customerName,
+      customerPhone: query.customerPhone,
+      merchantName: query.merchantName,
+      minAmount: query.minAmount,
+      maxAmount: query.maxAmount,
+      deliveryType: query.deliveryType,
     });
 
     return {
@@ -206,10 +215,9 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getClearedDeliveries(
     @CurrentUser() user: any,
-    @Query('rider_id') riderId: string,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
+    @Query() query: HubParcelQueryDto,
   ) {
+    const riderId = query.rider_id;
     if (!riderId) {
       throw new BadRequestException('rider_id query parameter is required');
     }
@@ -227,8 +235,20 @@ export class HubsController {
       user.hubId,
       riderId.trim(),
       {
-        page: parseInt(page),
-        limit: Math.min(parseInt(limit), 100),
+        page: query.page,
+        limit: Math.min(query.limit ?? 10, 100),
+        search: query.search,
+        sortBy: query.sortBy,
+        order: query.order,
+        merchantId: query.merchantId,
+        storeId: query.storeId,
+        customerName: query.customerName,
+        customerPhone: query.customerPhone,
+        merchantName: query.merchantName,
+        area: query.area,
+        minAmount: query.minAmount,
+        maxAmount: query.maxAmount,
+        deliveryType: query.deliveryType,
       },
     );
 
@@ -255,10 +275,9 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getCarrybeeClearedDeliveries(
     @CurrentUser() user: any,
-    @Query('provider_id') providerId: string,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
+    @Query() query: HubParcelQueryDto,
   ) {
+    const providerId = query.provider_id;
     if (!providerId) {
       throw new BadRequestException('provider_id query parameter is required');
     }
@@ -276,8 +295,20 @@ export class HubsController {
       user.hubId,
       providerId.trim(),
       {
-        page: parseInt(page),
-        limit: Math.min(parseInt(limit), 100),
+        page: query.page,
+        limit: Math.min(query.limit ?? 10, 100),
+        search: query.search,
+        sortBy: query.sortBy,
+        order: query.order,
+        merchantId: query.merchantId,
+        storeId: query.storeId,
+        customerName: query.customerName,
+        customerPhone: query.customerPhone,
+        merchantName: query.merchantName,
+        area: query.area,
+        minAmount: query.minAmount,
+        maxAmount: query.maxAmount,
+        deliveryType: query.deliveryType,
       },
     );
 
@@ -299,13 +330,24 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getRescheduledDeliveries(
     @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
+    @Query() query: HubParcelQueryDto,
   ) {
     const result = await this.parcelsService.getRescheduledDeliveries(
       user.hubId,
-      parseInt(page),
-      parseInt(limit),
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.order,
+      query.merchantId,
+      query.storeId,
+      query.customerName,
+      query.customerPhone,
+      query.merchantName,
+      query.area,
+      query.minAmount,
+      query.maxAmount,
+      query.deliveryType,
     );
 
     return {
@@ -326,13 +368,24 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getReturnToMerchantParcels(
     @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
+    @Query() query: HubParcelQueryDto,
   ) {
     const result = await this.parcelsService.getReturnToMerchantParcels(
       user.hubId,
-      parseInt(page),
-      parseInt(limit),
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.order,
+      query.merchantId,
+      query.storeId,
+      query.customerName,
+      query.customerPhone,
+      query.merchantName,
+      query.area,
+      query.minAmount,
+      query.maxAmount,
+      query.deliveryType,
     );
 
     return {
@@ -499,7 +552,24 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const { status, page, limit, sortBy, order, search } = query;
+    const {
+      status,
+      page,
+      limit,
+      sortBy,
+      order,
+      search,
+      paymentStatus,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = query;
     const result = await this.parcelsService.findAllForHub(
       user.hubId,
       page,
@@ -508,8 +578,17 @@ export class HubsController {
       sortBy,
       order,
       undefined,
-      undefined,
+      paymentStatus,
       search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
     );
     return {
       success: true,
@@ -748,7 +827,24 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const { status, page, limit, sortBy, order, search } = query;
+    const {
+      status,
+      page,
+      limit,
+      sortBy,
+      order,
+      search,
+      paymentStatus,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = query;
     const result = await this.parcelsService.findAllForHub(
       user.hubId,
       page,
@@ -757,8 +853,17 @@ export class HubsController {
       sortBy,
       order,
       undefined,
-      undefined,
+      paymentStatus,
       search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
     );
     return {
       success: true,
@@ -813,14 +918,25 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getParcelsForAssignment(
     @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '20',
+    @Query() query: HubParcelQueryDto,
   ) {
     const { parcels, total } =
       await this.parcelsService.getParcelsForAssignment(
         user.hubId,
-        parseInt(page),
-        parseInt(limit),
+        query.page,
+        query.limit,
+        query.search,
+        query.sortBy,
+        query.order,
+        query.merchantId,
+        query.storeId,
+        query.customerName,
+        query.customerPhone,
+        query.merchantName,
+        query.area,
+        query.minAmount,
+        query.maxAmount,
+        query.deliveryType,
       );
 
     return {
@@ -829,9 +945,9 @@ export class HubsController {
         parcels: parcels.map(toParcelListItem),
         pagination: {
           total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit)),
+          page: query.page,
+          limit: query.limit,
+          totalPages: Math.ceil(total / (query.limit || 20)),
         },
       },
       message: 'Parcels for assignment retrieved successfully',
@@ -979,13 +1095,24 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getIncomingParcels(
     @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '20',
+    @Query() query: HubParcelQueryDto,
   ) {
     const result = await this.parcelsService.getIncomingParcels(
       user.hubId,
-      parseInt(page),
-      parseInt(limit),
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.order,
+      query.merchantId,
+      query.storeId,
+      query.customerName,
+      query.customerPhone,
+      query.merchantName,
+      query.area,
+      query.minAmount,
+      query.maxAmount,
+      query.deliveryType,
     );
     return {
       success: true,
@@ -1059,13 +1186,24 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getOutgoingParcels(
     @CurrentUser() user: any,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '20',
+    @Query() query: HubParcelQueryDto,
   ) {
     const result = await this.parcelsService.getOutgoingParcels(
       user.hubId,
-      parseInt(page),
-      parseInt(limit),
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.order,
+      query.merchantId,
+      query.storeId,
+      query.customerName,
+      query.customerPhone,
+      query.merchantName,
+      query.area,
+      query.minAmount,
+      query.maxAmount,
+      query.deliveryType,
     );
     return {
       success: true,
@@ -1337,85 +1475,6 @@ export class HubsController {
       success: true,
       data: result,
       message: 'Top merchant statistics retrieved successfully',
-    };
-  }
-
-  // ===== ADMIN DYNAMIC :id ROUTES (must be last to avoid matching specific routes) =====
-  @Roles(UserRole.ADMIN)
-  @Get(':id')
-  @HttpCode(HttpStatus.OK)
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const hub = await this.hubsService.findOne(id);
-    return {
-      hub: toHubDetail(hub),
-      message: 'Hub retrieved successfully',
-    };
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Patch(':id')
-  @HttpCode(HttpStatus.OK)
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateHubDto: UpdateHubDto,
-  ) {
-    const hub = await this.hubsService.update(id, updateHubDto);
-    return {
-      id: hub.id,
-      hub_code: hub.hub_code,
-      message: 'Hub updated successfully',
-    };
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Delete(':id')
-  @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.hubsService.remove(id);
-    return {
-      message: 'Hub deleted successfully',
-    };
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Patch(':id/deactivate')
-  @HttpCode(HttpStatus.OK)
-  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    const hub = await this.hubsService.deactivate(id);
-    return {
-      id: hub.id,
-      hub_code: hub.hub_code,
-      status: hub.status,
-      is_active: hub.is_active,
-      message: 'Hub deactivated successfully',
-    };
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Patch(':id/activate')
-  @HttpCode(HttpStatus.OK)
-  async activate(@Param('id', ParseUUIDPipe) id: string) {
-    const hub = await this.hubsService.activate(id);
-    return {
-      id: hub.id,
-      hub_code: hub.hub_code,
-      status: hub.status,
-      is_active: hub.is_active,
-      message: 'Hub activated successfully',
-    };
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Patch(':id/decline')
-  @HttpCode(HttpStatus.OK)
-  async decline(@Param('id', ParseUUIDPipe) id: string) {
-    const hub = await this.hubsService.decline(id);
-    return {
-      id: hub.id,
-      hub_code: hub.hub_code,
-      status: hub.status,
-      is_active: hub.is_active,
-      message: 'Hub declined permanently',
     };
   }
 
@@ -1755,6 +1814,85 @@ export class HubsController {
       success: true,
       message: `Expense request ${dto.status.toLowerCase()}`,
       data: result,
+    };
+  }
+
+  // ===== ADMIN DYNAMIC :id ROUTES (must be last to avoid matching specific routes) =====
+  @Roles(UserRole.ADMIN)
+  @Get(':id')
+  @HttpCode(HttpStatus.OK)
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.findOne(id);
+    return {
+      hub: toHubDetail(hub),
+      message: 'Hub retrieved successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateHubDto: UpdateHubDto,
+  ) {
+    const hub = await this.hubsService.update(id, updateHubDto);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      message: 'Hub updated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.hubsService.remove(id);
+    return {
+      message: 'Hub deleted successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.deactivate(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub deactivated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  async activate(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.activate(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub activated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/decline')
+  @HttpCode(HttpStatus.OK)
+  async decline(@Param('id', ParseUUIDPipe) id: string) {
+    const hub = await this.hubsService.decline(id);
+    return {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      status: hub.status,
+      is_active: hub.is_active,
+      message: 'Hub declined permanently',
     };
   }
 }

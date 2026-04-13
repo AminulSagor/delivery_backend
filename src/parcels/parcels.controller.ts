@@ -133,6 +133,15 @@ export class ParcelsController {
       order,
       days,
       paymentStatus,
+      search,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+      hubId,
     } = query;
     // Merchant view - only their parcels
     if (user.role === UserRole.MERCHANT) {
@@ -149,6 +158,14 @@ export class ParcelsController {
         order,
         days,
         paymentStatus,
+        search,
+        customerName,
+        customerPhone,
+        merchantName,
+        area,
+        minAmount,
+        maxAmount,
+        deliveryType,
       );
       return {
         parcels: result.items.map(toParcelListItem),
@@ -171,6 +188,16 @@ export class ParcelsController {
         order,
         days,
         paymentStatus,
+        search,
+        merchantId,
+        storeId,
+        customerName,
+        customerPhone,
+        merchantName,
+        area,
+        minAmount,
+        maxAmount,
+        deliveryType,
       );
       return {
         parcels: result.items.map(toParcelListItem),
@@ -189,6 +216,16 @@ export class ParcelsController {
       order,
       days,
       paymentStatus,
+      search,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+      storeId,
+      hubId,
     );
     return {
       parcels: result.items.map(toParcelListItem),
@@ -202,21 +239,45 @@ export class ParcelsController {
   @Roles(UserRole.HUB_MANAGER)
   async getHubParcelsInHubStatuses(
     @CurrentUser('hubId') hubId: string,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '20',
-    @Query('sortBy') sortBy: string = 'created_at',
-    @Query('order') order: 'ASC' | 'DESC' = 'DESC',
+    @Query() query: ParcelQueryDto,
   ) {
     if (!hubId) {
       throw new ForbiddenException('hubId missing in auth token');
     }
 
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = 'created_at',
+      order = 'DESC',
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = query;
+
     const result = await this.parcelsService.findInHubStatusesForHub(
       hubId,
-      parseInt(page, 10),
-      parseInt(limit, 10),
+      page,
+      limit,
       sortBy,
       order,
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
     );
 
     return {

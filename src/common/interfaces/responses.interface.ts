@@ -470,7 +470,9 @@ function toFullRiderSummary(rider: any) {
 // Helper to calculate parcel age in days
 function calculateParcelAge(parcel: any): number | null {
   const now = new Date();
-  const received = parcel.received_at ? new Date(parcel.received_at) : null;
+  const receivedSource =
+    parcel.received_at ?? parcel.received_at_destination_hub ?? null;
+  const received = receivedSource ? new Date(receivedSource) : null;
   const created = parcel.created_at ? new Date(parcel.created_at) : null;
   const baseDate = received || created;
   if (!baseDate) return null;
@@ -490,7 +492,8 @@ export function toParcelListItem(parcel: any): any {
   );
 
   // Add received_at and age fields
-  const received_at = parcel.received_at ?? null;
+  const received_at =
+    parcel.received_at ?? parcel.received_at_destination_hub ?? null;
   const age = calculateParcelAge(parcel);
 
   return {

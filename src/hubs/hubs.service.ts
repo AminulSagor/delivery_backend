@@ -1976,19 +1976,17 @@ export class HubsService {
     const skip = (page - 1) * limit;
     const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
 
-    // Date Filtering
-    let dateCondition = {};
+    // Date filtering for query builder parameter binding.
+    let periodStart: Date | null = null;
     const now = new Date();
     if (period === ReportPeriod.WEEKLY) {
-      const lastWeek = new Date(
+      periodStart = new Date(
         now.getFullYear(),
         now.getMonth(),
         now.getDate() - 7,
       );
-      dateCondition = { created_at: MoreThanOrEqual(lastWeek) };
     } else if (period === ReportPeriod.MONTHLY) {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      dateCondition = { created_at: MoreThanOrEqual(firstDay) };
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
     // We need to fetch from 3 tables and merge?
@@ -2040,9 +2038,9 @@ export class HubsService {
         .skip(skip)
         .take(limit);
 
-      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+      if (period !== ReportPeriod.ALL_TIME && periodStart) {
         expenseQb.andWhere('expense.created_at >= :periodStart', {
-          periodStart: dateCondition['created_at'],
+          periodStart,
         });
       }
 
@@ -2071,9 +2069,9 @@ export class HubsService {
         .skip(skip)
         .take(limit);
 
-      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+      if (period !== ReportPeriod.ALL_TIME && periodStart) {
         transferQb.andWhere('transfer.transfer_date >= :periodStart', {
-          periodStart: dateCondition['created_at'],
+          periodStart,
         });
       }
 
@@ -2104,9 +2102,9 @@ export class HubsService {
         .skip(skip)
         .take(limit);
 
-      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+      if (period !== ReportPeriod.ALL_TIME && periodStart) {
         settlementQb.andWhere('settlement.created_at >= :periodStart', {
-          periodStart: dateCondition['created_at'],
+          periodStart,
         });
       }
 

@@ -10,7 +10,14 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, FindOptionsWhere, In, IsNull } from 'typeorm';
+import {
+  Repository,
+  Between,
+  FindOptionsWhere,
+  In,
+  IsNull,
+  SelectQueryBuilder,
+} from 'typeorm';
 import {
   PaginatedResponse,
   PaginationMeta,
@@ -42,6 +49,7 @@ import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dt
 import { BulkTransferDto, TransferParcelDto } from './dto/transfer-parcel.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
+import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
 import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
 
@@ -78,6 +86,20 @@ type CoverageAreaWithNorms = CoverageArea & {
   _city_norm: string;
   _area_norm: string;
 };
+
+interface ParcelListFilterOptions {
+  search?: string;
+  merchantId?: string;
+  storeId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  merchantName?: string;
+  area?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  deliveryType?: DeliveryType;
+  paymentStatus?: PaymentStatus;
+}
 import { User } from '../users/entities/user.entity';
 import { ParcelReportQueryDto } from 'src/hubs/dto/parcel-report-query.dto';
 import {
@@ -1665,25 +1687,43 @@ export class ParcelsService {
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
     paymentStatus?: PaymentStatus,
+    search?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ): Promise<PaginatedResponse<Parcel>> {
     try {
       if (!merchantId) throw new ForbiddenException('Merchant ID is required');
 
-      // merchant_id references merchants table, so use merchantId
-      const where: FindOptionsWhere<Parcel> = { merchant_id: merchantId };
+      const queryBuilder = this.parcelRepository
+        .createQueryBuilder('parcel')
+        .leftJoinAndSelect('parcel.merchant', 'merchant')
+        .leftJoinAndSelect('merchant.user', 'merchantUser')
+        .leftJoinAndSelect('parcel.store', 'store')
+        .leftJoinAndSelect('store.hub', 'storeHub')
+        .leftJoinAndSelect('store.merchant', 'storeMerchant')
+        .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+        .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+        .leftJoinAndSelect('parcel.customer', 'customer')
+        .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+        .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+        .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+        .leftJoinAndSelect('parcel.originHub', 'originHub')
+        .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+        .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
+        .where('parcel.merchant_id = :merchantId', { merchantId });
 
       if (status === 'ACTIVE') {
-        where.status = In(this.activeParcelStatuses);
+        queryBuilder.andWhere('parcel.status IN (:...activeStatuses)', {
+          activeStatuses: this.activeParcelStatuses,
+        });
       } else if (status) {
-        where.status = status;
-      }
-
-      if (storeId) {
-        where.store_id = storeId;
-      }
-
-      if (paymentStatus) {
-        where.payment_status = paymentStatus;
+        queryBuilder.andWhere('parcel.status = :status', { status });
       }
 
       if (days) {
@@ -1691,32 +1731,29 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        where.created_at = Between(startDate, endDate) as any;
+        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
+          startDate,
+          endDate,
+        });
       }
 
-      const [items, total] = await this.parcelRepository.findAndCount({
-        where,
-        relations: [
-          'merchant',
-          'merchant.user',
-          'store',
-          'store.hub',
-          'store.merchant',
-          'store.merchant.user',
-          'delivery_coverage_area',
-          'customer',
-          'assignedRider',
-          'assignedRider.user',
-          'assignedRider.hub',
-          'currentHub',
-          'originHub',
-          'destinationHub',
-          'thirdPartyProvider',
-        ],
-        order: { [sortBy]: order },
-        skip: (page - 1) * limit,
-        take: limit,
+      this.applyParcelListFilters(queryBuilder, {
+        search,
+        storeId,
+        customerName,
+        customerPhone,
+        merchantName,
+        area,
+        minAmount,
+        maxAmount,
+        deliveryType,
+        paymentStatus,
       });
+
+      this.applyParcelListSorting(queryBuilder, sortBy, order);
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      const [items, total] = await queryBuilder.getManyAndCount();
 
       const totalPages = Math.ceil(total / limit);
 
@@ -2135,22 +2172,42 @@ export class ParcelsService {
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
     paymentStatus?: PaymentStatus,
+    search?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
+    storeId?: string,
+    hubId?: string,
   ): Promise<PaginatedResponse<Parcel>> {
     try {
-      const where: FindOptionsWhere<Parcel> = {};
+      const queryBuilder = this.parcelRepository
+        .createQueryBuilder('parcel')
+        .leftJoinAndSelect('parcel.merchant', 'merchant')
+        .leftJoinAndSelect('merchant.user', 'merchantUser')
+        .leftJoinAndSelect('parcel.store', 'store')
+        .leftJoinAndSelect('store.hub', 'storeHub')
+        .leftJoinAndSelect('store.merchant', 'storeMerchant')
+        .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+        .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+        .leftJoinAndSelect('parcel.customer', 'customer')
+        .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+        .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+        .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+        .leftJoinAndSelect('parcel.originHub', 'originHub')
+        .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+        .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
 
       if (status === 'ACTIVE') {
-        where.status = In(this.activeParcelStatuses);
+        queryBuilder.andWhere('parcel.status IN (:...activeStatuses)', {
+          activeStatuses: this.activeParcelStatuses,
+        });
       } else if (status) {
-        where.status = status;
-      }
-
-      if (merchantId) {
-        where.merchant_id = merchantId;
-      }
-
-      if (paymentStatus) {
-        where.payment_status = paymentStatus;
+        queryBuilder.andWhere('parcel.status = :status', { status });
       }
 
       if (days) {
@@ -2158,32 +2215,34 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        where.created_at = Between(startDate, endDate) as any;
+        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
+          startDate,
+          endDate,
+        });
       }
 
-      const [items, total] = await this.parcelRepository.findAndCount({
-        where,
-        relations: [
-          'merchant',
-          'merchant.user',
-          'store',
-          'store.hub',
-          'store.merchant',
-          'store.merchant.user',
-          'delivery_coverage_area',
-          'customer',
-          'assignedRider',
-          'assignedRider.user',
-          'assignedRider.hub',
-          'currentHub',
-          'originHub',
-          'destinationHub',
-          'thirdPartyProvider',
-        ],
-        order: { [sortBy]: order },
-        skip: (page - 1) * limit,
-        take: limit,
+      if (hubId) {
+        queryBuilder.andWhere('parcel.current_hub_id = :hubId', { hubId });
+      }
+
+      this.applyParcelListFilters(queryBuilder, {
+        search,
+        merchantId,
+        storeId,
+        customerName,
+        customerPhone,
+        merchantName,
+        area,
+        minAmount,
+        maxAmount,
+        deliveryType,
+        paymentStatus,
       });
+
+      this.applyParcelListSorting(queryBuilder, sortBy, order);
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      const [items, total] = await queryBuilder.getManyAndCount();
 
       const totalPages = Math.ceil(total / limit);
 
@@ -2224,6 +2283,15 @@ export class ParcelsService {
     days?: number,
     paymentStatus?: PaymentStatus,
     search?: string,
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ): Promise<PaginatedResponse<any>> {
     try {
       // Get all stores assigned to this hub
@@ -2257,7 +2325,7 @@ export class ParcelsService {
         .leftJoinAndSelect('store.hub', 'storeHub')
         .leftJoinAndSelect('store.merchant', 'storeMerchant')
         .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
-        .leftJoinAndSelect('parcel.delivery_coverage_area', 'deliveryCoverageArea')
+        .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
         .leftJoinAndSelect('parcel.customer', 'customer')
         .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
         .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
@@ -2281,12 +2349,6 @@ export class ParcelsService {
         });
       }
 
-      if (paymentStatus) {
-        queryBuilder.andWhere('parcel.payment_status = :paymentStatus', {
-          paymentStatus,
-        });
-      }
-
       if (days) {
         const endDate = new Date();
         const startDate = new Date(endDate);
@@ -2298,46 +2360,22 @@ export class ParcelsService {
         });
       }
 
-      if (search?.trim()) {
-        const keyword = `%${search.trim()}%`;
-        queryBuilder.andWhere(
-          `(
-            parcel.tracking_number ILIKE :keyword OR
-            parcel.parcel_tx_id ILIKE :keyword OR
-            parcel.customer_name ILIKE :keyword OR
-            parcel.customer_phone ILIKE :keyword OR
-            parcel.merchant_order_id ILIKE :keyword
-          )`,
-          { keyword },
-        );
-      }
+      this.applyParcelListFilters(queryBuilder, {
+        search,
+        merchantId,
+        storeId,
+        customerName,
+        customerPhone,
+        merchantName,
+        area,
+        minAmount,
+        maxAmount,
+        deliveryType,
+        paymentStatus,
+      });
 
-      const sortFieldMap: Record<string, string> = {
-        created_at: 'parcel.created_at',
-        updated_at: 'parcel.updated_at',
-        tracking_number: 'parcel.tracking_number',
-        tracking: 'parcel.tracking_number',
-        parcel_tx_id: 'parcel.parcel_tx_id',
-        customer_name: 'parcel.customer_name',
-        customer: 'parcel.customer_name',
-        customer_phone: 'parcel.customer_phone',
-        cod_amount: 'parcel.cod_amount',
-        product_price: 'parcel.product_price',
-        total_charge: 'parcel.total_charge',
-        charge: 'parcel.total_charge',
-        status: 'parcel.status',
-        // Price alias prefers COD amount when present, otherwise product price.
-        price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
-      };
-      const normalizedSortBy = (sortBy || 'created_at').toLowerCase();
-      const safeSortBy =
-        sortFieldMap[normalizedSortBy] || sortFieldMap['created_at'];
-      const safeOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
-
-      queryBuilder
-        .orderBy(safeSortBy, safeOrder)
-        .skip((page - 1) * limit)
-        .take(limit);
+      this.applyParcelListSorting(queryBuilder, sortBy, order);
+      queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [parcels, total] = await queryBuilder.getManyAndCount();
 
@@ -2374,6 +2412,16 @@ export class ParcelsService {
     limit: number = 20,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    search?: string,
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ): Promise<PaginatedResponse<Parcel>> {
     // Get all stores assigned to this hub
     const stores = await this.storeRepository.find({
@@ -2397,32 +2445,45 @@ export class ParcelsService {
       };
     }
 
-    const [items, total] = await this.parcelRepository.findAndCount({
-      where: {
-        store_id: In(storeIds),
-        status: In([ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB]),
-      },
-      relations: [
-        'merchant',
-        'merchant.user',
-        'store',
-        'store.hub',
-        'store.merchant',
-        'store.merchant.user',
-        'delivery_coverage_area',
-        'customer',
-        'assignedRider',
-        'assignedRider.user',
-        'assignedRider.hub',
-        'currentHub',
-        'originHub',
-        'destinationHub',
-        'thirdPartyProvider',
-      ],
-      order: { [sortBy]: order },
-      skip: (page - 1) * limit,
-      take: limit,
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
+      .where('parcel.store_id IN (:...storeIds)', { storeIds })
+      .andWhere('parcel.status IN (:...statuses)', {
+        statuses: [ParcelStatus.IN_HUB, ParcelStatus.RETURNED_TO_HUB],
+      });
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
     });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order);
+    queryBuilder.skip((page - 1) * limit).take(limit);
+
+    const [items, total] = await queryBuilder.getManyAndCount();
 
     const totalPages = Math.ceil(total / limit);
 
@@ -2655,6 +2716,14 @@ export class ParcelsService {
         ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
       ];
 
+      const hubManagerPostReceiveEditableStatuses = [ParcelStatus.IN_HUB];
+
+      const hubManagerAllowedUpdateFields = [
+        'customer_phone',
+        'customer_address',
+        'product_price',
+      ];
+
       if (actor.role === UserRole.MERCHANT) {
         if (!actor.merchantId || parcel.merchant_id !== actor.merchantId) {
           throw new ForbiddenException(
@@ -2691,6 +2760,30 @@ export class ParcelsService {
         if (!hubAdminEditableStatuses.includes(parcelWithStore.status)) {
           throw new BadRequestException(
             `Hub/Admin can edit only before rider starts delivery. Current status: ${parcelWithStore.status}`,
+          );
+        }
+
+        const providedFields = Object.keys(updateParcelDto).filter(
+          (key) => (updateParcelDto as any)[key] !== undefined,
+        );
+
+        if (providedFields.length === 0) {
+          throw new BadRequestException('No fields provided for update');
+        }
+
+        const invalidFields = providedFields.filter(
+          (field) => !hubManagerAllowedUpdateFields.includes(field),
+        );
+
+        if (invalidFields.length > 0) {
+          throw new BadRequestException(
+            `Hub manager can update only customer_phone, customer_address, product_price after receiving parcel. Invalid fields: ${invalidFields.join(', ')}`,
+          );
+        }
+
+        if (!hubManagerPostReceiveEditableStatuses.includes(parcelWithStore.status)) {
+          throw new BadRequestException(
+            `Hub manager can update phone/address/amount only after parcel is received (IN_HUB). Current status: ${parcelWithStore.status}`,
           );
         }
       } else if (actor.role === UserRole.ADMIN) {
@@ -2746,6 +2839,10 @@ export class ParcelsService {
       if (updateParcelDto.product_price !== undefined) {
         parcel.cod_amount = updateParcelDto.product_price;
         parcel.is_cod = updateParcelDto.product_price > 0;
+        parcel.receivable_amount =
+          Math.round(
+            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) * 100,
+          ) / 100;
       }
 
       let updatedParcel;
@@ -2847,6 +2944,18 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 20,
+    search?: string,
+    sortBy: string = 'created_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ) {
     const skip = (page - 1) * limit;
 
@@ -2870,19 +2979,29 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.originHub', 'originHub')
       .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
-      .leftJoinAndSelect(
-        'parcel.delivery_coverage_area',
-        'delivery_coverage_area',
-      )
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
       .andWhere('parcel.assigned_rider_id IS NULL')
       .andWhere(
         '((parcel.current_hub_id IS NOT NULL AND parcel.current_hub_id = :hubId) OR (parcel.current_hub_id IS NULL AND (pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)))',
         { hubId },
-      )
-      .orderBy('parcel.created_at', 'DESC')
-      .skip(skip)
-      .take(limit);
+      );
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order);
+    queryBuilder.skip(skip).take(limit);
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
 
@@ -4052,6 +4171,18 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 20,
+    search?: string,
+    sortBy: string = 'transferred_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ) {
     const skip = (page - 1) * limit;
 
@@ -4074,10 +4205,23 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .where('parcel.destination_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', { status: ParcelStatus.IN_TRANSIT })
-      .andWhere('parcel.received_at_destination_hub IS NULL')
-      .orderBy('parcel.transferred_at', 'DESC')
-      .skip(skip)
-      .take(limit);
+      .andWhere('parcel.received_at_destination_hub IS NULL');
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.transferred_at');
+    queryBuilder.skip(skip).take(limit);
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
 
@@ -4249,6 +4393,18 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 20,
+    search?: string,
+    sortBy: string = 'transferred_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ) {
     const skip = (page - 1) * limit;
 
@@ -4272,10 +4428,23 @@ export class ParcelsService {
       .where('parcel.origin_hub_id = :hubId', { hubId })
       .andWhere('parcel.is_inter_hub_transfer = :isTransfer', {
         isTransfer: true,
-      })
-      .orderBy('parcel.transferred_at', 'DESC')
-      .skip(skip)
-      .take(limit);
+      });
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.transferred_at');
+    queryBuilder.skip(skip).take(limit);
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
 
@@ -4306,9 +4475,33 @@ export class ParcelsService {
       merchantId?: string;
       page?: number;
       limit?: number;
+      search?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+      customerName?: string;
+      customerPhone?: string;
+      merchantName?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      deliveryType?: DeliveryType;
     } = {},
   ) {
-    const { status, zone, merchantId, page = 1, limit = 10 } = options;
+    const {
+      status,
+      zone,
+      merchantId,
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'updated_at',
+      order = 'DESC',
+      customerName,
+      customerPhone,
+      merchantName,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = options;
     const skip = (page - 1) * limit;
 
     // Define all successful delivery statuses (parcels that have been completed)
@@ -4359,13 +4552,18 @@ export class ParcelsService {
       );
     }
 
-    // Filter by merchant
-    if (merchantId) {
-      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId });
-    }
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      customerName,
+      customerPhone,
+      merchantName,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
 
-    // Order by most recent first
-    queryBuilder.orderBy('parcel.updated_at', 'DESC');
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -4428,9 +4626,36 @@ export class ParcelsService {
     options: {
       page?: number;
       limit?: number;
+      search?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+      merchantId?: string;
+      storeId?: string;
+      customerName?: string;
+      customerPhone?: string;
+      merchantName?: string;
+      area?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      deliveryType?: DeliveryType;
     } = {},
   ) {
-    const { page = 1, limit = 10 } = options;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'delivered_at',
+      order = 'DESC',
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = options;
     const skip = (page - 1) * limit;
 
     // Successful delivery statuses (completed deliveries with COD)
@@ -4466,8 +4691,20 @@ export class ParcelsService {
         statuses: successfulStatuses,
       });
 
-    // Order by delivery date (most recent first)
-    queryBuilder.orderBy('parcel.delivered_at', 'DESC');
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -4520,9 +4757,36 @@ export class ParcelsService {
     options: {
       page?: number;
       limit?: number;
+      search?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+      merchantId?: string;
+      storeId?: string;
+      customerName?: string;
+      customerPhone?: string;
+      merchantName?: string;
+      area?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      deliveryType?: DeliveryType;
     } = {},
   ) {
-    const { page = 1, limit = 10 } = options;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'delivered_at',
+      order = 'DESC',
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = options;
     const skip = (page - 1) * limit;
 
     // Successful delivery statuses (completed deliveries with COD)
@@ -4553,7 +4817,7 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'provider')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.delivery_provider = :deliveryProvider', {
-        deliveryProvider: 'THIRD_PARTY',
+        deliveryProvider: DeliveryProvider.CARRYBEE,
       })
       .andWhere('parcel.third_party_provider_id = :providerId', { providerId })
       .andWhere('parcel.cod_cleared_at IS NULL') // Only not-yet-cleared parcels
@@ -4564,8 +4828,20 @@ export class ParcelsService {
         statuses: successfulStatuses,
       });
 
-    // Order by delivery date (most recent first)
-    queryBuilder.orderBy('parcel.delivered_at', 'DESC');
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -4576,7 +4852,7 @@ export class ParcelsService {
       .select('SUM(parcel.cod_collected_amount)', 'total')
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.delivery_provider = :deliveryProvider', {
-        deliveryProvider: 'THIRD_PARTY',
+        deliveryProvider: DeliveryProvider.CARRYBEE,
       })
       .andWhere('parcel.third_party_provider_id = :providerId', { providerId })
       .andWhere('parcel.cod_cleared_at IS NULL')
@@ -4623,6 +4899,18 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 10,
+    search?: string,
+    sortBy: string = 'updated_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ) {
     const skip = (page - 1) * limit;
 
@@ -4646,8 +4934,22 @@ export class ParcelsService {
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', {
         status: ParcelStatus.DELIVERY_RESCHEDULED,
-      })
-      .orderBy('parcel.updated_at', 'DESC');
+      });
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
 
     const total = await queryBuilder.getCount();
     queryBuilder.skip(skip).take(limit);
@@ -4674,6 +4976,18 @@ export class ParcelsService {
     hubId: string,
     page: number = 1,
     limit: number = 10,
+    search?: string,
+    sortBy: string = 'updated_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
   ) {
     const skip = (page - 1) * limit;
 
@@ -4697,8 +5011,22 @@ export class ParcelsService {
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.status = :status', {
         status: ParcelStatus.RETURN_TO_MERCHANT,
-      })
-      .orderBy('parcel.updated_at', 'DESC');
+      });
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
 
     const total = await queryBuilder.getCount();
     queryBuilder.skip(skip).take(limit);
@@ -5143,6 +5471,149 @@ export class ParcelsService {
     );
 
     return parcel;
+  }
+
+  private applyParcelListFilters(
+    queryBuilder: SelectQueryBuilder<Parcel>,
+    filters: ParcelListFilterOptions,
+  ) {
+    const {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+      paymentStatus,
+    } = filters;
+
+    if (merchantId) {
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (storeId) {
+      queryBuilder.andWhere('parcel.store_id = :storeId', { storeId });
+    }
+
+    if (customerName?.trim()) {
+      queryBuilder.andWhere('parcel.customer_name ILIKE :customerName', {
+        customerName: `%${customerName.trim()}%`,
+      });
+    }
+
+    if (customerPhone?.trim()) {
+      queryBuilder.andWhere('parcel.customer_phone ILIKE :customerPhone', {
+        customerPhone: `%${customerPhone.trim()}%`,
+      });
+    }
+
+    if (merchantName?.trim()) {
+      queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
+        merchantName: `%${merchantName.trim()}%`,
+      });
+    }
+
+    if (area?.trim()) {
+      queryBuilder.andWhere(
+        `(coverageArea.area ILIKE :area OR coverageArea.zone ILIKE :area OR coverageArea.city ILIKE :area OR parcel.delivery_area ILIKE :area)`,
+        {
+          area: `%${area.trim()}%`,
+        },
+      );
+    }
+
+    if (minAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) >= :minAmount',
+        { minAmount },
+      );
+    }
+
+    if (maxAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) <= :maxAmount',
+        { maxAmount },
+      );
+    }
+
+    if (deliveryType !== undefined) {
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', {
+        deliveryType,
+      });
+    }
+
+    if (paymentStatus) {
+      queryBuilder.andWhere('parcel.payment_status = :paymentStatus', {
+        paymentStatus,
+      });
+    }
+
+    if (search?.trim()) {
+      const keyword = `%${search.trim()}%`;
+      queryBuilder.andWhere(
+        `(
+          CAST(parcel.id AS TEXT) ILIKE :keyword OR
+          parcel.tracking_number ILIKE :keyword OR
+          parcel.parcel_tx_id ILIKE :keyword OR
+          parcel.merchant_order_id ILIKE :keyword OR
+          parcel.customer_name ILIKE :keyword OR
+          parcel.customer_phone ILIKE :keyword OR
+          merchantUser.full_name ILIKE :keyword OR
+          store.business_name ILIKE :keyword OR
+          coverageArea.area ILIKE :keyword OR
+          coverageArea.zone ILIKE :keyword OR
+          coverageArea.city ILIKE :keyword OR
+          parcel.delivery_area ILIKE :keyword
+        )`,
+        { keyword },
+      );
+    }
+  }
+
+  private applyParcelListSorting(
+    queryBuilder: SelectQueryBuilder<Parcel>,
+    sortBy: string = 'created_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    fallbackSort: string = 'parcel.created_at',
+  ) {
+    const sortFieldMap: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      updated_at: 'parcel.updated_at',
+      transferred_at: 'parcel.transferred_at',
+      delivered_at: 'parcel.delivered_at',
+      tracking_number: 'parcel.tracking_number',
+      tracking: 'parcel.tracking_number',
+      parcel_tx_id: 'parcel.parcel_tx_id',
+      customer_name: 'parcel.customer_name',
+      customer: 'parcel.customer_name',
+      customer_phone: 'parcel.customer_phone',
+      merchant_name: 'merchantUser.full_name',
+      merchant: 'merchantUser.full_name',
+      store_name: 'store.business_name',
+      area: 'COALESCE(coverageArea.area, parcel.delivery_area)',
+      zone: 'coverageArea.zone',
+      city: 'coverageArea.city',
+      status: 'parcel.status',
+      cod_amount: 'parcel.cod_amount',
+      product_price: 'parcel.product_price',
+      total_charge: 'parcel.total_charge',
+      charge: 'parcel.total_charge',
+      price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
+      merchant_price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
+    };
+
+    const normalizedSortBy = (sortBy || '').trim().toLowerCase();
+    const safeSortBy =
+      sortFieldMap[normalizedSortBy] ||
+      sortFieldMap['created_at'] ||
+      fallbackSort;
+    const safeOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+    queryBuilder.orderBy(safeSortBy, safeOrder);
   }
 
   /**
@@ -5613,9 +6084,18 @@ export class ParcelsService {
       }
     }
 
-    // Status rule for both Hub Manager and Admin:
+    // Status rule for Hub Manager:
+    // editable only before parcel is received in hub
+    const hubManagerAllowedStatuses = [
+      ParcelStatus.PENDING,
+      ParcelStatus.PICKED_UP,
+      ParcelStatus.OUT_FOR_PICKUP,
+      ParcelStatus.IN_TRANSIT,
+    ];
+
+    // Status rule for Admin:
     // editable only until rider starts delivery
-    const allowedStatuses = [
+    const adminAllowedStatuses = [
       ParcelStatus.PENDING,
       ParcelStatus.PICKED_UP,
       ParcelStatus.OUT_FOR_PICKUP,
@@ -5625,9 +6105,14 @@ export class ParcelsService {
       ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
     ];
 
+    const allowedStatuses =
+      role === UserRole.ADMIN ? adminAllowedStatuses : hubManagerAllowedStatuses;
+
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
-        `Hub/Admin can edit only before rider starts delivery. Current status: ${parcel.status}`,
+        role === UserRole.ADMIN
+          ? `Hub/Admin can edit only before rider starts delivery. Current status: ${parcel.status}`
+          : `Hub manager can edit weight/delivery charge only before parcel is received. Current status: ${parcel.status}`,
       );
     }
 
