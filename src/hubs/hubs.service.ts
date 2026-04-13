@@ -847,7 +847,15 @@ export class HubsService {
     query: TransferRecordQueryDto,
   ): Promise<{ records: HubTransferRecord[]; total: number }> {
     try {
-      const { status, fromDate, toDate, page = 1, limit = 10 } = query;
+      const {
+        status,
+        fromDate,
+        toDate,
+        page = 1,
+        limit = 10,
+        hubId,
+        hubManagerId: queryHubManagerId,
+      } = query;
 
       const queryBuilder = this.hubTransferRecordRepository
         .createQueryBuilder('transfer')
@@ -857,6 +865,16 @@ export class HubsService {
 
       if (status) {
         queryBuilder.andWhere('transfer.status = :status', { status });
+      }
+
+      if (hubId) {
+        queryBuilder.andWhere('transfer.hub_id = :hubId', { hubId });
+      }
+
+      if (queryHubManagerId) {
+        queryBuilder.andWhere('transfer.hub_manager_id = :queryHubManagerId', {
+          queryHubManagerId,
+        });
       }
 
       if (fromDate) {
@@ -1814,15 +1832,46 @@ export class HubsService {
 
   // 5. GET TRANSFERS (Paginated)
   async getTransfers(hubManagerId: string, query: PaginationDto) {
-    const { page = 1, limit = 10 } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
 
-    const [items, total] = await this.hubTransferRecordRepository.findAndCount({
-      where: { hub_manager_id: hubManagerId },
-      order: { created_at: 'DESC' },
-      take: limit,
-      skip,
-    });
+    const sortableColumns: Record<string, string> = {
+      created_at: 'transfer.created_at',
+      transfer_date: 'transfer.transfer_date',
+      transferred_amount: 'transfer.transferred_amount',
+      status: 'transfer.status',
+      transaction_reference_id: 'transfer.transaction_reference_id',
+    };
+
+    const sortColumn = sortableColumns[sortBy] || 'transfer.created_at';
+    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+    const qb = this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
+      .orderBy(sortColumn, sortOrder)
+      .skip(skip)
+      .take(limit);
+
+    if (search?.trim()) {
+      qb.andWhere(
+        `(
+          transfer.transaction_reference_id ILIKE :search OR
+          transfer.notes ILIKE :search OR
+          transfer.admin_account_name ILIKE :search OR
+          transfer.admin_account_number ILIKE :search
+        )`,
+        { search: `%${search.trim()}%` },
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
 
     return {
       items,
@@ -1848,15 +1897,45 @@ export class HubsService {
 
   // 7. GET EXPENSES (Paginated)
   async getExpenses(hubManagerId: string, query: PaginationDto) {
-    const { page = 1, limit = 10 } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
 
-    const [items, total] = await this.expenseRepository.findAndCount({
-      where: { hub_manager_id: hubManagerId },
-      order: { created_at: 'DESC' },
-      take: limit,
-      skip,
-    });
+    const sortableColumns: Record<string, string> = {
+      created_at: 'expense.created_at',
+      updated_at: 'expense.updated_at',
+      amount: 'expense.amount',
+      category: 'expense.category',
+      status: 'expense.status',
+    };
+
+    const sortColumn = sortableColumns[sortBy] || 'expense.created_at';
+    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+    const qb = this.expenseRepository
+      .createQueryBuilder('expense')
+      .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
+      .orderBy(sortColumn, sortOrder)
+      .skip(skip)
+      .take(limit);
+
+    if (search?.trim()) {
+      qb.andWhere(
+        `(
+          expense.reason ILIKE :search OR
+          expense.category::text ILIKE :search OR
+          expense.status::text ILIKE :search
+        )`,
+        { search: `%${search.trim()}%` },
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
 
     return {
       items,
@@ -1885,8 +1964,17 @@ export class HubsService {
     hubManagerId: string,
     query: FinancialReportQueryDto,
   ) {
-    const { page = 1, limit = 10, period } = query;
+    const {
+      page = 1,
+      limit = 10,
+      period,
+      type,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
+    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
 
     // Date Filtering
     let dateCondition = {};
@@ -1909,34 +1997,133 @@ export class HubsService {
     // For simplicity, let's just return separate arrays or allow filtering by 'type'.
 
     // Simplified: Fetch latest Expenses and Transfers
-    const [expenses, expenseCount] = await this.expenseRepository.findAndCount({
-      where: { hub_manager_id: hubManagerId, ...dateCondition },
-      order: { created_at: 'DESC' },
-      take: limit,
-      skip: skip,
-    });
+    const expenseSortColumns: Record<string, string> = {
+      created_at: 'expense.created_at',
+      updated_at: 'expense.updated_at',
+      amount: 'expense.amount',
+      category: 'expense.category',
+      status: 'expense.status',
+    };
+    const transferSortColumns: Record<string, string> = {
+      created_at: 'transfer.created_at',
+      transfer_date: 'transfer.transfer_date',
+      transferred_amount: 'transfer.transferred_amount',
+      status: 'transfer.status',
+      transaction_reference_id: 'transfer.transaction_reference_id',
+    };
+    const settlementSortColumns: Record<string, string> = {
+      created_at: 'settlement.created_at',
+      updated_at: 'settlement.updated_at',
+      settled_at: 'settlement.settled_at',
+      total_collected_amount: 'settlement.total_collected_amount',
+      cash_received: 'settlement.cash_received',
+      discrepancy_amount: 'settlement.discrepancy_amount',
+      settlement_status: 'settlement.settlement_status',
+    };
 
-    const [transfers, transferCount] =
-      await this.hubTransferRecordRepository.findAndCount({
-        where: {
-          hub_manager_id: hubManagerId,
-          ...(period !== ReportPeriod.ALL_TIME
-            ? { transfer_date: dateCondition['created_at'] }
-            : {}),
-        },
-        order: { transfer_date: 'DESC' },
-        take: limit,
-        skip: skip,
-      });
+    let expenses: HubExpense[] = [];
+    let expenseCount = 0;
+    let transfers: HubTransferRecord[] = [];
+    let transferCount = 0;
+    let settlements: RiderSettlement[] = [];
+    let settleCount = 0;
 
-    const [settlements, settleCount] =
-      await this.riderSettlementRepository.findAndCount({
-        where: { hub_manager_id: hubManagerId, ...dateCondition },
-        relations: ['rider'], // Show rider name
-        order: { created_at: 'DESC' },
-        take: limit,
-        skip: skip,
-      });
+    const shouldIncludeExpenses = !type || type === 'EXPENSE';
+    const shouldIncludeTransfers = !type || type === 'TRANSFER';
+    const shouldIncludeSettlements = !type || type === 'SETTLEMENT';
+
+    if (shouldIncludeExpenses) {
+      const expenseQb = this.expenseRepository
+        .createQueryBuilder('expense')
+        .where('expense.hub_manager_id = :hubManagerId', { hubManagerId })
+        .orderBy(expenseSortColumns[sortBy] || 'expense.created_at', sortOrder)
+        .skip(skip)
+        .take(limit);
+
+      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+        expenseQb.andWhere('expense.created_at >= :periodStart', {
+          periodStart: dateCondition['created_at'],
+        });
+      }
+
+      if (search?.trim()) {
+        expenseQb.andWhere(
+          `(
+            expense.reason ILIKE :search OR
+            expense.category::text ILIKE :search OR
+            expense.status::text ILIKE :search
+          )`,
+          { search: `%${search.trim()}%` },
+        );
+      }
+
+      [expenses, expenseCount] = await expenseQb.getManyAndCount();
+    }
+
+    if (shouldIncludeTransfers) {
+      const transferQb = this.hubTransferRecordRepository
+        .createQueryBuilder('transfer')
+        .where('transfer.hub_manager_id = :hubManagerId', { hubManagerId })
+        .orderBy(
+          transferSortColumns[sortBy] || 'transfer.transfer_date',
+          sortOrder,
+        )
+        .skip(skip)
+        .take(limit);
+
+      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+        transferQb.andWhere('transfer.transfer_date >= :periodStart', {
+          periodStart: dateCondition['created_at'],
+        });
+      }
+
+      if (search?.trim()) {
+        transferQb.andWhere(
+          `(
+            transfer.transaction_reference_id ILIKE :search OR
+            transfer.notes ILIKE :search OR
+            transfer.admin_account_name ILIKE :search OR
+            transfer.admin_account_number ILIKE :search
+          )`,
+          { search: `%${search.trim()}%` },
+        );
+      }
+
+      [transfers, transferCount] = await transferQb.getManyAndCount();
+    }
+
+    if (shouldIncludeSettlements) {
+      const settlementQb = this.riderSettlementRepository
+        .createQueryBuilder('settlement')
+        .leftJoinAndSelect('settlement.rider', 'rider')
+        .where('settlement.hub_manager_id = :hubManagerId', { hubManagerId })
+        .orderBy(
+          settlementSortColumns[sortBy] || 'settlement.created_at',
+          sortOrder,
+        )
+        .skip(skip)
+        .take(limit);
+
+      if (period !== ReportPeriod.ALL_TIME && dateCondition['created_at']) {
+        settlementQb.andWhere('settlement.created_at >= :periodStart', {
+          periodStart: dateCondition['created_at'],
+        });
+      }
+
+      if (search?.trim()) {
+        settlementQb.andWhere(
+          `(
+            settlement.settlement_status::text ILIKE :search OR
+            settlement.total_collected_amount::text ILIKE :search OR
+            settlement.cash_received::text ILIKE :search OR
+            settlement.discrepancy_amount::text ILIKE :search
+          )`,
+          { search: `%${search.trim()}%` },
+        );
+      }
+
+      [settlements, settleCount] = await settlementQb.getManyAndCount();
+    }
 
     // Formatting response
     return {
@@ -1962,15 +2149,31 @@ export class HubsService {
 
   // 1. All Transfers (Paginated)
   async getAllTransfersForAdmin(query: PaginationDto) {
-    const { page = 1, limit = 20, search } = query;
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
+
+    const sortableColumns: Record<string, string> = {
+      created_at: 'transfer.created_at',
+      transfer_date: 'transfer.transfer_date',
+      transferred_amount: 'transfer.transferred_amount',
+      status: 'transfer.status',
+      transaction_reference_id: 'transfer.transaction_reference_id',
+    };
+    const sortColumn = sortableColumns[sortBy] || 'transfer.created_at';
+    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
 
     const qb = this.hubTransferRecordRepository
       .createQueryBuilder('transfer')
       .leftJoinAndSelect('transfer.hub', 'hub')
       .leftJoinAndSelect('transfer.hubManager', 'manager')
       .leftJoinAndSelect('manager.user', 'user')
-      .orderBy('transfer.created_at', 'DESC')
+      .orderBy(sortColumn, sortOrder)
       .skip(skip)
       .take(limit);
 
@@ -2005,15 +2208,46 @@ export class HubsService {
 
   // 3. All Expenses (Paginated)
   async getAllExpensesForAdmin(query: PaginationDto) {
-    const { page = 1, limit = 20 } = query;
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
 
-    const [items, total] = await this.expenseRepository.findAndCount({
-      relations: ['hub', 'hubManager', 'hubManager.user'],
-      order: { created_at: 'DESC' },
-      skip,
-      take: limit,
-    });
+    const sortableColumns: Record<string, string> = {
+      created_at: 'expense.created_at',
+      updated_at: 'expense.updated_at',
+      amount: 'expense.amount',
+      category: 'expense.category',
+      status: 'expense.status',
+    };
+    const sortColumn = sortableColumns[sortBy] || 'expense.created_at';
+    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+    const qb = this.expenseRepository
+      .createQueryBuilder('expense')
+      .leftJoinAndSelect('expense.hub', 'hub')
+      .leftJoinAndSelect('expense.hubManager', 'hubManager')
+      .leftJoinAndSelect('hubManager.user', 'user')
+      .orderBy(sortColumn, sortOrder)
+      .skip(skip)
+      .take(limit);
+
+    if (search?.trim()) {
+      qb.andWhere(
+        `(
+          expense.reason ILIKE :search OR
+          expense.category::text ILIKE :search OR
+          expense.status::text ILIKE :search
+        )`,
+        { search: `%${search.trim()}%` },
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
 
     return {
       data: items,

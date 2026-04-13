@@ -7,6 +7,9 @@ Scope:
 - Merchant Payout Settings
 - Merchant Profile Settings & Security
 
+Related guide:
+- Hub Panel APIs: see HUB_PANEL_FRONTEND_API_GUIDE.md
+
 Source aligned with your current collection and backend controllers/services.
 
 ## Quick Summary
