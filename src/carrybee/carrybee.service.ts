@@ -21,9 +21,9 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import {
   PaginatedResponse,
-  PaginationDto,
   PaginationMeta,
 } from 'src/common/dto/pagination.dto';
+import { CarrybeeParcelQueryDto } from './dto/carrybee-parcel-query.dto';
 
 @Injectable()
 export class CarrybeeService {
@@ -249,28 +249,138 @@ export class CarrybeeService {
 
   async getParcelsForThirdPartyAssignment(
     hubId: string,
-    query: PaginationDto,
+    query: CarrybeeParcelQueryDto,
   ): Promise<PaginatedResponse<Parcel>> {
     const {
       page = 1,
       limit = 20,
+      search,
       sortBy = 'created_at',
       order = 'DESC',
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
     } = query;
     const skip = (page - 1) * limit;
-    // Use dynamic sorting key
-    const orderOption: any = { [sortBy]: order };
 
-    const [parcels, total] = await this.parcelRepository.findAndCount({
-      where: {
-        current_hub_id: hubId,
-        status: ParcelStatus.IN_HUB,
-      },
-      relations: ['store', 'delivery_coverage_area'],
-      order: orderOption,
-      skip,
-      take: limit,
-    });
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .where('parcel.current_hub_id = :hubId', { hubId })
+      .andWhere('parcel.status = :status', { status: ParcelStatus.IN_HUB })
+      .andWhere('parcel.assigned_rider_id IS NULL');
+
+    if (merchantId) {
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (storeId) {
+      queryBuilder.andWhere('parcel.store_id = :storeId', { storeId });
+    }
+
+    if (customerName?.trim()) {
+      queryBuilder.andWhere('parcel.customer_name ILIKE :customerName', {
+        customerName: `%${customerName.trim()}%`,
+      });
+    }
+
+    if (customerPhone?.trim()) {
+      queryBuilder.andWhere('parcel.customer_phone ILIKE :customerPhone', {
+        customerPhone: `%${customerPhone.trim()}%`,
+      });
+    }
+
+    if (merchantName?.trim()) {
+      queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
+        merchantName: `%${merchantName.trim()}%`,
+      });
+    }
+
+    if (area?.trim()) {
+      queryBuilder.andWhere(
+        '(coverageArea.area ILIKE :area OR coverageArea.zone ILIKE :area OR coverageArea.city ILIKE :area OR parcel.delivery_area ILIKE :area)',
+        { area: `%${area.trim()}%` },
+      );
+    }
+
+    if (minAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) >= :minAmount',
+        { minAmount },
+      );
+    }
+
+    if (maxAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) <= :maxAmount',
+        { maxAmount },
+      );
+    }
+
+    if (deliveryType !== undefined) {
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', {
+        deliveryType,
+      });
+    }
+
+    if (search?.trim()) {
+      const keyword = `%${search.trim()}%`;
+      queryBuilder.andWhere(
+        `(
+          CAST(parcel.id AS TEXT) ILIKE :keyword OR
+          parcel.tracking_number ILIKE :keyword OR
+          parcel.parcel_tx_id ILIKE :keyword OR
+          parcel.merchant_order_id ILIKE :keyword OR
+          parcel.customer_name ILIKE :keyword OR
+          parcel.customer_phone ILIKE :keyword OR
+          merchantUser.full_name ILIKE :keyword OR
+          store.business_name ILIKE :keyword OR
+          coverageArea.area ILIKE :keyword OR
+          coverageArea.zone ILIKE :keyword OR
+          coverageArea.city ILIKE :keyword OR
+          parcel.delivery_area ILIKE :keyword
+        )`,
+        { keyword },
+      );
+    }
+
+    const sortFieldMap: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      updated_at: 'parcel.updated_at',
+      tracking_number: 'parcel.tracking_number',
+      tracking: 'parcel.tracking_number',
+      parcel_tx_id: 'parcel.parcel_tx_id',
+      customer_name: 'parcel.customer_name',
+      customer: 'parcel.customer_name',
+      customer_phone: 'parcel.customer_phone',
+      merchant_name: 'merchantUser.full_name',
+      merchant: 'merchantUser.full_name',
+      area: 'COALESCE(coverageArea.area, parcel.delivery_area)',
+      cod_amount: 'parcel.cod_amount',
+      product_price: 'parcel.product_price',
+      total_charge: 'parcel.total_charge',
+      charge: 'parcel.total_charge',
+      price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
+      merchant_price: 'COALESCE(parcel.cod_amount, parcel.product_price, 0)',
+      status: 'parcel.status',
+    };
+    const normalizedSortBy = (sortBy || '').trim().toLowerCase();
+    const safeSortBy =
+      sortFieldMap[normalizedSortBy] || sortFieldMap['created_at'];
+    const safeOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+    queryBuilder.orderBy(safeSortBy, safeOrder).skip(skip).take(limit);
+
+    const [parcels, total] = await queryBuilder.getManyAndCount();
 
     const totalPages = Math.ceil(total / limit);
 

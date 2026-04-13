@@ -24,7 +24,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { CarrybeeParcelQueryDto } from './dto/carrybee-parcel-query.dto';
 
 @Controller('carrybee')
 export class CarrybeeController {
@@ -138,7 +138,7 @@ export class CarrybeeController {
   @Roles(UserRole.HUB_MANAGER)
   async getParcelsForThirdPartyAssignment(
     @CurrentUser() user: any,
-    @Query() query: PaginationDto,
+    @Query() query: CarrybeeParcelQueryDto,
   ) {
     const parcels =
       await this.carrybeeService.getParcelsForThirdPartyAssignment(

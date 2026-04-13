@@ -1,6 +1,17 @@
-import { IsOptional, IsEnum, IsUUID, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsString,
+  IsNumber,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ParcelStatus } from '../../parcels/entities/parcel.entity';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { DeliveryType } from '../../common/enums/delivery-type.enum';
 
 /**
  * Delivery outcome statuses for returns/exchanges
@@ -15,7 +26,24 @@ export const DELIVERY_OUTCOME_STATUSES = [
   ParcelStatus.RETURNED,
 ] as const;
 
-export class DeliveryOutcomeQueryDto {
+export class DeliveryOutcomeQueryDto extends PaginationDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 10;
+
+  @IsOptional()
+  @IsString({ message: 'Sort by must be a string' })
+  sortBy?: string = 'updated_at';
+
   @IsOptional()
   @IsEnum(ParcelStatus, {
     message:
@@ -31,15 +59,30 @@ export class DeliveryOutcomeQueryDto {
   merchantId?: string;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
+  @IsString({ message: 'Customer name must be a string' })
+  customerName?: string;
+
+  @IsOptional()
+  @IsString({ message: 'Customer phone must be a string' })
+  customerPhone?: string;
+
+  @IsOptional()
+  @IsString({ message: 'Merchant name must be a string' })
+  merchantName?: string;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 10;
+  @IsNumber({}, { message: 'Minimum amount must be a number' })
+  @Min(0, { message: 'Minimum amount cannot be negative' })
+  minAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({}, { message: 'Maximum amount must be a number' })
+  @Min(0, { message: 'Maximum amount cannot be negative' })
+  maxAmount?: number;
+
+  @IsOptional()
+  @IsEnum(DeliveryType, { message: 'Invalid delivery type' })
+  deliveryType?: DeliveryType;
 }

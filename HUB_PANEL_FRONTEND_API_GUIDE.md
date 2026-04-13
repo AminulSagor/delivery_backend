@@ -1,473 +1,720 @@
-# Hub Panel Frontend API Guide
-
-Scope:
-- Complete API documentation for all endpoints exposed by HubsController
-- Includes Hub Manager and Admin hub-related routes under /hubs
-- Includes request body contracts, query params, and response contracts
-
-Source of truth:
-- src/hubs/hubs.controller.ts
-- src/hubs/dto/*.ts
-- src/parcels/dto/create-parcel.dto.ts
-- src/parcels/dto/transfer-parcel.dto.ts
-- src/riders/dto/assign-parcel.dto.ts
-- src/riders/dto/bulk-assign-parcel.dto.ts
-
-## Base URL and Auth
-- Base URL: /hubs
-- Auth: Authorization: Bearer <jwt>
-- Guards: JwtAuthGuard + RolesGuard
-
-## Role Access Summary
-- HUB_MANAGER: Hub panel operational routes
-- ADMIN: Hub master management and finance review routes
-- HUB_MANAGER + ADMIN: Some shared reporting/list routes
-
-## Standard Error Shapes
-
-401 Unauthorized example:
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized"
-}
-```
-
-400 Validation/Bad request example:
-```json
-{
-  "success": false,
-  "statusCode": 400,
-  "error": "Bad Request",
-  "message": "Validation failed",
-  "timestamp": "2026-04-13T10:30:00.000Z",
-  "path": "/hubs/parcels/assign-rider"
-}
-```
-
-403 Forbidden example:
-```json
-{
-  "statusCode": 403,
-  "message": "Forbidden resource"
-}
-```
-
-404 Not Found example:
-```json
-{
-  "success": false,
-  "statusCode": 404,
-  "error": "Not Found",
-  "message": "Parcel not found",
-  "timestamp": "2026-04-13T10:30:00.000Z",
-  "path": "/hubs/parcels/00000000-0000-0000-0000-000000000000/accept"
-}
-```
-
 ------------------------------------------------------------
+# 0) Hub Panel Read Order (Flow-First)
 
-# 1) Hub Profile and Hub Master Management
+Use this section as the frontend implementation order. Full request/response contracts are kept in detailed sections below.
 
-## 1.1 Get My Hub
-GET /hubs/my-hub
+## 0.1 Dashboard Related Endpoints (Implement First)
 
-Access:
-- HUB_MANAGER
+1. GET /hubs/my-hub
+- Purpose: Load hub identity and manager-facing branch context.
+- Full contract: Section 1.1
 
-Query:
-- None
+2. GET /hubs/riders
+- Purpose: Load rider dropdowns and dashboard staffing context.
+- Full contract: Section 4.1
 
-Body:
-- None
+3. GET /hubs/merchants
+- Purpose: Load merchant/store mappings for dashboard filters.
+- Full contract: Section 2.2
 
-Success response example:
-```json
-{
-  "hub": {
-    "id": "d6d01f20-5a41-4f01-80c2-c2da93e074f0",
-    "hub_code": "DHK_MAIN",
-    "branch_name": "Dhaka Main Hub",
-    "area": "Banani",
-    "address": "Road 11, Banani, Dhaka",
-    "manager_name": "Hub Manager",
-    "manager_phone": "01711111111",
-    "manager_email": "manager@hub.local",
-    "created_at": "2026-01-01T05:10:00.000Z",
-    "updated_at": "2026-04-11T08:00:00.000Z"
-  },
-  "message": "Hub information retrieved successfully"
-}
-```
+4. GET /hubs/top-merchant
+- Purpose: Dashboard top performer widget.
+- Full contract: Section 5.1
 
-## 1.2 Create Hub
-POST /hubs
+5. GET /hubs/finance/dashboard
+- Purpose: Finance cards for available balance and current month movement.
+- Full contract: Section 7.1
 
-Access:
-- ADMIN
+6. GET /hubs/finance/overview
+- Purpose: Aggregated finance overview totals.
+- Full contract: Section 7.8
 
-Body:
-```json
-{
-  "hub_code": "DHK_MAIN",
-  "branch_name": "Dhaka Main Hub",
-  "area": "Banani",
-  "address": "Road 11, Banani, Dhaka",
-  "manager_name": "Hub Manager",
-  "manager_phone": "01712345678",
-  "manager_email": "hub.manager@company.com",
-  "manager_password": "StrongPass1",
-  "manager_user_id": "optional-uuid"
-}
-```
+7. GET /hubs/finance/history
+- Purpose: Unified dashboard history feed for settlements, expenses, and transfers.
+- Full contract: Section 7.11
 
-Body rules:
-- hub_code optional (auto generated if not sent)
-- manager_phone must match BD format: 01[3-9]XXXXXXXX
-- manager_password min 8 chars with uppercase + lowercase + number
+8. GET /hubs/dashboard/parcels/:id
+- Purpose: Parcel drilldown page opened from dashboard lists.
+- Full contract: Section 2.10
 
-Success response example (201):
-```json
-{
-  "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-  "hub_code": "DHK_MAIN",
-  "message": "Hub created successfully"
-}
-```
+## 0.2 Parcel Endpoints (Proper Operational Flow)
 
-## 1.3 Get All Hubs
-GET /hubs
+1. GET /hubs/parcels/received
+- Flow step: Arrival queue for pickup-confirmed parcels.
+- Full contract: Section 2.3
+- Pre-receive edit action: PATCH /parcels/:id/hub-charges (Section 2.4)
 
-Access:
-- ADMIN
+2. POST /hubs/parcels/receive
+- Flow step: Mark arrived parcels as received in hub inventory.
+- Full contract: Section 2.5
+- Post-receive edit action: PATCH /parcels/:id (Section 2.6)
 
-Success response example:
-```json
-{
-  "hubs": [
-    {
-      "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-      "hub_code": "DHK_MAIN",
-      "branch_name": "Dhaka Main Hub",
-      "area": "Banani",
-      "address": "Road 11, Banani",
-      "manager_name": "Hub Manager",
-      "manager_phone": "01712345678"
-    }
-  ],
-  "total": 1,
-  "message": "Hubs retrieved successfully"
-}
-```
+3. GET /hubs/parcels/for-assignment
+- Flow step: Dispatch-ready inventory.
+- Full contract: Section 2.7
 
-## 1.4 Get Single Hub
-GET /hubs/:id
+4. POST /hubs/parcels/assign-rider
+- Flow step: Assign one or many parcels to rider.
+- Full contract: Section 2.8
 
-Access:
-- ADMIN
+5. GET /hubs/parcels
+- Flow step: Unified operational list with filters/sorting.
+- Full contract: Section 2.9
 
-Success response example:
-```json
-{
-  "hub": {
-    "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-    "hub_code": "DHK_MAIN",
-    "branch_name": "Dhaka Main Hub",
-    "area": "Banani",
-    "address": "Road 11",
-    "manager_name": "Hub Manager",
-    "manager_phone": "01712345678",
-    "manager_email": "hub.manager@company.com",
-    "created_at": "2026-01-01T05:10:00.000Z",
-    "updated_at": "2026-04-11T08:00:00.000Z"
-  },
-  "message": "Hub retrieved successfully"
-}
-```
+6. Delivery outcome review
+- GET /hubs/parcels/delivery-outcomes (Section 2.26)
+- GET /hubs/parcels/cleared-deliveries (Section 2.27)
+- GET /hubs/parcels/carrybee-cleared-deliveries (Section 2.28)
 
-## 1.5 Update Hub
-PATCH /hubs/:id
+7. Redelivery branch
+- PATCH /hubs/parcels/:id/reschedule-delivery (Section 2.11)
+- POST /hubs/parcels/bulk-reschedule-delivery (Section 2.12)
+- GET /hubs/parcels/rescheduled (Section 2.13)
+- PATCH /hubs/parcels/:id/prepare-redelivery (Section 2.14)
 
-Access:
-- ADMIN
+8. Return-to-merchant branch
+- PATCH /hubs/parcels/:id/return-to-merchant (Section 2.15)
+- POST /hubs/parcels/bulk-return-to-merchant (Section 2.16)
+- GET /hubs/parcels/return-to-merchant (Section 2.17)
 
-Body (all optional):
-```json
-{
-  "branch_name": "Dhaka North Hub",
-  "area": "Uttara",
-  "address": "Sector 10",
-  "manager_name": "New Manager",
-  "manager_phone": "01711112222",
-  "manager_user_id": "uuid"
-}
-```
+9. Inter-hub transfer branch
+- GET /hubs/list (Section 2.18)
+- GET /parcels/hub/in-hub (Section 2.19)
+- PATCH /hubs/parcels/:id/transfer (Section 2.21)
+- PATCH /hubs/parcels/bulk-transfer (Section 2.20)
+- GET /hubs/parcels/incoming (Section 2.22)
+- PATCH /hubs/parcels/:id/accept (Section 2.24)
+- PATCH /hubs/parcels/bulk-accept (Section 2.23)
+- GET /hubs/parcels/outgoing (Section 2.25)
 
-Success response example:
-```json
-{
-  "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-  "hub_code": "DHK_MAIN",
-  "message": "Hub updated successfully"
-}
-```
-
-## 1.6 Delete Hub
-DELETE /hubs/:id
-
-Access:
-- ADMIN
-
-Success response:
-```json
-{
-  "message": "Hub deleted successfully"
-}
-```
-
-## 1.7 Deactivate Hub
-PATCH /hubs/:id/deactivate
-
-Access:
-- ADMIN
-
-Success response:
-```json
-{
-  "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-  "hub_code": "DHK_MAIN",
-  "status": "INACTIVE",
-  "is_active": false,
-  "message": "Hub deactivated successfully"
-}
-```
-
-## 1.8 Activate Hub
-PATCH /hubs/:id/activate
-
-Access:
-- ADMIN
-
-Success response:
-```json
-{
-  "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-  "hub_code": "DHK_MAIN",
-  "status": "ACTIVE",
-  "is_active": true,
-  "message": "Hub activated successfully"
-}
-```
-
-## 1.9 Decline Hub
-PATCH /hubs/:id/decline
-
-Access:
-- ADMIN
-
-Success response:
-```json
-{
-  "id": "2f2f540f-8240-4ca5-bb53-7f6f33f754d0",
-  "hub_code": "DHK_MAIN",
-  "status": "DECLINED",
-  "is_active": false,
-  "message": "Hub declined permanently"
-}
-```
+10. Optional manual hub entry flow
+- POST /hubs/parcels/create-and-receive
+- Full contract: Section 2.1
 
 ------------------------------------------------------------
 
 # 2) Hub Parcel Operations
-
-## 2.1 Delivery Outcomes List
-GET /hubs/parcels/delivery-outcomes
+## 2.1 Create And Receive Parcel
+POST /hubs/parcels/create-and-receive
 
 Access:
 - HUB_MANAGER
 
-Query:
-- status: enum (optional) -> PARTIAL_DELIVERY | EXCHANGE | PAID_RETURN | RETURNED
-- zone: string (optional)
-- merchantId: UUID v4 (optional)
-- page: integer (optional, default 1, min 1)
-- limit: integer (optional, default 10, min 1, max 100)
-
-Full endpoint example:
-- GET /hubs/parcels/delivery-outcomes?status=RETURNED&zone=Rampura&merchantId=2f2f540f-8240-4ca5-bb53-7f6f33f754d0&page=1&limit=10
-
-Success response shape:
+Body (CreateParcelDto):
 ```json
 {
-  "success": true,
-  "data": {
-    "parcels": [
-      {
-        "id": "5e33dfbb-3b07-4ca6-8444-3f71b0dccce0",
-        "parcel_id": "5e33dfbb-3b07-4ca6-8444-3f71b0dccce0",
-        "parcel_tx_id": "MF130426N1K8",
-        "tracking_number": "TRK-20260413-00018",
-        "status": "RETURNED",
-        "reason": "Customer unavailable for 3 attempts",
-        "customer_name": "Aminul Islam",
-        "customer_phone": "01730000000",
-        "zone": "Rampura, Dhaka South",
-        "store": {
-          "name": "Daily Needs Mart",
-          "phone": "01855555555"
-        },
-        "cod_breakdown": {
-          "cod_amount": 980,
-          "cod_collected_amount": 0,
-          "delivery_charge": 70,
-          "cod_charge": 12,
-          "weight_charge": 0,
-          "return_charge": 30,
-          "total_charge": 112
-        },
-        "age": {
-          "total_age": "2 days 1h",
-          "created_at": "2026-04-11T11:10:00.000Z",
-          "updated_at": "2026-04-13T09:42:00.000Z"
-        }
-      }
-    ],
-    "pagination": {
-      "total": 7,
-      "page": 1,
-      "limit": 10,
-      "totalPages": 1
-    },
-    "summary": {
-      "total_collectable_amount": 3840
-    }
-  },
-  "message": "Delivery outcomes retrieved successfully"
+  "merchant_order_id": "ORDER-1001",
+  "merchant_id": "optional-uuid",
+  "store_id": "optional-uuid",
+  "delivery_area": "Banani",
+  "delivery_coverage_area_id": "optional-uuid",
+  "customer_name": "Customer",
+  "customer_phone": "01700000000",
+  "customer_secondary_phone": "01700000001",
+  "customer_address": "Customer full address",
+  "recipient_carrybee_city_id": 1,
+  "recipient_carrybee_zone_id": 10,
+  "recipient_carrybee_area_id": 100,
+  "product_description": "T-shirt",
+  "product_price": 500,
+  "product_weight": 0.5,
+  "parcel_type": 1,
+  "delivery_type": 1,
+  "is_exchange": false,
+  "special_instructions": "Call before delivery"
 }
 ```
 
-## 2.2 Rider Cleared Deliveries
-GET /hubs/parcels/cleared-deliveries
+Success response (201):
+```json
+{
+  "success": true,
+  "data": {
+    "parcel": {
+      "id": "uuid",
+      "tracking_number": "TRK123",
+      "merchant_order_id": "ORDER-1001",
+      "status": "IN_HUB"
+    }
+  },
+  "message": "Parcel created and received successfully"
+}
+```
+
+
+## 2.2 Get Hub Merchants
+GET /hubs/merchants
+
+Access:
+- HUB_MANAGER
+
+Success response:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "merchant_id": "uuid",
+      "merchant_name": "Merchant One",
+      "store_id": "uuid",
+      "store_name": "Store A"
+    }
+  ],
+  "message": "Hub merchants retrieved successfully"
+}
+```
+
+
+## 2.3 Parcels Awaiting Receipt
+GET /hubs/parcels/received
 
 Access:
 - HUB_MANAGER
 
 Query:
-- rider_id: UUID v4 (required)
 - page: integer (optional, default 1, min 1)
-- limit: integer (optional, default 10, min 1, max 100)
+- limit: integer (optional, default 20, min 1, max 100)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- paymentStatus: enum (optional) -> UNPAID | PAID | COD_COLLECTED
+- sortBy: string (optional, default created_at)
+  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, merchant_name, area, cod_amount, product_price, total_charge, status
+  - Friendly aliases: price, merchant_price, charge, customer, merchant, tracking
+  - Alias meaning:
+    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
+    - merchant_price = COALESCE(cod_amount, product_price, 0)
+    - charge = total_charge
+    - customer = customer_name
+    - merchant = merchant_name
+    - tracking = tracking_number
+  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
+- order: enum (optional, default DESC) -> ASC | DESC
+- status: ParcelStatus enum (optional) or ACTIVE alias
 
-Full endpoint example:
-- GET /hubs/parcels/cleared-deliveries?rider_id=84af0396-d76e-4a86-9678-318e1c078ad3&page=1&limit=10
+Full endpoint examples:
+- GET /hubs/parcels/received?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=PENDING
+- GET /hubs/parcels/received?page=2&limit=20&search=017&sortBy=updated_at&order=ASC&status=PICKED_UP
+- GET /hubs/parcels/received?page=1&limit=20&search=sifat&sortBy=price&order=ASC&status=PENDING
+- GET /hubs/parcels/received?page=1&limit=20&sortBy=charge&order=DESC&status=PICKED_UP
+- Full query example:
+  - GET /hubs/parcels/received?page=1&limit=20&status=ACTIVE&search=TRK&merchantId=2f2f540f-8240-4ca5-bb53-7f6f33f754d0&storeId=4fe99f8f-23b8-4cc2-a346-2c6186ec2230&customerName=Sadia&customerPhone=0170&merchantName=Beauty&area=Banani&minAmount=100&maxAmount=2500&deliveryType=NORMAL&paymentStatus=UNPAID&sortBy=merchant&order=ASC
 
-Success response shape:
+Query variants summary:
+- Search variant: `search`
+- Scope filters: `status`, `merchantId`, `storeId`
+- Person filters: `customerName`, `customerPhone`, `merchantName`
+- Value/location filters: `area`, `minAmount`, `maxAmount`, `paymentStatus`, `deliveryType`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response:
 ```json
 {
   "success": true,
   "data": {
     "parcels": [
       {
-        "id": "84af0396-d76e-4a86-9678-318e1c078ad3",
-        "parcel_id": "84af0396-d76e-4a86-9678-318e1c078ad3",
-        "parcel_tx_id": "MF130426R6V2",
-        "tracking_number": "TRK-20260413-00022",
-        "status": "DELIVERED",
-        "customer_name": "Sharmin Akter",
-        "customer_phone": "01740000000",
+        "id": "43f17894-71a8-4279-8c35-bf7fbabdd5a2",
+        "parcel_tx_id": "MF130426AA92",
+        "tracking_number": "TRK-20260413-00041",
+        "status": "PENDING",
+        "customer_name": "Sadia Noor",
         "store": {
-          "name": "Urban Style",
-          "phone": "01922222222"
-        },
-        "cod_breakdown": {
-          "cod_amount": 1600,
-          "cod_collected_amount": 1600,
-          "delivery_charge": 85,
-          "cod_charge": 18,
-          "weight_charge": 0,
-          "return_charge": 0,
-          "total_charge": 103
+          "id": "4fe99f8f-23b8-4cc2-a346-2c6186ec2230",
+          "business_name": "Beauty Corner"
         }
       }
     ],
-    "summary": {
-      "total_collectable_amount": 6220,
-      "total_cleared_parcels": 5
-    },
     "pagination": {
-      "total": 5,
+      "total": 12,
       "page": 1,
-      "limit": 10,
+      "limit": 20,
       "totalPages": 1
     }
   },
-  "message": "Cleared deliveries retrieved successfully"
+  "message": "Parcels awaiting receipt retrieved successfully"
+}
+```
+
+
+## 2.4 Update Hub Charges (Weight/Delivery Override)
+PATCH /parcels/:id/hub-charges
+
+Access:
+- HUB_MANAGER
+- ADMIN
+
+Body (all optional; send only what you want to override):
+```json
+{
+  "product_weight": 1.5,
+  "delivery_charge": 110,
+  "weight_charge": 35
+}
+```
+
+Business behavior:
+- Hub Manager can edit when parcel is hub-scoped:
+  - parcel.current_hub_id matches manager hub, or
+  - parcel.store.hub_id matches manager hub
+- Hub Manager editable statuses (before parcel is received):
+  - PENDING
+  - PICKED_UP
+  - OUT_FOR_PICKUP
+  - IN_TRANSIT
+- Admin editable statuses (before rider starts delivery):
+  - PENDING
+  - PICKED_UP
+  - OUT_FOR_PICKUP
+  - IN_TRANSIT
+  - IN_HUB
+  - ASSIGNED_TO_RIDER
+  - ASSIGNED_TO_THIRD_PARTY
+- Backend recalculates:
+  - total_charge = delivery_charge + weight_charge + cod_charge
+  - receivable_amount = cod_amount - total_charge
+- Returns full updated parcel in response.
+
+Success response:
+```json
+{
+  "parcel": {
+    "id": "6416d76d-4f94-4ccf-af0f-c03658fe28ca",
+    "tracking_number": "TRK-20260413-00063",
+    "status": "IN_HUB",
+    "product_weight": 1.5,
+    "delivery_charge": 110,
+    "weight_charge": 35,
+    "cod_charge": 15,
+    "total_charge": 160,
+    "cod_amount": 1200,
+    "receivable_amount": 1040
+  },
+  "message": "Parcel charges updated successfully"
+}
+```
+
+
+## 2.5 Bulk Receive Parcels
+POST /hubs/parcels/receive
+
+Access:
+- HUB_MANAGER
+
+Body:
+```json
+{
+  "parcel_ids": ["uuid-1", "uuid-2"]
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total": 2,
+      "success": 2,
+      "failed": 0
+    },
+    "results": [
+      { "parcel_id": "uuid-1", "success": true },
+      { "parcel_id": "uuid-2", "success": true }
+    ]
+  },
+  "message": "2 parcels marked as received successfully"
+}
+```
+
+
+## 2.6 Update Received Parcel Contact and Amount
+PATCH /parcels/:id
+
+Access:
+- HUB_MANAGER
+- ADMIN
+- MERCHANT
+
+Hub Manager usage in Hub Panel:
+- Use this endpoint after parcel is received (status IN_HUB).
+- Hub manager can update only:
+  - customer_phone
+  - customer_address
+  - product_price (amount)
+
+Body (hub manager allowed fields):
+```json
+{
+  "customer_phone": "01719998888",
+  "customer_address": "House 12, Road 5, Dhanmondi, Dhaka",
+  "product_price": 1350
+}
+```
+
+Business behavior:
+- If product_price is updated, backend auto-sets:
+  - cod_amount = product_price
+  - is_cod = product_price > 0
+  - receivable_amount = cod_amount - total_charge
+
+Success response:
+```json
+{
+  "parcel": {
+    "id": "6416d76d-4f94-4ccf-af0f-c03658fe28ca",
+    "tracking_number": "TRK-20260413-00063",
+    "status": "IN_HUB",
+    "customer_name": "Nusrat Jahan",
+    "customer_phone": "01719998888",
+    "customer_address": "House 12, Road 5, Dhanmondi, Dhaka",
+    "product_price": 1350,
+    "cod_amount": 1350,
+    "total_charge": 160,
+    "receivable_amount": 1190
+  },
+  "message": "Parcel updated successfully"
+}
+```
+
+------------------------------------------------------------
+
+## 2.7 Parcels For Assignment
+GET /hubs/parcels/for-assignment
+
+Access:
+- HUB_MANAGER
+
+Query:
+- page: integer (optional, default 1)
+- limit: integer (optional, default 20)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default created_at)
+- order: enum (optional, default DESC) -> ASC | DESC
+
+Full endpoint example:
+- GET /hubs/parcels/for-assignment?page=1&limit=20
+- Full query example:
+  - GET /hubs/parcels/for-assignment?page=1&limit=20&search=TRK&merchantName=Rafi&customerPhone=017&area=Banani&minAmount=100&maxAmount=5000&sortBy=merchant_price&order=DESC
+
+Query variants summary:
+- Search variant: `search`
+- Scope/person filters: `merchantId`, `storeId`, `customerName`, `customerPhone`, `merchantName`
+- Location/value filters: `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "parcels": [
+      {
+        "id": "fef5a539-1d2b-4fdd-9233-b6fc4f691f87",
+        "parcel_tx_id": "MF130426Y8Q1",
+        "tracking_number": "TRK-20260413-00052",
+        "status": "IN_HUB",
+        "customer_name": "Rafi Ahmed"
+      }
+    ],
+    "pagination": {
+      "total": 31,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 2
+    }
+  },
+  "message": "Parcels for assignment retrieved successfully"
+}
+```
+
+
+## 2.8 Assign Parcels To Rider
+POST /hubs/parcels/assign-rider
+
+Access:
+- HUB_MANAGER
+
+Body variants:
+
+Single:
+```json
+{
+  "rider_id": "uuid",
+  "parcel_id": "uuid",
+  "notes": "optional"
+}
+```
+
+Bulk:
+```json
+{
+  "rider_id": "uuid",
+  "parcel_ids": ["uuid-1", "uuid-2"],
+  "notes": "optional"
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total": 2,
+      "success": 2,
+      "failed": 0
+    },
+    "results": [
+      { "parcel_id": "uuid-1", "success": true },
+      { "parcel_id": "uuid-2", "success": true }
+    ]
+  },
+  "message": "2 parcels assigned to rider successfully"
+}
+```
+
+
+## 2.9 Hub Parcels List
+GET /hubs/parcels
+
+Access:
+- HUB_MANAGER
+
+Query:
+- page: integer (optional, default 1, min 1)
+- limit: integer (optional, default 20, min 1, max 100)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional) -> matches coverage area/city/zone or parcel delivery_area text
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- paymentStatus: enum (optional) -> UNPAID | PAID | COD_COLLECTED
+- sortBy: string (optional, default created_at)
+  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, merchant_name, area, cod_amount, product_price, total_charge, status
+  - Friendly aliases: price, merchant_price, charge, customer, merchant, tracking
+  - Alias meaning:
+    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
+    - merchant_price = COALESCE(cod_amount, product_price, 0)
+    - charge = total_charge
+    - customer = customer_name
+    - merchant = merchant_name
+    - tracking = tracking_number
+  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
+- order: enum (optional, default DESC) -> ASC | DESC
+- status: ParcelStatus enum (optional) or ACTIVE alias
+
+Full endpoint examples:
+- All query params together:
+  - GET /hubs/parcels?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=IN_HUB
+- Second page, ascending sort:
+  - GET /hubs/parcels?page=2&limit=50&search=0173&sortBy=updated_at&order=ASC&status=ASSIGNED_TO_RIDER
+- Price-wise low to high:
+  - GET /hubs/parcels?page=1&limit=20&sortBy=price&order=ASC&status=IN_HUB
+- Charge-wise high to low:
+  - GET /hubs/parcels?page=1&limit=20&sortBy=charge&order=DESC&status=IN_HUB
+- Full query example:
+  - GET /hubs/parcels?page=1&limit=20&status=ACTIVE&search=TRK-2026&merchantId=2f2f540f-8240-4ca5-bb53-7f6f33f754d0&storeId=4fe99f8f-23b8-4cc2-a346-2c6186ec2230&customerName=Sadia&customerPhone=0170&merchantName=Beauty&area=Banani&minAmount=100&maxAmount=3000&deliveryType=EXPRESS&paymentStatus=UNPAID&sortBy=merchant_price&order=DESC
+
+Query variants summary:
+- Search-first variant: `search`
+- Entity filters: `status`, `merchantId`, `storeId`, `customerName`, `customerPhone`, `merchantName`
+- Financial/coverage filters: `area`, `minAmount`, `maxAmount`, `paymentStatus`, `deliveryType`
+- Sort variants: explicit fields plus aliases (`price`, `merchant_price`, `charge`, `customer`, `merchant`, `tracking`)
+- Pagination variants: `page`, `limit`
+
+Query validation notes:
+- status must be a valid ParcelStatus enum value
+
+Success response example:
+```json
+{
+  "success": true,
+  "data": {
+    "parcels": [
+      {
+        "id": "uuid",
+        "tracking_number": "TRK123",
+        "customer_name": "Customer",
+        "customer_phone": "01700000000",
+        "status": "IN_HUB",
+        "total_charge": 70,
+        "cod_amount": 500,
+        "store": { "id": "uuid", "business_name": "Main Store" }
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1,
+      "hasNext": false,
+      "hasPrev": false
+    }
+  },
+  "message": "Parcels retrieved successfully"
+}
+```
+
+
+## 2.10 Hub Dashboard Parcel Detail
+GET /hubs/dashboard/parcels/:id
+
+Access:
+- HUB_MANAGER
+
+Success response example:
+```json
+{
+  "success": true,
+  "data": {
+    "parcel_id": "uuid",
+    "tracking_number": "TRK123",
+    "merchant_info": {
+      "merchant_id": "uuid",
+      "merchant_name": "Merchant Name",
+      "store_name": "Store Name",
+      "phone": "01700000000",
+      "address": "Dhaka"
+    },
+    "assigned_rider": {
+      "rider_id": "uuid",
+      "rider_name": "Rider",
+      "phone": "01711111111"
+    },
+    "customer_info": {
+      "customer_id": "uuid",
+      "customer_name": "Customer",
+      "phone_number": "01722222222",
+      "customer_address": "Address"
+    },
+    "live_status_controls": {
+      "current_status": "IN_HUB"
+    },
+    "package_information": {
+      "product_description": "Product",
+      "special_instructions": "Call before delivery",
+      "admin_notes": null
+    },
+    "financial_summary": {
+      "cod_amount": 500,
+      "delivery_charge": 60,
+      "weight_charge": 0,
+      "cod_charge": 10,
+      "discount": 0,
+      "total_charge": 70,
+      "total_payable": 430
+    },
+    "parcel_details": {
+      "parcel_weight": 1,
+      "parcel_type": 1,
+      "parcel_type_key": "PARCEL",
+      "parcel_type_label": "Parcel",
+      "delivery_type": 1,
+      "delivery_type_key": "NORMAL",
+      "delivery_type_label": "Normal Delivery",
+      "is_cod": true,
+      "is_exchange": false
+    },
+    "enum_mappings": {
+      "parcel_type": [
+        { "value": 1, "key": "PARCEL", "label": "Parcel" },
+        { "value": 2, "key": "BOOK", "label": "Book" },
+        { "value": 3, "key": "DOCUMENT", "label": "Document" }
+      ],
+      "delivery_type": [
+        { "value": 1, "key": "NORMAL", "label": "Normal Delivery" },
+        { "value": 2, "key": "EXPRESS", "label": "Express Delivery" },
+        { "value": 3, "key": "SAME_DAY", "label": "Same Day" }
+      ]
+    }
+  },
+  "message": "Hub dashboard parcel detail retrieved successfully"
 }
 ```
 
 Known 400 error:
-- rider_id query parameter is required
-- Invalid rider_id format. Must be a valid UUID
+- Your account is not assigned to any hub. Please contact admin.
 
-## 2.3 Carrybee Cleared Deliveries
-GET /hubs/parcels/carrybee-cleared-deliveries
+
+## 2.11 Mark Delivery Rescheduled
+PATCH /hubs/parcels/:id/reschedule-delivery
 
 Access:
 - HUB_MANAGER
 
-Query:
-- provider_id: UUID v4 (required)
-- page: integer (optional, default 1, min 1)
-- limit: integer (optional, default 10, min 1, max 100)
+Body:
+- None
 
-Full endpoint example:
-- GET /hubs/parcels/carrybee-cleared-deliveries?provider_id=4aef2e16-38cb-4e1f-b489-a946f239ab0d&page=1&limit=10
-
-Success response shape:
+Success response:
 ```json
 {
   "success": true,
   "data": {
-    "parcels": [
-      {
-        "id": "4aef2e16-38cb-4e1f-b489-a946f239ab0d",
-        "parcel_id": "4aef2e16-38cb-4e1f-b489-a946f239ab0d",
-        "parcel_tx_id": "MF130426KX21",
-        "tracking_number": "TRK-20260413-00027",
-        "status": "PARTIAL_DELIVERY",
-        "customer_name": "Tanjim Rahman",
-        "customer_phone": "01790000000",
-        "store": {
-          "name": "Tech Gadget BD",
-          "phone": "01744444444"
-        },
-        "cod_breakdown": {
-          "cod_amount": 2300,
-          "cod_collected_amount": 1800,
-          "delivery_charge": 95,
-          "cod_charge": 20,
-          "weight_charge": 15,
-          "return_charge": 0,
-          "total_charge": 130
-        }
-      }
-    ],
-    "summary": {
-      "total_collectable_amount": 9400,
-      "total_cleared_parcels": 9,
-      "provider_name": "Carrybee"
-    },
-    "pagination": {
-      "total": 9,
-      "page": 1,
-      "limit": 10,
-      "totalPages": 1
-    }
+    "id": "uuid",
+    "status": "DELIVERY_RESCHEDULED",
+    "tracking_number": "TRK123"
   },
-  "message": "Carrybee cleared deliveries retrieved successfully"
+  "message": "Parcel marked for redelivery. It will appear in rescheduled list."
 }
 ```
 
-## 2.4 Rescheduled Deliveries List
+
+## 2.12 Bulk Reschedule Delivery
+POST /hubs/parcels/bulk-reschedule-delivery
+
+Access:
+- HUB_MANAGER
+
+Body:
+```json
+{
+  "parcel_ids": ["uuid-1", "uuid-2"]
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total": 2,
+      "success": 2,
+      "failed": 0
+    },
+    "results": [
+      { "parcel_id": "uuid-1", "success": true },
+      { "parcel_id": "uuid-2", "success": true }
+    ]
+  },
+  "message": "2 parcels marked for rescheduled delivery"
+}
+```
+
+
+## 2.13 Rescheduled Deliveries List
 GET /hubs/parcels/rescheduled
 
 Access:
@@ -476,11 +723,31 @@ Access:
 Query:
 - page: integer (optional, default 1)
 - limit: integer (optional, default 10)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default updated_at)
+- order: enum (optional, default DESC) -> ASC | DESC
 
 Full endpoint example:
 - GET /hubs/parcels/rescheduled?page=1&limit=10
+- Full query example:
+  - GET /hubs/parcels/rescheduled?search=TRK&merchantName=Trendy&area=Dhanmondi&minAmount=50&maxAmount=3000&sortBy=updated_at&order=DESC&page=1&limit=10
 
-Success response shape:
+Query variants summary:
+- Fast search: `search`
+- Entity filters: `merchantId`, `storeId`, `customerName`, `customerPhone`, `merchantName`
+- Operational filters: `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response example (full):
 ```json
 {
   "success": true,
@@ -588,7 +855,90 @@ Demo response with data:
 }
 ```
 
-## 2.5 Return To Merchant List
+
+## 2.14 Prepare For Redelivery
+PATCH /hubs/parcels/:id/prepare-redelivery
+
+Access:
+- HUB_MANAGER
+
+Body:
+- None
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "status": "IN_HUB",
+    "tracking_number": "TRK123"
+  },
+  "message": "Parcel ready for redelivery. You can now assign it to a rider."
+}
+```
+
+
+## 2.15 Mark Parcel Return To Merchant
+PATCH /hubs/parcels/:id/return-to-merchant
+
+Access:
+- HUB_MANAGER
+
+Body:
+```json
+{
+  "notes": "Optional notes"
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "original_parcel": { "id": "uuid", "status": "RETURN_TO_MERCHANT" },
+    "return_parcel": { "id": "uuid", "status": "IN_HUB", "is_return_parcel": true }
+  },
+  "message": "Return parcel created. Assign to rider for delivery back to merchant."
+}
+```
+
+
+## 2.16 Bulk Return To Merchant
+POST /hubs/parcels/bulk-return-to-merchant
+
+Access:
+- HUB_MANAGER
+
+Body:
+```json
+{
+  "parcel_ids": ["uuid-1", "uuid-2"]
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total": 2,
+      "success": 2,
+      "failed": 0
+    },
+    "results": [
+      { "parcel_id": "uuid-1", "success": true },
+      { "parcel_id": "uuid-2", "success": true }
+    ]
+  },
+  "message": "2 parcels marked for return to merchant"
+}
+```
+
+
+## 2.17 Return To Merchant List
 GET /hubs/parcels/return-to-merchant
 
 Access:
@@ -597,11 +947,31 @@ Access:
 Query:
 - page: integer (optional, default 1)
 - limit: integer (optional, default 10)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default updated_at)
+- order: enum (optional, default DESC) -> ASC | DESC
 
 Full endpoint example:
 - GET /hubs/parcels/return-to-merchant?page=1&limit=10
+- Full query example:
+  - GET /hubs/parcels/return-to-merchant?search=RTN&merchantName=Home%20Living&customerPhone=0187&sortBy=updated_at&order=DESC&page=1&limit=10
 
-Success response shape:
+Query variants summary:
+- Search variants: `search`, `customerName`, `customerPhone`, `merchantName`
+- Scope filters: `merchantId`, `storeId`, `area`, `deliveryType`
+- Amount filters: `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response example (full):
 ```json
 {
   "success": true,
@@ -639,553 +1009,8 @@ Success response shape:
 }
 ```
 
-## 2.6 Mark Parcel Return To Merchant
-PATCH /hubs/parcels/:id/return-to-merchant
 
-Access:
-- HUB_MANAGER
-
-Body:
-```json
-{
-  "notes": "Optional notes"
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "original_parcel": { "id": "uuid", "status": "RETURN_TO_MERCHANT" },
-    "return_parcel": { "id": "uuid", "status": "IN_HUB", "is_return_parcel": true }
-  },
-  "message": "Return parcel created. Assign to rider for delivery back to merchant."
-}
-```
-
-## 2.7 Bulk Return To Merchant
-POST /hubs/parcels/bulk-return-to-merchant
-
-Access:
-- HUB_MANAGER
-
-Body:
-```json
-{
-  "parcel_ids": ["uuid-1", "uuid-2"]
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "summary": {
-      "total": 2,
-      "success": 2,
-      "failed": 0
-    },
-    "results": [
-      { "parcel_id": "uuid-1", "success": true },
-      { "parcel_id": "uuid-2", "success": true }
-    ]
-  },
-  "message": "2 parcels marked for return to merchant"
-}
-```
-
-## 2.8 Mark Delivery Rescheduled
-PATCH /hubs/parcels/:id/reschedule-delivery
-
-Access:
-- HUB_MANAGER
-
-Body:
-- None
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "status": "DELIVERY_RESCHEDULED",
-    "tracking_number": "TRK123"
-  },
-  "message": "Parcel marked for redelivery. It will appear in rescheduled list."
-}
-```
-
-## 2.9 Bulk Reschedule Delivery
-POST /hubs/parcels/bulk-reschedule-delivery
-
-Access:
-- HUB_MANAGER
-
-Body:
-```json
-{
-  "parcel_ids": ["uuid-1", "uuid-2"]
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "summary": {
-      "total": 2,
-      "success": 2,
-      "failed": 0
-    },
-    "results": [
-      { "parcel_id": "uuid-1", "success": true },
-      { "parcel_id": "uuid-2", "success": true }
-    ]
-  },
-  "message": "2 parcels marked for rescheduled delivery"
-}
-```
-
-## 2.10 Prepare For Redelivery
-PATCH /hubs/parcels/:id/prepare-redelivery
-
-Access:
-- HUB_MANAGER
-
-Body:
-- None
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "status": "IN_HUB",
-    "tracking_number": "TRK123"
-  },
-  "message": "Parcel ready for redelivery. You can now assign it to a rider."
-}
-```
-
-## 2.11 Hub Parcels List
-GET /hubs/parcels
-
-Access:
-- HUB_MANAGER
-
-Query:
-- page: integer (optional, default 1, min 1)
-- limit: integer (optional, default 20, min 1, max 100)
-- search: string (optional)
-- sortBy: string (optional, default created_at)
-  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, product_price, total_charge, status
-  - Friendly aliases: price, charge, customer, tracking
-  - Alias meaning:
-    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
-    - charge = total_charge
-    - customer = customer_name
-    - tracking = tracking_number
-  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
-- order: enum (optional, default DESC) -> ASC | DESC
-- status: ParcelStatus enum (optional)
-
-Full endpoint examples:
-- All query params together:
-  - GET /hubs/parcels?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=IN_HUB
-- Second page, ascending sort:
-  - GET /hubs/parcels?page=2&limit=50&search=0173&sortBy=updated_at&order=ASC&status=ASSIGNED_TO_RIDER
-- Price-wise low to high:
-  - GET /hubs/parcels?page=1&limit=20&sortBy=price&order=ASC&status=IN_HUB
-- Charge-wise high to low:
-  - GET /hubs/parcels?page=1&limit=20&sortBy=charge&order=DESC&status=IN_HUB
-
-Query validation notes:
-- status must be a valid ParcelStatus enum value
-
-Success response example:
-```json
-{
-  "success": true,
-  "data": {
-    "parcels": [
-      {
-        "id": "uuid",
-        "tracking_number": "TRK123",
-        "customer_name": "Customer",
-        "customer_phone": "01700000000",
-        "status": "IN_HUB",
-        "total_charge": 70,
-        "cod_amount": 500,
-        "store": { "id": "uuid", "business_name": "Main Store" }
-      }
-    ],
-    "pagination": {
-      "total": 1,
-      "page": 1,
-      "limit": 20,
-      "totalPages": 1,
-      "hasNext": false,
-      "hasPrev": false
-    }
-  },
-  "message": "Parcels retrieved successfully"
-}
-```
-
-## 2.12 Hub Dashboard Parcel Detail
-GET /hubs/dashboard/parcels/:id
-
-Access:
-- HUB_MANAGER
-
-Success response example:
-```json
-{
-  "success": true,
-  "data": {
-    "parcel_id": "uuid",
-    "tracking_number": "TRK123",
-    "merchant_info": {
-      "merchant_id": "uuid",
-      "merchant_name": "Merchant Name",
-      "store_name": "Store Name",
-      "phone": "01700000000",
-      "address": "Dhaka"
-    },
-    "assigned_rider": {
-      "rider_id": "uuid",
-      "rider_name": "Rider",
-      "phone": "01711111111"
-    },
-    "customer_info": {
-      "customer_id": "uuid",
-      "customer_name": "Customer",
-      "phone_number": "01722222222",
-      "customer_address": "Address"
-    },
-    "live_status_controls": {
-      "current_status": "IN_HUB"
-    },
-    "package_information": {
-      "product_description": "Product",
-      "special_instructions": "Call before delivery",
-      "admin_notes": null
-    },
-    "financial_summary": {
-      "cod_amount": 500,
-      "delivery_charge": 60,
-      "weight_charge": 0,
-      "cod_charge": 10,
-      "discount": 0,
-      "total_charge": 70,
-      "total_payable": 430
-    },
-    "parcel_details": {
-      "parcel_weight": 1,
-      "parcel_type": 1,
-      "parcel_type_key": "PARCEL",
-      "parcel_type_label": "Parcel",
-      "delivery_type": 1,
-      "delivery_type_key": "NORMAL",
-      "delivery_type_label": "Normal Delivery",
-      "is_cod": true,
-      "is_exchange": false
-    },
-    "enum_mappings": {
-      "parcel_type": [
-        { "value": 1, "key": "PARCEL", "label": "Parcel" },
-        { "value": 2, "key": "BOOK", "label": "Book" },
-        { "value": 3, "key": "DOCUMENT", "label": "Document" }
-      ],
-      "delivery_type": [
-        { "value": 1, "key": "NORMAL", "label": "Normal Delivery" },
-        { "value": 2, "key": "EXPRESS", "label": "Express Delivery" },
-        { "value": 3, "key": "SAME_DAY", "label": "Same Day" }
-      ]
-    }
-  },
-  "message": "Hub dashboard parcel detail retrieved successfully"
-}
-```
-
-Known 400 error:
-- Your account is not assigned to any hub. Please contact admin.
-
-## 2.13 Get Hub Merchants
-GET /hubs/merchants
-
-Access:
-- HUB_MANAGER
-
-Success response:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "merchant_id": "uuid",
-      "merchant_name": "Merchant One",
-      "store_id": "uuid",
-      "store_name": "Store A"
-    }
-  ],
-  "message": "Hub merchants retrieved successfully"
-}
-```
-
-## 2.14 Create And Receive Parcel
-POST /hubs/parcels/create-and-receive
-
-Access:
-- HUB_MANAGER
-
-Body (CreateParcelDto):
-```json
-{
-  "merchant_order_id": "ORDER-1001",
-  "merchant_id": "optional-uuid",
-  "store_id": "optional-uuid",
-  "delivery_area": "Banani",
-  "delivery_coverage_area_id": "optional-uuid",
-  "customer_name": "Customer",
-  "customer_phone": "01700000000",
-  "customer_secondary_phone": "01700000001",
-  "customer_address": "Customer full address",
-  "recipient_carrybee_city_id": 1,
-  "recipient_carrybee_zone_id": 10,
-  "recipient_carrybee_area_id": 100,
-  "product_description": "T-shirt",
-  "product_price": 500,
-  "product_weight": 0.5,
-  "parcel_type": 1,
-  "delivery_type": 1,
-  "is_exchange": false,
-  "special_instructions": "Call before delivery"
-}
-```
-
-Success response (201):
-```json
-{
-  "success": true,
-  "data": {
-    "parcel": {
-      "id": "uuid",
-      "tracking_number": "TRK123",
-      "merchant_order_id": "ORDER-1001",
-      "status": "IN_HUB"
-    }
-  },
-  "message": "Parcel created and received successfully"
-}
-```
-
-## 2.15 Parcels Awaiting Receipt
-GET /hubs/parcels/received
-
-Access:
-- HUB_MANAGER
-
-Query:
-- page: integer (optional, default 1, min 1)
-- limit: integer (optional, default 20, min 1, max 100)
-- search: string (optional)
-- sortBy: string (optional, default created_at)
-  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, product_price, total_charge, status
-  - Friendly aliases: price, charge, customer, tracking
-  - Alias meaning:
-    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
-    - charge = total_charge
-    - customer = customer_name
-    - tracking = tracking_number
-  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
-- order: enum (optional, default DESC) -> ASC | DESC
-- status: ParcelStatus enum (optional)
-
-Full endpoint examples:
-- GET /hubs/parcels/received?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=PENDING
-- GET /hubs/parcels/received?page=2&limit=20&search=017&sortBy=updated_at&order=ASC&status=PICKED_UP
-- GET /hubs/parcels/received?page=1&limit=20&search=sifat&sortBy=price&order=ASC&status=PENDING
-- GET /hubs/parcels/received?page=1&limit=20&sortBy=charge&order=DESC&status=PICKED_UP
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "parcels": [
-      {
-        "id": "43f17894-71a8-4279-8c35-bf7fbabdd5a2",
-        "parcel_tx_id": "MF130426AA92",
-        "tracking_number": "TRK-20260413-00041",
-        "status": "PENDING",
-        "customer_name": "Sadia Noor",
-        "store": {
-          "id": "4fe99f8f-23b8-4cc2-a346-2c6186ec2230",
-          "business_name": "Beauty Corner"
-        }
-      }
-    ],
-    "pagination": {
-      "total": 12,
-      "page": 1,
-      "limit": 20,
-      "totalPages": 1
-    }
-  },
-  "message": "Parcels awaiting receipt retrieved successfully"
-}
-```
-
-## 2.16 Bulk Receive Parcels
-POST /hubs/parcels/receive
-
-Access:
-- HUB_MANAGER
-
-Body:
-```json
-{
-  "parcel_ids": ["uuid-1", "uuid-2"]
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "summary": {
-      "total": 2,
-      "success": 2,
-      "failed": 0
-    },
-    "results": [
-      { "parcel_id": "uuid-1", "success": true },
-      { "parcel_id": "uuid-2", "success": true }
-    ]
-  },
-  "message": "2 parcels marked as received successfully"
-}
-```
-
-## 2.17 Parcels For Assignment
-GET /hubs/parcels/for-assignment
-
-Access:
-- HUB_MANAGER
-
-Query:
-- page: integer (optional, default 1)
-- limit: integer (optional, default 20)
-
-Full endpoint example:
-- GET /hubs/parcels/for-assignment?page=1&limit=20
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "parcels": [
-      {
-        "id": "fef5a539-1d2b-4fdd-9233-b6fc4f691f87",
-        "parcel_tx_id": "MF130426Y8Q1",
-        "tracking_number": "TRK-20260413-00052",
-        "status": "IN_HUB",
-        "customer_name": "Rafi Ahmed"
-      }
-    ],
-    "pagination": {
-      "total": 31,
-      "page": 1,
-      "limit": 20,
-      "totalPages": 2
-    }
-  },
-  "message": "Parcels for assignment retrieved successfully"
-}
-```
-
-## 2.18 Assign Parcel To Rider (Legacy)
-PATCH /hubs/parcels/:id/assign-rider
-
-Access:
-- HUB_MANAGER
-
-Body:
-```json
-{
-  "rider_id": "uuid",
-  "notes": "optional"
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "tracking_number": "TRK123",
-    "status": "ASSIGNED_TO_RIDER",
-    "assigned_rider_id": "uuid"
-  },
-  "message": "Parcel assigned to rider successfully"
-}
-```
-
-## 2.19 Assign Parcels To Rider (Unified)
-POST /hubs/parcels/assign-rider
-
-Access:
-- HUB_MANAGER
-
-Body variants:
-
-Single:
-```json
-{
-  "rider_id": "uuid",
-  "parcel_id": "uuid",
-  "notes": "optional"
-}
-```
-
-Bulk:
-```json
-{
-  "rider_id": "uuid",
-  "parcel_ids": ["uuid-1", "uuid-2"],
-  "notes": "optional"
-}
-```
-
-Success response:
-```json
-{
-  "success": true,
-  "data": {
-    "summary": {
-      "total": 2,
-      "success": 2,
-      "failed": 0
-    },
-    "results": [
-      { "parcel_id": "uuid-1", "success": true },
-      { "parcel_id": "uuid-2", "success": true }
-    ]
-  },
-  "message": "2 parcels assigned to rider successfully"
-}
-```
-
-## 2.20 Hub List For Transfers
+## 2.18 Hub List For Transfers
 GET /hubs/list
 
 Access:
@@ -1210,7 +1035,74 @@ Success response:
 }
 ```
 
-## 2.21 Bulk Transfer Parcels
+
+## 2.19 In-Hub and Returned-To-Hub Parcels (Related Endpoint)
+GET /parcels/hub/in-hub
+
+Access:
+- HUB_MANAGER
+
+Why this matters for Hub Panel:
+- Use this list for parcels currently inside hub inventory (IN_HUB and RETURNED_TO_HUB).
+
+Query:
+- page: integer (optional, default 1)
+- limit: integer (optional, default 20)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default created_at)
+- order: enum (optional, default DESC) -> ASC | DESC
+
+Full endpoint example:
+- GET /parcels/hub/in-hub?page=1&limit=20&sortBy=created_at&order=DESC
+- Full query example:
+  - GET /parcels/hub/in-hub?page=1&limit=20&search=TRK&merchantName=Main&area=Banani&minAmount=100&maxAmount=5000&sortBy=price&order=DESC
+
+Query variants summary:
+- Search variant: `search`
+- Scope filters: `merchantId`, `storeId`, `customerName`, `customerPhone`, `merchantName`
+- Operational filters: `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "6416d76d-4f94-4ccf-af0f-c03658fe28ca",
+      "parcel_tx_id": "MF1304268JQ2",
+      "tracking_number": "TRK-20260413-00063",
+      "status": "IN_HUB",
+      "product_weight": 1.2,
+      "delivery_charge": 90,
+      "weight_charge": 25,
+      "cod_charge": 15,
+      "total_charge": 130
+    }
+  ],
+  "pagination": {
+    "total": 57,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3,
+    "hasNext": true,
+    "hasPrev": false
+  },
+  "message": "Hub parcels in IN_HUB/RETURNED_TO_HUB retrieved successfully"
+}
+```
+
+
+## 2.20 Bulk Transfer Parcels
 PATCH /hubs/parcels/bulk-transfer
 
 Access:
@@ -1256,7 +1148,8 @@ Success response:
 }
 ```
 
-## 2.22 Transfer Single Parcel
+
+## 2.21 Transfer Single Parcel
 PATCH /hubs/parcels/:id/transfer
 
 Access:
@@ -1283,7 +1176,8 @@ Success response:
 }
 ```
 
-## 2.23 Incoming Parcels
+
+## 2.22 Incoming Parcels
 GET /hubs/parcels/incoming
 
 Access:
@@ -1292,9 +1186,28 @@ Access:
 Query:
 - page: integer (optional, default 1)
 - limit: integer (optional, default 20)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default transferred_at)
+- order: enum (optional, default DESC) -> ASC | DESC
 
 Full endpoint example:
 - GET /hubs/parcels/incoming?page=1&limit=20
+- Full query example:
+  - GET /hubs/parcels/incoming?page=1&limit=20&search=TRK&merchantName=Tech&area=Agrabad&sortBy=transferred_at&order=DESC
+
+Query variants summary:
+- Search/person filters: `search`, `customerName`, `customerPhone`, `merchantName`
+- Scope/value filters: `merchantId`, `storeId`, `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
 
 Success response:
 ```json
@@ -1320,7 +1233,8 @@ Success response:
 }
 ```
 
-## 2.24 Bulk Accept Incoming
+
+## 2.23 Bulk Accept Incoming
 PATCH /hubs/parcels/bulk-accept
 
 Access:
@@ -1352,7 +1266,8 @@ Success response:
 }
 ```
 
-## 2.25 Accept Single Incoming Parcel
+
+## 2.24 Accept Single Incoming Parcel
 PATCH /hubs/parcels/:id/accept
 
 Access:
@@ -1374,7 +1289,8 @@ Success response:
 }
 ```
 
-## 2.26 Outgoing Parcels
+
+## 2.25 Outgoing Parcels
 GET /hubs/parcels/outgoing
 
 Access:
@@ -1383,9 +1299,28 @@ Access:
 Query:
 - page: integer (optional, default 1)
 - limit: integer (optional, default 20)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- sortBy: string (optional, default transferred_at)
+- order: enum (optional, default DESC) -> ASC | DESC
 
 Full endpoint example:
 - GET /hubs/parcels/outgoing?page=1&limit=20
+- Full query example:
+  - GET /hubs/parcels/outgoing?page=1&limit=20&search=TRK&merchantName=Tech&area=Dhaka&sortBy=transferred_at&order=DESC
+
+Query variants summary:
+- Search/person filters: `search`, `customerName`, `customerPhone`, `merchantName`
+- Scope/value filters: `merchantId`, `storeId`, `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
 
 Success response:
 ```json
@@ -1410,106 +1345,255 @@ Success response:
 }
 ```
 
-## 2.27 In-Hub and Returned-To-Hub Parcels (Related Endpoint)
-GET /parcels/hub/in-hub
+
+## 2.26 Delivery Outcomes List
+GET /hubs/parcels/delivery-outcomes
 
 Access:
 - HUB_MANAGER
 
-Why this matters for Hub Panel:
-- Use this list for parcels currently inside hub inventory (IN_HUB and RETURNED_TO_HUB).
-
 Query:
-- page: integer (optional, default 1)
-- limit: integer (optional, default 20)
-- sortBy: string (optional, default created_at)
+- status: enum (optional) -> PARTIAL_DELIVERY | EXCHANGE | PAID_RETURN | RETURNED
+- zone: string (optional)
+- merchantId: UUID v4 (optional)
+- search: string (optional) -> parcel id/tracking/parcel_tx_id/customer/phone/merchant/store/area text
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- minAmount: number (optional, >= 0) -> amount range lower bound
+- maxAmount: number (optional, >= 0) -> amount range upper bound
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- page: integer (optional, default 1, min 1)
+- limit: integer (optional, default 10, min 1, max 100)
+- sortBy: string (optional, default updated_at)
+  - Common values: updated_at, created_at, tracking_number, parcel_tx_id, customer_name, customer_phone, merchant_name, area, cod_amount, product_price, total_charge, status
+  - Friendly aliases: tracking, customer, merchant, charge, price, merchant_price
 - order: enum (optional, default DESC) -> ASC | DESC
 
 Full endpoint example:
-- GET /parcels/hub/in-hub?page=1&limit=20&sortBy=created_at&order=DESC
+- GET /hubs/parcels/delivery-outcomes?status=RETURNED&zone=Rampura&merchantId=2f2f540f-8240-4ca5-bb53-7f6f33f754d0&page=1&limit=10
+- Full query example:
+  - GET /hubs/parcels/delivery-outcomes?status=RETURNED&zone=Rampura&merchantId=2f2f540f-8240-4ca5-bb53-7f6f33f754d0&search=TRK-2026&customerName=Aminul&customerPhone=0173&merchantName=Daily%20Needs&minAmount=100&maxAmount=2000&deliveryType=NORMAL&sortBy=price&order=DESC&page=1&limit=10
 
-Success response:
+Query variants summary:
+- Quick search only: `search`
+- Structured filters: `status`, `zone`, `merchantId`, `customerName`, `customerPhone`, `merchantName`, `minAmount`, `maxAmount`, `deliveryType`
+- Sorting variants: `sortBy` + `order`
+- Pagination variants: `page` + `limit`
+
+Success response example (full):
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "6416d76d-4f94-4ccf-af0f-c03658fe28ca",
-      "parcel_tx_id": "MF1304268JQ2",
-      "tracking_number": "TRK-20260413-00063",
-      "status": "IN_HUB",
-      "product_weight": 1.2,
-      "delivery_charge": 90,
-      "weight_charge": 25,
-      "cod_charge": 15,
-      "total_charge": 130
+  "data": {
+    "parcels": [
+      {
+        "id": "5e33dfbb-3b07-4ca6-8444-3f71b0dccce0",
+        "parcel_id": "5e33dfbb-3b07-4ca6-8444-3f71b0dccce0",
+        "parcel_tx_id": "MF130426N1K8",
+        "tracking_number": "TRK-20260413-00018",
+        "status": "RETURNED",
+        "reason": "Customer unavailable for 3 attempts",
+        "customer_name": "Aminul Islam",
+        "customer_phone": "01730000000",
+        "zone": "Rampura, Dhaka South",
+        "store": {
+          "name": "Daily Needs Mart",
+          "phone": "01855555555"
+        },
+        "cod_breakdown": {
+          "cod_amount": 980,
+          "cod_collected_amount": 0,
+          "delivery_charge": 70,
+          "cod_charge": 12,
+          "weight_charge": 0,
+          "return_charge": 30,
+          "total_charge": 112
+        },
+        "age": {
+          "total_age": "2 days 1h",
+          "created_at": "2026-04-11T11:10:00.000Z",
+          "updated_at": "2026-04-13T09:42:00.000Z"
+        }
+      }
+    ],
+    "pagination": {
+      "total": 7,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 1
+    },
+    "summary": {
+      "total_collectable_amount": 3840
     }
-  ],
-  "pagination": {
-    "total": 57,
-    "page": 1,
-    "limit": 20,
-    "totalPages": 3,
-    "hasNext": true,
-    "hasPrev": false
   },
-  "message": "Hub parcels in IN_HUB/RETURNED_TO_HUB retrieved successfully"
+  "message": "Delivery outcomes retrieved successfully"
 }
 ```
 
-## 2.28 Update Hub Charges (Weight/Delivery Override)
-PATCH /parcels/:id/hub-charges
+
+## 2.27 Rider Cleared Deliveries
+GET /hubs/parcels/cleared-deliveries
 
 Access:
 - HUB_MANAGER
-- ADMIN
 
-Body (all optional; send only what you want to override):
+Query:
+- rider_id: UUID v4 (required)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- page: integer (optional, default 1, min 1)
+- limit: integer (optional, default 10, min 1, max 100)
+- sortBy: string (optional, default delivered_at)
+- order: enum (optional, default DESC) -> ASC | DESC
+
+Full endpoint example:
+- GET /hubs/parcels/cleared-deliveries?rider_id=84af0396-d76e-4a86-9678-318e1c078ad3&page=1&limit=10
+- Full query example:
+  - GET /hubs/parcels/cleared-deliveries?rider_id=84af0396-d76e-4a86-9678-318e1c078ad3&search=TRK&merchantName=Urban&area=Dhaka&minAmount=100&maxAmount=3000&sortBy=price&order=DESC&page=1&limit=10
+
+Query variants summary:
+- Required identity filter: `rider_id`
+- Search/identity mix: `search`, `customerName`, `customerPhone`, `merchantName`
+- Business filters: `merchantId`, `storeId`, `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response example (full):
 ```json
 {
-  "product_weight": 1.5,
-  "delivery_charge": 110,
-  "weight_charge": 35
-}
-```
-
-Business behavior:
-- Hub Manager can edit when parcel is hub-scoped:
-  - parcel.current_hub_id matches manager hub, or
-  - parcel.store.hub_id matches manager hub
-- Editable statuses (before delivery outcome finalization):
-  - PENDING
-  - PICKED_UP
-  - OUT_FOR_PICKUP
-  - IN_TRANSIT
-  - IN_HUB
-  - ASSIGNED_TO_RIDER
-  - ASSIGNED_TO_THIRD_PARTY
-- Backend recalculates:
-  - total_charge = delivery_charge + weight_charge + cod_charge
-  - receivable_amount = cod_amount - total_charge
-- Returns full updated parcel in response.
-
-Success response:
-```json
-{
-  "parcel": {
-    "id": "6416d76d-4f94-4ccf-af0f-c03658fe28ca",
-    "tracking_number": "TRK-20260413-00063",
-    "status": "IN_HUB",
-    "product_weight": 1.5,
-    "delivery_charge": 110,
-    "weight_charge": 35,
-    "cod_charge": 15,
-    "total_charge": 160,
-    "cod_amount": 1200,
-    "receivable_amount": 1040
+  "success": true,
+  "data": {
+    "parcels": [
+      {
+        "id": "84af0396-d76e-4a86-9678-318e1c078ad3",
+        "parcel_id": "84af0396-d76e-4a86-9678-318e1c078ad3",
+        "parcel_tx_id": "MF130426R6V2",
+        "tracking_number": "TRK-20260413-00022",
+        "status": "DELIVERED",
+        "customer_name": "Sharmin Akter",
+        "customer_phone": "01740000000",
+        "store": {
+          "name": "Urban Style",
+          "phone": "01922222222"
+        },
+        "cod_breakdown": {
+          "cod_amount": 1600,
+          "cod_collected_amount": 1600,
+          "delivery_charge": 85,
+          "cod_charge": 18,
+          "weight_charge": 0,
+          "return_charge": 0,
+          "total_charge": 103
+        }
+      }
+    ],
+    "summary": {
+      "total_collectable_amount": 6220,
+      "total_cleared_parcels": 5
+    },
+    "pagination": {
+      "total": 5,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 1
+    }
   },
-  "message": "Parcel charges updated successfully"
+  "message": "Cleared deliveries retrieved successfully"
 }
 ```
 
-------------------------------------------------------------
+Known 400 error:
+- rider_id query parameter is required
+- Invalid rider_id format. Must be a valid UUID
+
+
+## 2.28 Carrybee Cleared Deliveries
+GET /hubs/parcels/carrybee-cleared-deliveries
+
+Access:
+- HUB_MANAGER
+
+Query:
+- provider_id: UUID v4 (required)
+- search: string (optional)
+- merchantId: UUID v4 (optional)
+- storeId: UUID v4 (optional)
+- customerName: string (optional)
+- customerPhone: string (optional)
+- merchantName: string (optional)
+- area: string (optional)
+- minAmount: number (optional, >= 0)
+- maxAmount: number (optional, >= 0)
+- deliveryType: enum (optional) -> NORMAL | EXPRESS | SAME_DAY
+- page: integer (optional, default 1, min 1)
+- limit: integer (optional, default 10, min 1, max 100)
+- sortBy: string (optional, default delivered_at)
+- order: enum (optional, default DESC) -> ASC | DESC
+
+Full endpoint example:
+- GET /hubs/parcels/carrybee-cleared-deliveries?provider_id=4aef2e16-38cb-4e1f-b489-a946f239ab0d&page=1&limit=10
+- Full query example:
+  - GET /hubs/parcels/carrybee-cleared-deliveries?provider_id=4aef2e16-38cb-4e1f-b489-a946f239ab0d&search=MF13&customerPhone=0179&area=Dhaka&minAmount=100&maxAmount=5000&sortBy=merchant_price&order=ASC&page=1&limit=10
+
+Query variants summary:
+- Required identity filter: `provider_id`
+- Search variants: `search`, `customerName`, `customerPhone`, `merchantName`
+- Business filters: `merchantId`, `storeId`, `area`, `deliveryType`, `minAmount`, `maxAmount`
+- Sort/pagination: `sortBy`, `order`, `page`, `limit`
+
+Success response example (full):
+```json
+{
+  "success": true,
+  "data": {
+    "parcels": [
+      {
+        "id": "4aef2e16-38cb-4e1f-b489-a946f239ab0d",
+        "parcel_id": "4aef2e16-38cb-4e1f-b489-a946f239ab0d",
+        "parcel_tx_id": "MF130426KX21",
+        "tracking_number": "TRK-20260413-00027",
+        "status": "PARTIAL_DELIVERY",
+        "customer_name": "Tanjim Rahman",
+        "customer_phone": "01790000000",
+        "store": {
+          "name": "Tech Gadget BD",
+          "phone": "01744444444"
+        },
+        "cod_breakdown": {
+          "cod_amount": 2300,
+          "cod_collected_amount": 1800,
+          "delivery_charge": 95,
+          "cod_charge": 20,
+          "weight_charge": 15,
+          "return_charge": 0,
+          "total_charge": 130
+        }
+      }
+    ],
+    "summary": {
+      "total_collectable_amount": 9400,
+      "total_cleared_parcels": 9,
+      "provider_name": "Carrybee"
+    },
+    "pagination": {
+      "total": 9,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 1
+    }
+  },
+  "message": "Carrybee cleared deliveries retrieved successfully"
+}
+```
+
 
 # 3) Parcel Issue Reports
 
@@ -1668,23 +1752,39 @@ GET /hubs/riders/:riderId/settlement
 Access:
 - HUB_MANAGER
 
-Success response (shape):
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
-    "rider": {
-      "id": "uuid",
-      "name": "Rider Name"
+    "rider_id": "99f46e35-5fc0-4ef4-8af6-8739ea11b74a",
+    "rider_name": "Rider Name",
+    "rider_phone": "01711111111",
+    "total_collected_amount": 12000,
+    "completed_deliveries": 7,
+    "previous_due_amount": 500,
+    "current_due_amount": 500,
+    "period_start": "2026-04-01T00:00:00.000Z",
+    "period_end": "2026-04-13T10:00:00.000Z",
+    "breakdown": {
+      "delivered": 5,
+      "partial_delivery": 1,
+      "exchange": 0,
+      "paid_return": 1,
+      "returned": 0
     },
-    "totals": {
-      "total_collected": 12000,
-      "previous_due": 500
-    },
-    "period": {
-      "start": "2026-04-01T00:00:00.000Z",
-      "end": "2026-04-13T10:00:00.000Z"
-    }
+    "parcels": [
+      {
+        "parcel_id": "f8602ff8-1f07-4f16-b300-2f9eff4d8c62",
+        "parcel_tx_id": "MF130426A9X2",
+        "tracking_number": "TRK-20260413-00031",
+        "status": "DELIVERED",
+        "collected_amount": 1450,
+        "expected_cod_amount": 1450,
+        "amount_difference": 0,
+        "delivery_completed_at": "2026-04-13T08:30:00.000Z"
+      }
+    ]
   },
   "message": "Settlement details retrieved successfully"
 }
@@ -1708,11 +1808,27 @@ Success response:
 {
   "success": true,
   "data": {
-    "total_collected_amount": 12000,
-    "cash_received": 11000,
-    "discrepancy_amount": -1000,
-    "new_due_amount": 1000,
-    "settlement_status": "PARTIAL"
+    "rider_id": "99f46e35-5fc0-4ef4-8af6-8739ea11b74a",
+    "rider_name": "Rider Name",
+    "settlement_period": {
+      "from": "2026-04-01T00:00:00.000Z",
+      "to": "2026-04-13T10:00:00.000Z"
+    },
+    "calculation": {
+      "total_collected_amount": 12000,
+      "previous_due_amount": 500,
+      "total_due_to_hub": 12500,
+      "cash_received": 11000,
+      "discrepancy_amount": -1500,
+      "new_due_amount": 1500
+    },
+    "breakdown": {
+      "delivered": 5,
+      "partial_delivery": 1,
+      "exchange": 0,
+      "paid_return": 1,
+      "returned": 0
+    }
   },
   "message": "Settlement calculation completed"
 }
@@ -1766,7 +1882,7 @@ Query:
 Full endpoint example:
 - GET /hubs/riders/99f46e35-5fc0-4ef4-8af6-8739ea11b74a/settlement/history?start_date=2026-04-01&end_date=2026-04-13&status=PARTIAL&page=1&limit=20
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
@@ -1856,9 +1972,25 @@ Success response (201):
   "success": true,
   "data": {
     "transfer_record": {
-      "id": "uuid",
+      "id": "cc2a1464-4d3c-4e4d-94b1-c067fc31be4d",
+      "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+      "transferred_amount": 50000,
+      "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+      "admin_account_name": "Admin Main Account",
+      "admin_account_number": "1234567890",
+      "admin_account_holder_name": "Company Admin",
+      "transaction_reference_id": "TXN-100001",
+      "proof_file_url": "https://cdn.example.com/proof.pdf",
       "status": "PENDING",
-      "transferred_amount": 50000
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "admin_notes": null,
+      "rejection_reason": null,
+      "notes": "optional",
+      "transfer_date": "2026-04-13T09:00:00.000Z",
+      "created_at": "2026-04-13T09:00:00.000Z",
+      "updated_at": "2026-04-13T09:00:00.000Z"
     }
   },
   "message": "Transfer record created successfully"
@@ -1894,12 +2026,27 @@ Success response:
         "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
         "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
         "transferred_amount": 50000,
+        "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
         "admin_account_name": "Main Settlement Account",
         "admin_account_number": "2345123456789",
+        "admin_account_holder_name": "Company Admin",
         "transaction_reference_id": "TXN-100001",
+        "proof_file_url": "https://cdn.example.com/proof.pdf",
         "status": "PENDING",
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "admin_notes": null,
+        "rejection_reason": null,
+        "notes": "optional",
         "transfer_date": "2026-04-13T09:00:00.000Z",
-        "created_at": "2026-04-13T09:00:00.000Z"
+        "created_at": "2026-04-13T09:00:00.000Z",
+        "updated_at": "2026-04-13T09:00:00.000Z",
+        "reviewer": null,
+        "hub": {
+          "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+          "hub_code": "DHK_MAIN",
+          "branch_name": "Dhaka Main Hub"
+        }
       }
     ],
     "pagination": {
@@ -1925,9 +2072,37 @@ Success response:
   "success": true,
   "data": {
     "transfer_record": {
-      "id": "uuid",
+      "id": "cc2a1464-4d3c-4e4d-94b1-c067fc31be4d",
+      "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+      "transferred_amount": 50000,
+      "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+      "admin_account_name": "Admin Main Account",
+      "admin_account_number": "1234567890",
+      "admin_account_holder_name": "Company Admin",
+      "transaction_reference_id": "TXN-100001",
+      "proof_file_url": "https://cdn.example.com/proof.pdf",
       "status": "PENDING",
-      "transferred_amount": 50000
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "admin_notes": null,
+      "rejection_reason": null,
+      "notes": "optional",
+      "transfer_date": "2026-04-13T09:00:00.000Z",
+      "created_at": "2026-04-13T09:00:00.000Z",
+      "updated_at": "2026-04-13T09:00:00.000Z",
+      "hubManager": {
+        "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+        "user": {
+          "id": "495a7669-11ee-4c6d-a7b1-2e4cf731dd37",
+          "full_name": "Dhaka Hub Manager"
+        }
+      },
+      "hub": {
+        "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+        "branch_name": "Dhaka Main Hub"
+      },
+      "reviewer": null
     }
   },
   "message": "Transfer record retrieved successfully"
@@ -1960,9 +2135,25 @@ Success response:
   "success": true,
   "data": {
     "transfer_record": {
-      "id": "uuid",
+      "id": "cc2a1464-4d3c-4e4d-94b1-c067fc31be4d",
+      "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+      "transferred_amount": 52000,
+      "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+      "admin_account_name": "Admin Main Account",
+      "admin_account_number": "1234567890",
+      "admin_account_holder_name": "Company Admin",
+      "transaction_reference_id": "TXN-100002",
+      "proof_file_url": "https://cdn.example.com/new-proof.pdf",
       "status": "PENDING",
-      "transferred_amount": 52000
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "admin_notes": null,
+      "rejection_reason": null,
+      "notes": "updated notes",
+      "transfer_date": "2026-04-13T09:00:00.000Z",
+      "created_at": "2026-04-13T09:00:00.000Z",
+      "updated_at": "2026-04-13T10:15:00.000Z"
     }
   },
   "message": "Transfer record updated successfully"
@@ -1993,19 +2184,17 @@ GET /hubs/finance/dashboard
 Access:
 - HUB_MANAGER
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
-    "cash_in_hand": 150000,
+    "available_balance": 150000,
+    "transferred_this_month": 32000,
+    "expenses_this_month": 1200,
     "pending_transfer": 20000,
-    "pending_expense": 5000,
-    "today": {
-      "collected": 32000,
-      "expense": 1200,
-      "transferred": 10000
-    }
+    "lifetime_expenses": 5000,
+    "lifetime_transferred": 92000
   }
 }
 ```
@@ -2029,9 +2218,12 @@ Success response:
   "success": true,
   "message": "Cash collected successfully",
   "data": {
-    "rider_id": "uuid",
+    "rider_id": "84af0396-d76e-4a86-9678-318e1c078ad3",
+    "parcel_count": 5,
     "counted_amount": 13000,
-    "recorded_at": "2026-04-13T10:30:00.000Z"
+    "cod_cleared_at": "2026-04-13T10:30:00.000Z",
+    "current_balance": 150000,
+    "message": "COD collection processed successfully"
   }
 }
 ```
@@ -2053,11 +2245,17 @@ Success response:
 ```json
 {
   "success": true,
-  "message": "Carrybee cash collected successfully",
+  "message": "COD collected from Carrybee successfully",
   "data": {
-    "provider_id": "uuid",
+    "provider_id": "4aef2e16-38cb-4e1f-b489-a946f239ab0d",
+    "provider_name": "Carrybee",
+    "parcel_count": 9,
+    "total_expected_amount": 22000,
     "counted_amount": 22000,
-    "recorded_at": "2026-04-13T10:30:00.000Z"
+    "discrepancy": 0,
+    "cod_cleared_at": "2026-04-13T10:30:00.000Z",
+    "current_balance": 172000,
+    "message": "COD collected from Carrybee successfully"
   }
 }
 ```
@@ -2093,10 +2291,19 @@ Success response:
   "success": true,
   "message": "Expense recorded successfully",
   "data": {
-    "id": "uuid",
+    "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
     "amount": 1500,
     "category": "OFFICE_SUPPLY",
-    "status": "IN_REVIEW"
+    "reason": "Printer paper",
+    "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
+    "status": "IN_REVIEW",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "rejection_reason": null,
+    "created_at": "2026-04-13T08:10:00.000Z",
+    "updated_at": "2026-04-13T08:10:00.000Z"
   }
 }
 ```
@@ -2127,9 +2334,24 @@ Success response:
   "success": true,
   "message": "Transfer submitted successfully",
   "data": {
-    "id": "uuid",
-    "status": "PENDING",
-    "transferred_amount": 50000
+    "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "transferred_amount": 50000,
+    "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+    "admin_account_name": "Admin Main Account",
+    "admin_account_number": "1234567890",
+    "admin_account_holder_name": "Company Admin",
+    "transaction_reference_id": "TXN-200001",
+    "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
+    "status": "IN_REVIEW",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "rejection_reason": null,
+    "notes": "weekly transfer",
+    "transfer_date": "2026-04-13T09:00:00.000Z",
+    "created_at": "2026-04-13T09:00:00.000Z",
+    "updated_at": "2026-04-13T09:00:00.000Z"
   }
 }
 ```
@@ -2151,7 +2373,7 @@ Query:
 Full endpoint example:
 - GET /hubs/finance/transfers?page=1&limit=20&search=TXN-200001&sortBy=created_at&order=DESC
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
@@ -2159,9 +2381,24 @@ Success response shape:
     "items": [
       {
         "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+        "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+        "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
         "transferred_amount": 50000,
+        "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+        "admin_account_name": "Admin Main Account",
+        "admin_account_number": "1234567890",
+        "admin_account_holder_name": "Company Admin",
+        "transaction_reference_id": "TXN-200001",
+        "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
         "status": "IN_REVIEW",
-        "transfer_date": "2026-04-13T09:00:00.000Z"
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "admin_notes": null,
+        "rejection_reason": null,
+        "notes": "weekly transfer",
+        "transfer_date": "2026-04-13T09:00:00.000Z",
+        "created_at": "2026-04-13T09:00:00.000Z",
+        "updated_at": "2026-04-13T09:00:00.000Z"
       }
     ],
     "meta": {
@@ -2180,14 +2417,31 @@ GET /hubs/finance/transfers/:id
 Access:
 - HUB_MANAGER
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
-    "id": "uuid",
+    "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
     "transferred_amount": 50000,
-    "status": "PENDING"
+    "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+    "admin_account_name": "Admin Main Account",
+    "admin_account_number": "1234567890",
+    "admin_account_holder_name": "Company Admin",
+    "transaction_reference_id": "TXN-200001",
+    "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
+    "status": "IN_REVIEW",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "admin_notes": null,
+    "rejection_reason": null,
+    "notes": "weekly transfer",
+    "transfer_date": "2026-04-13T09:00:00.000Z",
+    "created_at": "2026-04-13T09:00:00.000Z",
+    "updated_at": "2026-04-13T09:00:00.000Z",
+    "reviewer": null
   }
 }
 ```
@@ -2198,15 +2452,17 @@ GET /hubs/finance/overview
 Access:
 - HUB_MANAGER
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
-    "total_collected": 200000,
-    "total_expense": 15000,
-    "total_transferred": 130000,
-    "balance": 55000
+    "available_balance": 55000,
+    "transferred_this_month": 130000,
+    "expenses_this_month": 15000,
+    "pending_transfer": 20000,
+    "lifetime_expenses": 42000,
+    "lifetime_transferred": 130000
   }
 }
 ```
@@ -2228,7 +2484,7 @@ Query:
 Full endpoint example:
 - GET /hubs/finance/expenses?page=1&limit=20&search=OFFICE_SUPPLY&sortBy=created_at&order=DESC
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
@@ -2236,10 +2492,18 @@ Success response shape:
     "items": [
       {
         "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+        "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+        "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
         "amount": 1500,
         "category": "OFFICE_SUPPLY",
+        "reason": "Printer paper",
+        "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
         "status": "IN_REVIEW",
-        "created_at": "2026-04-13T08:10:00.000Z"
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "rejection_reason": null,
+        "created_at": "2026-04-13T08:10:00.000Z",
+        "updated_at": "2026-04-13T08:10:00.000Z"
       }
     ],
     "meta": {
@@ -2258,15 +2522,25 @@ GET /hubs/finance/expenses/:id
 Access:
 - HUB_MANAGER
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
-    "id": "uuid",
+    "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
     "amount": 1500,
     "category": "OFFICE_SUPPLY",
-    "status": "IN_REVIEW"
+    "reason": "Printer paper",
+    "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
+    "status": "IN_REVIEW",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "rejection_reason": null,
+    "created_at": "2026-04-13T08:10:00.000Z",
+    "updated_at": "2026-04-13T08:10:00.000Z",
+    "reviewer": null
   }
 }
 ```
@@ -2292,32 +2566,73 @@ Query:
 Full endpoint example:
 - GET /hubs/finance/history?period=MONTHLY&type=TRANSFER&page=1&limit=20&search=TXN-200001&sortBy=created_at&order=DESC
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": {
     "expenses": [
       {
-        "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+        "id": "38f9e1c4-6f67-42dd-b59e-9cf4d26a4282",
+        "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+        "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
         "amount": 1500,
         "category": "OFFICE_SUPPLY",
-        "status": "IN_REVIEW"
+        "reason": "Printer paper",
+        "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
+        "status": "IN_REVIEW",
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "rejection_reason": null,
+        "created_at": "2026-04-13T08:10:00.000Z",
+        "updated_at": "2026-04-13T08:10:00.000Z"
       }
     ],
     "transfers": [
       {
-        "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+        "id": "2efb9a0f-cffd-4afe-89f8-0f1e492f8cca",
+        "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+        "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
         "transferred_amount": 50000,
-        "status": "IN_REVIEW"
+        "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+        "admin_account_name": "Admin Main Account",
+        "admin_account_number": "1234567890",
+        "admin_account_holder_name": "Company Admin",
+        "transaction_reference_id": "TXN-200001",
+        "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
+        "status": "IN_REVIEW",
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "rejection_reason": null,
+        "notes": "weekly transfer",
+        "transfer_date": "2026-04-13T09:00:00.000Z",
+        "created_at": "2026-04-13T09:00:00.000Z",
+        "updated_at": "2026-04-13T09:00:00.000Z"
       }
     ],
     "settlements": [
       {
         "id": "99f46e35-5fc0-4ef4-8af6-8739ea11b74a",
+        "rider_id": "84af0396-d76e-4a86-9678-318e1c078ad3",
+        "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+        "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
         "total_collected_amount": 6400,
         "cash_received": 6000,
-        "settlement_status": "PARTIAL"
+        "discrepancy_amount": -400,
+        "previous_due_amount": 0,
+        "new_due_amount": 400,
+        "completed_deliveries": 7,
+        "delivered_count": 6,
+        "partial_delivery_count": 1,
+        "exchange_count": 0,
+        "paid_return_count": 0,
+        "returned_count": 0,
+        "settlement_status": "PARTIAL",
+        "period_start": "2026-04-01T00:00:00.000Z",
+        "period_end": "2026-04-13T10:30:00.000Z",
+        "settled_at": "2026-04-13T10:42:00.000Z",
+        "created_at": "2026-04-13T10:42:00.000Z",
+        "updated_at": "2026-04-13T10:42:00.000Z"
       }
     ],
     "meta": {
@@ -2354,23 +2669,43 @@ Query:
 Full endpoint example:
 - GET /hubs/admin/finance/transfers?page=1&limit=20&search=TXN-200001&sortBy=created_at&order=DESC
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": [
     {
       "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+      "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
       "transferred_amount": 50000,
+      "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+      "admin_account_name": "Admin Main Account",
+      "admin_account_number": "1234567890",
+      "admin_account_holder_name": "Company Admin",
       "status": "IN_REVIEW",
       "transaction_reference_id": "TXN-200001",
+      "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "rejection_reason": null,
+      "notes": "weekly transfer",
+      "transfer_date": "2026-04-13T09:00:00.000Z",
+      "created_at": "2026-04-13T09:00:00.000Z",
+      "updated_at": "2026-04-13T09:00:00.000Z",
       "hub": {
         "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
         "branch_name": "Dhaka Main Hub"
       },
       "hubManager": {
-        "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5"
-      }
+        "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+        "user": {
+          "id": "495a7669-11ee-4c6d-a7b1-2e4cf731dd37",
+          "full_name": "Dhaka Hub Manager",
+          "phone": "01711111111"
+        }
+      },
+      "reviewer": null
     }
   ],
   "meta": {
@@ -2393,13 +2728,38 @@ Success response:
 {
   "success": true,
   "data": {
-    "id": "uuid",
-    "status": "PENDING",
+    "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
     "transferred_amount": 50000,
+    "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+    "admin_account_name": "Admin Main Account",
+    "admin_account_number": "1234567890",
+    "admin_account_holder_name": "Company Admin",
+    "transaction_reference_id": "TXN-200001",
+    "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
+    "status": "IN_REVIEW",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "admin_notes": null,
+    "rejection_reason": null,
+    "notes": "weekly transfer",
+    "transfer_date": "2026-04-13T09:00:00.000Z",
+    "created_at": "2026-04-13T09:00:00.000Z",
+    "updated_at": "2026-04-13T09:00:00.000Z",
     "hub": {
-      "id": "uuid",
+      "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
       "branch_name": "Dhaka Main Hub"
-    }
+    },
+    "hubManager": {
+      "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "user": {
+        "id": "495a7669-11ee-4c6d-a7b1-2e4cf731dd37",
+        "full_name": "Dhaka Hub Manager",
+        "phone": "01711111111"
+      }
+    },
+    "reviewer": null
   }
 }
 ```
@@ -2421,19 +2781,36 @@ Query:
 Full endpoint example:
 - GET /hubs/admin/finance/expenses?page=1&limit=20&search=OFFICE_SUPPLY&sortBy=created_at&order=DESC
 
-Success response shape:
+Success response example (full):
 ```json
 {
   "success": true,
   "data": [
     {
       "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+      "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+      "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
       "amount": 1500,
       "category": "OFFICE_SUPPLY",
+      "reason": "Printer paper",
+      "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
       "status": "IN_REVIEW",
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "rejection_reason": null,
+      "created_at": "2026-04-13T08:10:00.000Z",
+      "updated_at": "2026-04-13T08:10:00.000Z",
       "hub": {
         "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
         "branch_name": "Dhaka Main Hub"
+      },
+      "hubManager": {
+        "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+        "user": {
+          "id": "495a7669-11ee-4c6d-a7b1-2e4cf731dd37",
+          "full_name": "Dhaka Hub Manager",
+          "phone": "01711111111"
+        }
       }
     }
   ],
@@ -2457,10 +2834,32 @@ Success response:
 {
   "success": true,
   "data": {
-    "id": "uuid",
+    "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "reason": "Printer paper",
+    "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
     "status": "IN_REVIEW",
     "amount": 1500,
-    "category": "OFFICE_SUPPLY"
+    "category": "OFFICE_SUPPLY",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "rejection_reason": null,
+    "created_at": "2026-04-13T08:10:00.000Z",
+    "updated_at": "2026-04-13T08:10:00.000Z",
+    "hub": {
+      "id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+      "branch_name": "Dhaka Main Hub"
+    },
+    "hubManager": {
+      "id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+      "user": {
+        "id": "495a7669-11ee-4c6d-a7b1-2e4cf731dd37",
+        "full_name": "Dhaka Hub Manager",
+        "phone": "01711111111"
+      }
+    },
+    "reviewer": null
   }
 }
 ```
@@ -2489,9 +2888,25 @@ Success response:
   "success": true,
   "message": "Transfer request approved",
   "data": {
-    "id": "uuid",
+    "id": "fceeb52c-fd78-4fcf-a5a8-a2143001908a",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "transferred_amount": 50000,
+    "admin_account_id": "8f9c9639-6cd0-4318-9edf-73b05742e40a",
+    "admin_account_name": "Admin Main Account",
+    "admin_account_number": "1234567890",
+    "admin_account_holder_name": "Company Admin",
+    "transaction_reference_id": "TXN-200001",
+    "proof_file_url": "https://cdn.example.com/transfer-proof.jpg",
     "status": "APPROVED",
-    "reviewed_at": "2026-04-13T10:30:00.000Z"
+    "reviewed_by": "9e41beba-c5b3-4539-9f0e-76cb96154c2b",
+    "reviewed_at": "2026-04-13T10:30:00.000Z",
+    "admin_notes": null,
+    "rejection_reason": null,
+    "notes": "weekly transfer",
+    "transfer_date": "2026-04-13T09:00:00.000Z",
+    "created_at": "2026-04-13T09:00:00.000Z",
+    "updated_at": "2026-04-13T10:30:00.000Z"
   }
 }
 ```
@@ -2516,9 +2931,19 @@ Success response:
   "success": true,
   "message": "Expense request declined",
   "data": {
-    "id": "uuid",
+    "id": "91131ec1-1f8e-42db-a11d-16ebd9afe426",
+    "hub_id": "8f8c6c8a-e8b4-4c37-88d0-249b09c69758",
+    "hub_manager_id": "34f0679c-079f-4e8e-a9a8-4b94ca2517a5",
+    "amount": 1500,
+    "category": "OFFICE_SUPPLY",
+    "reason": "Printer paper",
+    "proof_file_url": "https://cdn.example.com/expense-proof.jpg",
     "status": "DECLINED",
-    "rejection_reason": "Bill not valid"
+    "reviewed_by": "9e41beba-c5b3-4539-9f0e-76cb96154c2b",
+    "reviewed_at": "2026-04-13T10:30:00.000Z",
+    "rejection_reason": "Bill not valid",
+    "created_at": "2026-04-13T08:10:00.000Z",
+    "updated_at": "2026-04-13T10:30:00.000Z"
   }
 }
 ```
@@ -2533,8 +2958,7 @@ Success response:
 4. Bulk endpoints return mixed results in data.results; build UI to show partial success.
 5. For dashboard parcel detail, use enum_mappings from API for dropdown labels instead of hardcoding.
 6. finance/transfer and transfer-records create share similar body contract; both currently require proof_file_url in request body.
-7. Legacy endpoint PATCH /hubs/parcels/:id/assign-rider exists, but use POST /hubs/parcels/assign-rider for new implementation.
-- 8. In hub parcel list endpoints, prefer explicit sortBy values cod_amount, product_price, and total_charge; avoid alias price when exact pricing metric matters.
+7. In hub parcel list endpoints, prefer explicit sortBy values cod_amount, product_price, and total_charge; avoid alias price when exact pricing metric matters.
 
 ------------------------------------------------------------
 
@@ -2589,7 +3013,9 @@ Success response:
 - Hub manager ownership scope check:
   - Allowed if parcel.current_hub_id = current hub OR parcel.store.hub_id = current hub
   - Otherwise returns 403 (This parcel does not belong to your hub)
-- Allowed statuses:
+- Hub manager allowed statuses:
+  - PENDING, PICKED_UP, OUT_FOR_PICKUP, IN_TRANSIT
+- Admin allowed statuses:
   - PENDING, PICKED_UP, OUT_FOR_PICKUP, IN_TRANSIT, IN_HUB, ASSIGNED_TO_RIDER, ASSIGNED_TO_THIRD_PARTY
 - Blocked statuses (examples):
   - OUT_FOR_DELIVERY, DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED, RETURN_TO_MERCHANT, DELIVERY_RESCHEDULED, CANCELLED
@@ -2598,7 +3024,18 @@ Success response:
   - receivable_amount = cod_amount - total_charge
 - Recommended UI rule: show edit button only for allowed statuses above and hide for all delivery outcome/final statuses.
 
-## 10.7 Common Error Payload Patterns
+## 10.7 Received Parcel Edit (Phone/Address/Amount) Conditions
+
+- Endpoint: PATCH /parcels/:id
+- Hub manager allowed status: IN_HUB
+- Hub manager editable fields only:
+  - customer_phone
+  - customer_address
+  - product_price
+- If hub manager sends other fields, API returns 400 with invalid fields message.
+- If parcel is not received yet (PENDING/PICKED_UP/OUT_FOR_PICKUP/IN_TRANSIT), API returns 400 and requires post-receive edit timing.
+
+## 10.8 Common Error Payload Patterns
 
 - Validation error (400): malformed UUID, invalid enum, missing required fields.
 - Not found (404): parcel/report/transfer/expense not found in scoped hub context.
@@ -2620,13 +3057,14 @@ Success response:
 
 1. Parcel arrives to hub pickup queue:
   - GET /hubs/parcels/received
+  - Optional pre-receive correction (weight/delivery): PATCH /parcels/:id/hub-charges
 2. Mark parcel as received in hub:
   - POST /hubs/parcels/receive
+  - Optional post-receive correction (phone/address/amount): PATCH /parcels/:id
 3. Load parcels ready for dispatch:
   - GET /hubs/parcels/for-assignment
 4. Assign parcel(s) to rider:
-  - POST /hubs/parcels/assign-rider (preferred)
-  - PATCH /hubs/parcels/:id/assign-rider (legacy)
+  - POST /hubs/parcels/assign-rider
 5. Track assigned parcel details:
   - GET /hubs/parcels?status=ASSIGNED_TO_RIDER
   - GET /hubs/dashboard/parcels/:id
@@ -2698,9 +3136,10 @@ Use this table to decide which action buttons to show for each parcel status in 
 | Current status | Typical source list | Allowed next action API | Expected next status |
 |---|---|---|---|
 | PENDING / PICKED_UP | GET /hubs/parcels/received | POST /hubs/parcels/receive | IN_HUB |
+| PENDING / PICKED_UP / OUT_FOR_PICKUP / IN_TRANSIT | GET /hubs/parcels/received | PATCH /parcels/:id/hub-charges | Status unchanged (weight/charge updated) |
 | IN_HUB | GET /hubs/parcels/for-assignment, GET /hubs/parcels | POST /hubs/parcels/assign-rider | ASSIGNED_TO_RIDER |
+| IN_HUB | GET /hubs/parcels/for-assignment, GET /hubs/parcels | PATCH /parcels/:id | IN_HUB (phone/address/amount updated) |
 | IN_HUB | GET /parcels/hub/in-hub | PATCH /hubs/parcels/:id/transfer | IN_TRANSIT |
-| IN_HUB | GET /hubs/parcels, GET /hubs/dashboard/parcels/:id | PATCH /parcels/:id/hub-charges | IN_HUB (charges updated only) |
 | ASSIGNED_TO_RIDER | GET /hubs/parcels?status=ASSIGNED_TO_RIDER | Rider app completes delivery attempt (outside hub API) | DELIVERED / PARTIAL_DELIVERY / EXCHANGE / DELIVERY_RESCHEDULED / PAID_RETURN / RETURNED |
 | DELIVERY_RESCHEDULED | GET /hubs/parcels/rescheduled | PATCH /hubs/parcels/:id/prepare-redelivery | IN_HUB |
 | IN_HUB (after prepare-redelivery) | GET /hubs/parcels/for-assignment | POST /hubs/parcels/assign-rider | ASSIGNED_TO_RIDER |
@@ -2712,6 +3151,8 @@ Use this table to decide which action buttons to show for each parcel status in 
 
 UI enable/disable rules:
 - Show Receive only for PENDING/PICKED_UP rows.
+- Show Edit Weight/Delivery only for pre-receive rows (PENDING/PICKED_UP/OUT_FOR_PICKUP/IN_TRANSIT).
+- Show Edit Phone/Address/Amount only for IN_HUB rows.
 - Show Assign Rider only for IN_HUB rows.
 - Show Prepare Redelivery only for DELIVERY_RESCHEDULED rows.
 - Show Accept Incoming only for IN_TRANSIT rows in incoming list.
@@ -2751,7 +3192,6 @@ Parcel Ops:
 - GET /hubs/parcels/received
 - POST /hubs/parcels/receive
 - GET /hubs/parcels/for-assignment
-- PATCH /hubs/parcels/:id/assign-rider
 - POST /hubs/parcels/assign-rider
 - GET /hubs/list
 - PATCH /hubs/parcels/bulk-transfer
@@ -2762,6 +3202,7 @@ Parcel Ops:
 - GET /hubs/parcels/outgoing
 - GET /parcels/hub/in-hub
 - PATCH /parcels/:id/hub-charges
+- PATCH /parcels/:id
 
 Reports and Settlements:
 - GET /hubs/parcels/reports
