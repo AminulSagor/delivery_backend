@@ -2223,6 +2223,7 @@ export class ParcelsService {
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
     paymentStatus?: PaymentStatus,
+    search?: string,
   ): Promise<PaginatedResponse<any>> {
     try {
       // Get all stores assigned to this hub
@@ -2248,23 +2249,42 @@ export class ParcelsService {
         };
       }
 
-      // Build where clause
-      const where: any = {
-        store_id: In(storeIds),
-      };
+      const queryBuilder = this.parcelRepository
+        .createQueryBuilder('parcel')
+        .leftJoinAndSelect('parcel.merchant', 'merchant')
+        .leftJoinAndSelect('merchant.user', 'merchantUser')
+        .leftJoinAndSelect('parcel.store', 'store')
+        .leftJoinAndSelect('store.hub', 'storeHub')
+        .leftJoinAndSelect('store.merchant', 'storeMerchant')
+        .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+        .leftJoinAndSelect('parcel.delivery_coverage_area', 'deliveryCoverageArea')
+        .leftJoinAndSelect('parcel.customer', 'customer')
+        .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+        .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+        .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+        .leftJoinAndSelect('parcel.originHub', 'originHub')
+        .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+        .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
+        .where('parcel.store_id IN (:...storeIds)', { storeIds });
 
       if (status === 'ACTIVE') {
-        where.status = In(this.activeParcelStatuses);
+        queryBuilder.andWhere('parcel.status IN (:...activeStatuses)', {
+          activeStatuses: this.activeParcelStatuses,
+        });
       } else if (status) {
-        where.status = status;
+        queryBuilder.andWhere('parcel.status = :status', { status });
       } else {
-        // By default, only show parcels that need to be received (PENDING or PICKED_UP)
-        // IN_HUB parcels should appear in the for-assignment endpoint
-        where.status = In([ParcelStatus.PENDING, ParcelStatus.PICKED_UP]);
+        // Default receipt queue behavior
+        queryBuilder.andWhere('parcel.status IN (:...defaultStatuses)', {
+          defaultStatuses: [ParcelStatus.PENDING, ParcelStatus.PICKED_UP],
+        });
       }
 
       if (paymentStatus) {
-        where.payment_status = paymentStatus;
+        queryBuilder.andWhere('parcel.payment_status = :paymentStatus', {
+          paymentStatus,
+        });
       }
 
       if (days) {
@@ -2272,32 +2292,46 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        where.created_at = Between(startDate, endDate);
+        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
+          startDate,
+          endDate,
+        });
       }
 
-      const [parcels, total] = await this.parcelRepository.findAndCount({
-        where,
-        relations: [
-          'merchant',
-          'merchant.user',
-          'store',
-          'store.hub',
-          'store.merchant',
-          'store.merchant.user',
-          'delivery_coverage_area',
-          'customer',
-          'assignedRider',
-          'assignedRider.user',
-          'assignedRider.hub',
-          'currentHub',
-          'originHub',
-          'destinationHub',
-          'thirdPartyProvider',
-        ],
-        order: { [sortBy]: order },
-        skip: (page - 1) * limit,
-        take: limit,
-      });
+      if (search?.trim()) {
+        const keyword = `%${search.trim()}%`;
+        queryBuilder.andWhere(
+          `(
+            parcel.tracking_number ILIKE :keyword OR
+            parcel.parcel_tx_id ILIKE :keyword OR
+            parcel.customer_name ILIKE :keyword OR
+            parcel.customer_phone ILIKE :keyword OR
+            parcel.merchant_order_id ILIKE :keyword
+          )`,
+          { keyword },
+        );
+      }
+
+      const allowedSortFields = new Set([
+        'created_at',
+        'updated_at',
+        'tracking_number',
+        'parcel_tx_id',
+        'customer_name',
+        'customer_phone',
+        'cod_amount',
+        'total_charge',
+        'status',
+      ]);
+      const safeSortBy = allowedSortFields.has(sortBy) ? sortBy : 'created_at';
+      const safeOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
+
+      queryBuilder
+        .orderBy(`parcel.${safeSortBy}`, safeOrder)
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      const [parcels, total] = await queryBuilder.getManyAndCount();
 
       const totalPages = Math.ceil(total / limit);
 

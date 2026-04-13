@@ -499,7 +499,7 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const { status, page, limit, sortBy, order } = query;
+    const { status, page, limit, sortBy, order, search } = query;
     const result = await this.parcelsService.findAllForHub(
       user.hubId,
       page,
@@ -507,6 +507,9 @@ export class HubsController {
       status,
       sortBy,
       order,
+      undefined,
+      undefined,
+      search,
     );
     return {
       success: true,
@@ -745,7 +748,7 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const { status, page, limit, sortBy, order } = query;
+    const { status, page, limit, sortBy, order, search } = query;
     const result = await this.parcelsService.findAllForHub(
       user.hubId,
       page,
@@ -753,6 +756,9 @@ export class HubsController {
       status,
       sortBy,
       order,
+      undefined,
+      undefined,
+      search,
     );
     return {
       success: true,
@@ -1644,7 +1650,7 @@ export class HubsController {
   @Get('finance/transfers/:id')
   @Roles(UserRole.HUB_MANAGER)
   async getTransferById(@Param('id') id: string, @CurrentUser() user: any) {
-    const data = await this.hubsService.getTransferById(id, user.hubId);
+    const data = await this.hubsService.getTransferById(id, user.hubManagerId);
     return { success: true, data };
   }
 
@@ -1662,7 +1668,7 @@ export class HubsController {
   @Get('finance/expenses')
   @Roles(UserRole.HUB_MANAGER)
   async getExpenses(@CurrentUser() user: any, @Query() query: PaginationDto) {
-    const data = await this.hubsService.getExpenses(user.hubId, query);
+    const data = await this.hubsService.getExpenses(user.hubManagerId, query);
     return { success: true, data };
   }
 
@@ -1670,7 +1676,7 @@ export class HubsController {
   @Get('finance/expenses/:id')
   @Roles(UserRole.HUB_MANAGER)
   async getExpenseById(@Param('id') id: string, @CurrentUser() user: any) {
-    const data = await this.hubsService.getExpenseById(id, user.hubId);
+    const data = await this.hubsService.getExpenseById(id, user.hubManagerId);
     return { success: true, data };
   }
 
@@ -1682,7 +1688,7 @@ export class HubsController {
     @Query() query: FinancialReportQueryDto,
   ) {
     const history = await this.hubsService.getFinancialHistory(
-      user.hubId,
+      user.hubManagerId,
       query,
     );
     return { success: true, data: history };
