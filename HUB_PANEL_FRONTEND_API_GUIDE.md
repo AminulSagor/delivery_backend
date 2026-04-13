@@ -783,7 +783,14 @@ Query:
 - limit: integer (optional, default 20, min 1, max 100)
 - search: string (optional)
 - sortBy: string (optional, default created_at)
-  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, total_charge, status
+  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, product_price, total_charge, status
+  - Friendly aliases: price, charge, customer, tracking
+  - Alias meaning:
+    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
+    - charge = total_charge
+    - customer = customer_name
+    - tracking = tracking_number
+  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
 - order: enum (optional, default DESC) -> ASC | DESC
 - status: ParcelStatus enum (optional)
 
@@ -792,6 +799,10 @@ Full endpoint examples:
   - GET /hubs/parcels?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=IN_HUB
 - Second page, ascending sort:
   - GET /hubs/parcels?page=2&limit=50&search=0173&sortBy=updated_at&order=ASC&status=ASSIGNED_TO_RIDER
+- Price-wise low to high:
+  - GET /hubs/parcels?page=1&limit=20&sortBy=price&order=ASC&status=IN_HUB
+- Charge-wise high to low:
+  - GET /hubs/parcels?page=1&limit=20&sortBy=charge&order=DESC&status=IN_HUB
 
 Query validation notes:
 - status must be a valid ParcelStatus enum value
@@ -985,13 +996,22 @@ Query:
 - limit: integer (optional, default 20, min 1, max 100)
 - search: string (optional)
 - sortBy: string (optional, default created_at)
-  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, total_charge, status
+  - Allowed values: created_at, updated_at, tracking_number, parcel_tx_id, customer_name, customer_phone, cod_amount, product_price, total_charge, status
+  - Friendly aliases: price, charge, customer, tracking
+  - Alias meaning:
+    - price = COALESCE(cod_amount, product_price, 0) (COD first, fallback product price)
+    - charge = total_charge
+    - customer = customer_name
+    - tracking = tracking_number
+  - Recommended for frontend clarity: use explicit fields cod_amount or product_price instead of price
 - order: enum (optional, default DESC) -> ASC | DESC
 - status: ParcelStatus enum (optional)
 
 Full endpoint examples:
 - GET /hubs/parcels/received?page=1&limit=20&search=TRK-20260413&sortBy=created_at&order=DESC&status=PENDING
 - GET /hubs/parcels/received?page=2&limit=20&search=017&sortBy=updated_at&order=ASC&status=PICKED_UP
+- GET /hubs/parcels/received?page=1&limit=20&search=sifat&sortBy=price&order=ASC&status=PENDING
+- GET /hubs/parcels/received?page=1&limit=20&sortBy=charge&order=DESC&status=PICKED_UP
 
 Success response:
 ```json
@@ -2514,6 +2534,7 @@ Success response:
 5. For dashboard parcel detail, use enum_mappings from API for dropdown labels instead of hardcoding.
 6. finance/transfer and transfer-records create share similar body contract; both currently require proof_file_url in request body.
 7. Legacy endpoint PATCH /hubs/parcels/:id/assign-rider exists, but use POST /hubs/parcels/assign-rider for new implementation.
+- 8. In hub parcel list endpoints, prefer explicit sortBy values cod_amount, product_price, and total_charge; avoid alias price when exact pricing metric matters.
 
 ------------------------------------------------------------
 
