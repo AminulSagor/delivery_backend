@@ -154,6 +154,34 @@ export class PickupRequestsController {
   }
 
   /**
+   * Get pickup requests accepted by riders (Hub Manager)
+   *
+   * Shows pickups with status CONFIRMED that riders are currently picking up
+   */
+  @Get('hub/accepted-pickups')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.HUB_MANAGER)
+  async getAcceptedPickups(
+    @CurrentUser('hubId') hubId: string,
+    @Query() query: PickupQueryDto,
+  ) {
+    const { page, limit } = query;
+    const result = await this.pickupRequestsService.getAcceptedPickupsForHub(
+      hubId,
+      page,
+      limit,
+    );
+    return {
+      success: true,
+      data: {
+        pickupRequests: result.items,
+        pagination: result.pagination,
+      },
+      message: 'Accepted pickups retrieved successfully',
+    };
+  }
+
+  /**
    * Assign pickup to rider - Single (Hub Manager)
    */
   @Patch(':id/assign-rider')

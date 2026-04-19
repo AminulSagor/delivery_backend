@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -626,6 +627,51 @@ export class PickupRequestsService {
         error.stack,
       );
       throw new BadRequestException('Failed to retrieve completed pickups');
+    }
+  }
+
+  /**
+   * Get pickup requests accepted by riders (CONFIRMED) for hub (Hub Manager)
+   *
+   * Shows pickups that riders are currently going to pick up
+   */
+  async getAcceptedPickupsForHub(
+    hubId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      const skip = (page - 1) * limit;
+
+      const [items, total] = await this.pickupRequestRepository.findAndCount({
+        where: {
+          hub_id: hubId,
+          status: PickupRequestStatus.CONFIRMED,
+        },
+        relations: ['store', 'merchant', 'assignedRider', 'assignedRider.user'],
+        order: { rider_assigned_at: 'DESC' },
+        skip,
+        take: limit,
+      });
+
+      return {
+        items,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get accepted pickups for hub ${hubId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve accepted pickups',
+      );
     }
   }
 
