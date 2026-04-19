@@ -1606,12 +1606,12 @@ Access:
 Query:
 - hub_id: UUID v4 (optional, admin can filter)
 - search: string (optional; parcel id or customer name)
-- issue_type: enum (optional) -> INCORRECT_ADDRESS | INCORRECT_PHONE | COD_AMOUNT_MISMATCH | PARCEL_DAMAGED | CUSTOMER_REFUSED_TO_PAY | OTHER
+- issue_type: enum (optional) -> INCORRECT_PHONE | WRONG_ADDRESS | NOT_AVAILABLE | PARCEL_DAMAGED | FRAUD | COD_AMOUNT_MISMATCH | CUSTOMER_REFUSED_TO_PAY | OTHER
 - page: integer query-string (optional, default 1)
 - limit: integer query-string (optional, default 10)
 
 Full endpoint example:
-- GET /hubs/parcels/reports?hub_id=8f8c6c8a-e8b4-4c37-88d0-249b09c69758&search=TRK-20260413-00031&issue_type=INCORRECT_PHONE&page=1&limit=10
+- GET /hubs/parcels/reports?hub_id=8f8c6c8a-e8b4-4c37-88d0-249b09c69758&search=TRK-20260413-00031&issue_type=WRONG_ADDRESS&page=1&limit=10
 
 Success response:
 ```json
