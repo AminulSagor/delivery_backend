@@ -1606,7 +1606,7 @@ Access:
 Query:
 - hub_id: UUID v4 (optional, admin can filter)
 - search: string (optional; parcel id or customer name)
-- issue_type: enum (optional) -> INCORRECT_PHONE | WRONG_ADDRESS | NOT_AVAILABLE | PARCEL_DAMAGED | FRAUD | COD_AMOUNT_MISMATCH | CUSTOMER_REFUSED_TO_PAY | OTHER
+- issue_type: enum (optional) -> INCORRECT_PHONE | WRONG_ADDRESS | INCORRECT_ADDRESS | NOT_AVAILABLE | PARCEL_DAMAGED | FRAUD | COD_AMOUNT_MISMATCH | CUSTOMER_REFUSED_TO_PAY | OTHER
 - page: integer query-string (optional, default 1)
 - limit: integer query-string (optional, default 10)
 
