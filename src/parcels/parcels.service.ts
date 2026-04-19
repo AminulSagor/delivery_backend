@@ -150,7 +150,7 @@ export class ParcelsService {
     @Inject(forwardRef(() => CarrybeeService))
     private carrybeeService: CarrybeeService,
     private smsService: SmsService,
-  ) {}
+  ) { }
 
   private formatSmsAmount(amount: number): string {
     const value = Number(amount || 0);
@@ -1191,8 +1191,8 @@ export class ParcelsService {
 
     this.logger.log(
       `[CHARGES CALCULATED] Zone: ${pricingZone}, Delivery: ${baseDeliveryCharge}, ` +
-        `Weight: ${weightCharge} (${weight}kg), COD: ${codCharge}, Discount: ${discount}, ` +
-        `Total: ${totalCharge}, Receivable: ${receivableAmount} BDT`,
+      `Weight: ${weightCharge} (${weight}kg), COD: ${codCharge}, Discount: ${discount}, ` +
+      `Total: ${totalCharge}, Receivable: ${receivableAmount} BDT`,
     );
 
     return {
@@ -1263,8 +1263,8 @@ export class ParcelsService {
 
       const deliveryArea = createParcelDto.delivery_coverage_area_id
         ? await this.coverageAreaRepository.findOne({
-            where: { id: createParcelDto.delivery_coverage_area_id },
-          })
+          where: { id: createParcelDto.delivery_coverage_area_id },
+        })
         : null;
       if (createParcelDto.delivery_coverage_area_id && !deliveryArea)
         throw new NotFoundException(
@@ -1573,8 +1573,8 @@ export class ParcelsService {
       // 6. Carrybee Mapping (Optional/Existing logic)
       const deliveryArea = createParcelDto.delivery_coverage_area_id
         ? await this.coverageAreaRepository.findOne({
-            where: { id: createParcelDto.delivery_coverage_area_id },
-          })
+          where: { id: createParcelDto.delivery_coverage_area_id },
+        })
         : null;
 
       // 7. Create Parcel Entity
@@ -2120,7 +2120,7 @@ export class ParcelsService {
 
       this.logger.log(
         `[TOTAL PRICING] Zone: ${pricingZone}, Delivery: ৳${deliveryFee}, ` +
-          `COD: ৳${codFee}, Weight: ৳${weightCharge}, Discount: -৳${discount}, Total: ৳${totalFee}`,
+        `COD: ৳${codFee}, Weight: ৳${weightCharge}, Discount: -৳${discount}, Total: ৳${totalFee}`,
       );
 
       return {
@@ -2292,6 +2292,7 @@ export class ParcelsService {
     minAmount?: number,
     maxAmount?: number,
     deliveryType?: DeliveryType,
+    isReceiptQueue: boolean = false,
   ): Promise<PaginatedResponse<any>> {
     try {
       // Get all stores assigned to this hub
@@ -2342,12 +2343,13 @@ export class ParcelsService {
         });
       } else if (status) {
         queryBuilder.andWhere('parcel.status = :status', { status });
-      } else {
+      } else if (isReceiptQueue) {
         // Default receipt queue behavior
         queryBuilder.andWhere('parcel.status IN (:...defaultStatuses)', {
           defaultStatuses: [ParcelStatus.PENDING, ParcelStatus.PICKED_UP],
         });
       }
+      // If no status and not a receipt queue, we show ALL parcels.
 
       if (days) {
         const endDate = new Date();
@@ -3870,7 +3872,7 @@ export class ParcelsService {
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
         `Cannot return parcel with status: ${parcel.status}. ` +
-          `Use delivery verification to mark as RETURNED or PAID_RETURN first.`,
+        `Use delivery verification to mark as RETURNED or PAID_RETURN first.`,
       );
     }
 
@@ -5037,18 +5039,18 @@ export class ParcelsService {
     const returnParcels =
       parcelIds.length > 0
         ? await this.parcelRepository.find({
-            where: {
-              original_parcel_id: In(parcelIds),
-              is_return_parcel: true,
-            },
-            select: [
-              'id',
-              'parcel_tx_id',
-              'tracking_number',
-              'status',
-              'original_parcel_id',
-            ],
-          })
+          where: {
+            original_parcel_id: In(parcelIds),
+            is_return_parcel: true,
+          },
+          select: [
+            'id',
+            'parcel_tx_id',
+            'tracking_number',
+            'status',
+            'original_parcel_id',
+          ],
+        })
         : [];
 
     // Create a map for quick lookup
@@ -5065,11 +5067,11 @@ export class ParcelsService {
         ...baseItem,
         return_parcel: returnParcel
           ? {
-              id: returnParcel.id,
-              parcel_tx_id: returnParcel.parcel_tx_id,
-              tracking_number: returnParcel.tracking_number,
-              status: returnParcel.status,
-            }
+            id: returnParcel.id,
+            parcel_tx_id: returnParcel.parcel_tx_id,
+            tracking_number: returnParcel.tracking_number,
+            status: returnParcel.status,
+          }
           : null,
       };
     });
@@ -5125,8 +5127,8 @@ export class ParcelsService {
     if (!merchantId) {
       this.logger.error(
         `[RETURN TO MERCHANT] No merchant found for parcel ${parcelId}. ` +
-          `parcel.merchant_id: ${originalParcel.merchant_id}, ` +
-          `store.merchant_id: ${originalParcel.store?.merchant_id}`,
+        `parcel.merchant_id: ${originalParcel.merchant_id}, ` +
+        `store.merchant_id: ${originalParcel.store?.merchant_id}`,
       );
       throw new BadRequestException(
         'Cannot create return parcel: No merchant found for this parcel',
@@ -5229,7 +5231,7 @@ export class ParcelsService {
 
     this.logger.log(
       `[RETURN TO MERCHANT] Original: ${originalParcel.tracking_number}, ` +
-        `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`,
+      `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`,
     );
 
     return {
@@ -6134,7 +6136,7 @@ export class ParcelsService {
         (Number(parcel.delivery_charge) +
           Number(parcel.weight_charge) +
           Number(parcel.cod_charge)) *
-          100,
+        100,
       ) / 100;
 
     // receivable_amount = cod_amount - total_charge
@@ -6148,8 +6150,8 @@ export class ParcelsService {
 
     this.logger.log(
       `[HUB CHARGE OVERRIDE] Parcel: ${parcelId}, ` +
-        `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
-        `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
+      `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
+      `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
     );
 
     return updated;

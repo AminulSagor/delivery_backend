@@ -110,7 +110,7 @@ export class HubsController {
   constructor(
     private readonly hubsService: HubsService,
     private readonly parcelsService: ParcelsService,
-  ) {}
+  ) { }
 
   // ===== HUB MANAGER ENDPOINTS =====
   @Roles(UserRole.HUB_MANAGER)
@@ -653,17 +653,17 @@ export class HubsController {
 
     const assignedRider = detail.assigned_rider
       ? {
-          ...detail.assigned_rider,
-          rider_id: detail.assigned_rider.id,
-          rider_name:
-            detail.assigned_rider.user?.full_name ??
-            detail.assigned_rider.full_name ??
-            null,
-          phone:
-            detail.assigned_rider.user?.phone ??
-            detail.assigned_rider.phone ??
-            null,
-        }
+        ...detail.assigned_rider,
+        rider_id: detail.assigned_rider.id,
+        rider_name:
+          detail.assigned_rider.user?.full_name ??
+          detail.assigned_rider.full_name ??
+          null,
+        phone:
+          detail.assigned_rider.user?.phone ??
+          detail.assigned_rider.phone ??
+          null,
+      }
       : null;
 
     const customerInfo = {
@@ -864,6 +864,7 @@ export class HubsController {
       minAmount,
       maxAmount,
       deliveryType,
+      true,
     );
     return {
       success: true,
