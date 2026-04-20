@@ -4640,6 +4640,7 @@ export class ParcelsService {
       minAmount?: number;
       maxAmount?: number;
       deliveryType?: DeliveryType;
+      status?: ParcelStatus | 'ACTIVE';
     } = {},
   ) {
     const {
@@ -4657,16 +4658,22 @@ export class ParcelsService {
       minAmount,
       maxAmount,
       deliveryType,
+      status,
     } = options;
     const skip = (page - 1) * limit;
 
-    // Successful delivery statuses (completed deliveries with COD)
-    const successfulStatuses = [
-      ParcelStatus.DELIVERED,
-      ParcelStatus.PARTIAL_DELIVERY,
-      ParcelStatus.EXCHANGE,
-      ParcelStatus.PAID_RETURN,
-    ];
+    // If status is provided, use it; otherwise use default successful statuses
+    const statuses = status 
+      ? (status === 'ACTIVE' 
+          ? [ParcelStatus.DELIVERED, ParcelStatus.PARTIAL_DELIVERY, ParcelStatus.EXCHANGE, ParcelStatus.PAID_RETURN]
+          : [status]
+        )
+      : [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ];
 
     // Build query for cleared parcels
     const queryBuilder = this.parcelRepository
