@@ -418,13 +418,18 @@ export class HubsService {
   /**
    * Get rider performance statistics for hub manager dashboard
    *
-   * Returns overall success rate and per-rider breakdown:
-   * Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
+   * Returns overall metrics (success rate, total rescheduled, total returned)
+   * and per-rider breakdown: Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
+   *
+   * Supports: search by name/phone, filter by riderId, preset period (today/this_week/this_month/etc.),
+   * custom date range, and pagination.
    */
   async getRiderPerformance(
     hubId: string,
     query: {
       search?: string;
+      riderId?: string;
+      period?: string;
       startDate?: string;
       endDate?: string;
       page?: number;
@@ -436,29 +441,42 @@ export class HubsService {
       const limit = Math.min(query.limit || 10, 100);
       const offset = (page - 1) * limit;
 
+      // Resolve period preset into startDate/endDate
+      const resolvedDates = this.resolvePeriodDates(
+        query.period,
+        query.startDate,
+        query.endDate,
+      );
+
       // Build date filter condition
       let dateFilter = '';
       const params: any[] = [hubId];
       let paramIndex = 2;
 
-      if (query.startDate) {
+      if (resolvedDates.startDate) {
         dateFilter += ` AND p.delivered_at >= $${paramIndex}`;
-        params.push(new Date(query.startDate));
+        params.push(resolvedDates.startDate);
         paramIndex++;
       }
-      if (query.endDate) {
-        const endDate = new Date(query.endDate);
-        endDate.setHours(23, 59, 59, 999);
+      if (resolvedDates.endDate) {
         dateFilter += ` AND p.delivered_at <= $${paramIndex}`;
-        params.push(endDate);
+        params.push(resolvedDates.endDate);
         paramIndex++;
       }
 
-      // Build search filter
+      // Build search filter (name or phone)
       let searchFilter = '';
       if (query.search && query.search.trim()) {
         searchFilter = ` AND (u.full_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex})`;
         params.push(`%${query.search.trim()}%`);
+        paramIndex++;
+      }
+
+      // Build rider ID filter
+      let riderIdFilter = '';
+      if (query.riderId && query.riderId.trim()) {
+        riderIdFilter = ` AND r.id = $${paramIndex}`;
+        params.push(query.riderId.trim());
         paramIndex++;
       }
 
@@ -483,11 +501,28 @@ export class HubsService {
         WHERE r.hub_id = $1
           AND r.is_active = true
           ${searchFilter}
+          ${riderIdFilter}
         GROUP BY r.id, u.full_name, u.phone, r.photo, r.commission_per_delivery
         ORDER BY assigned DESC
       `;
 
-      // Get total count
+      // Count query (for pagination) — uses same filters but no date join
+      const countFilterParams: any[] = [hubId];
+      let countSearchFilter = '';
+      let countRiderIdFilter = '';
+      let countParamIdx = 2;
+
+      if (query.search && query.search.trim()) {
+        countSearchFilter = ` AND (u.full_name ILIKE $${countParamIdx} OR u.phone ILIKE $${countParamIdx})`;
+        countFilterParams.push(`%${query.search.trim()}%`);
+        countParamIdx++;
+      }
+      if (query.riderId && query.riderId.trim()) {
+        countRiderIdFilter = ` AND r.id = $${countParamIdx}`;
+        countFilterParams.push(query.riderId.trim());
+        countParamIdx++;
+      }
+
       const countQuery = `
         SELECT COUNT(*) AS total FROM (
           SELECT r.id
@@ -495,23 +530,59 @@ export class HubsService {
           INNER JOIN users u ON r.user_id = u.id
           WHERE r.hub_id = $1
             AND r.is_active = true
-            ${searchFilter}
+            ${countSearchFilter}
+            ${countRiderIdFilter}
           GROUP BY r.id
         ) sub
       `;
 
-      // Use only the params needed for count (hubId + search)
-      const countParams = [hubId];
-      if (query.search && query.search.trim()) {
-        countParams.push(`%${query.search.trim()}%`);
+      // Overall aggregation query (across ALL riders, not just the current page)
+      const overallParams: any[] = [hubId];
+      let overallDateFilter = '';
+      let overallParamIdx = 2;
+
+      if (resolvedDates.startDate) {
+        overallDateFilter += ` AND p.delivered_at >= $${overallParamIdx}`;
+        overallParams.push(resolvedDates.startDate);
+        overallParamIdx++;
+      }
+      if (resolvedDates.endDate) {
+        overallDateFilter += ` AND p.delivered_at <= $${overallParamIdx}`;
+        overallParams.push(resolvedDates.endDate);
+        overallParamIdx++;
       }
 
-      const [riderStats, countResult] = await Promise.all([
+      const overallQuery = `
+        SELECT
+          COALESCE(SUM(CASE WHEN p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE') THEN 1 ELSE 0 END), 0)::int AS total_delivered,
+          COALESCE(SUM(CASE WHEN p.status = 'DELIVERY_RESCHEDULED' THEN 1 ELSE 0 END), 0)::int AS total_rescheduled,
+          COALESCE(SUM(CASE WHEN p.status IN ('RETURNED', 'PAID_RETURN') THEN 1 ELSE 0 END), 0)::int AS total_returned,
+          COUNT(p.id)::int AS total_assigned
+        FROM parcels p
+        INNER JOIN riders r ON p.assigned_rider_id = r.id
+        WHERE r.hub_id = $1
+          AND r.is_active = true
+          AND p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE', 'DELIVERY_RESCHEDULED', 'RETURNED', 'PAID_RETURN')
+          ${overallDateFilter}
+      `;
+
+      const [riderStats, countResult, overallResult] = await Promise.all([
         this.dataSource.query(statsQuery + ` LIMIT ${limit} OFFSET ${offset}`, params),
-        this.dataSource.query(countQuery, countParams),
+        this.dataSource.query(countQuery, countFilterParams),
+        this.dataSource.query(overallQuery, overallParams),
       ]);
 
       const total = parseInt(countResult[0]?.total || '0', 10);
+
+      // Overall metrics (across all riders in the hub, not just paginated)
+      const overall = overallResult[0] || {};
+      const totalDelivered = parseInt(overall.total_delivered || '0', 10);
+      const totalRescheduled = parseInt(overall.total_rescheduled || '0', 10);
+      const totalReturned = parseInt(overall.total_returned || '0', 10);
+      const totalAssigned = parseInt(overall.total_assigned || '0', 10);
+      const overallSuccessRate = totalAssigned > 0
+        ? Math.round((totalDelivered / totalAssigned) * 1000) / 10
+        : 0;
 
       // Calculate per-rider stats
       const riders = riderStats.map((row: any) => {
@@ -540,13 +611,6 @@ export class HubsService {
         };
       });
 
-      // Calculate overall stats
-      const totalDelivered = riders.reduce((sum, r) => sum + r.delivered, 0);
-      const totalAssigned = riders.reduce((sum, r) => sum + r.assigned, 0);
-      const overallSuccessRate = totalAssigned > 0
-        ? Math.round((totalDelivered / totalAssigned) * 1000) / 10
-        : 0;
-
       this.logger.log(
         `Rider performance for hub ${hubId}: ${riders.length} riders, ` +
         `overall success rate: ${overallSuccessRate}%`,
@@ -555,6 +619,8 @@ export class HubsService {
       return {
         overall_success_rate: overallSuccessRate,
         total_delivered: totalDelivered,
+        total_rescheduled: totalRescheduled,
+        total_returned: totalReturned,
         total_assigned: totalAssigned,
         riders,
         pagination: {
@@ -573,6 +639,96 @@ export class HubsService {
         'Failed to retrieve rider performance. Please try again later.',
       );
     }
+  }
+
+  /**
+   * Resolve period preset into concrete startDate/endDate
+   */
+  private resolvePeriodDates(
+    period?: string,
+    customStartDate?: string,
+    customEndDate?: string,
+  ): { startDate: Date | null; endDate: Date | null } {
+    // If no period preset, use custom dates
+    if (!period || period === 'all_time') {
+      return {
+        startDate: customStartDate ? new Date(customStartDate) : null,
+        endDate: customEndDate
+          ? (() => {
+              const d = new Date(customEndDate);
+              d.setHours(23, 59, 59, 999);
+              return d;
+            })()
+          : null,
+      };
+    }
+
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    switch (period) {
+      case 'today':
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case 'this_week': {
+        startDate = new Date(now);
+        const dayOfWeek = startDate.getDay(); // 0 = Sunday
+        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Monday start
+        startDate.setDate(startDate.getDate() - diff);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+
+      case 'last_week': {
+        endDate = new Date(now);
+        const currentDay = endDate.getDay();
+        const diffToMonday = currentDay === 0 ? 6 : currentDay - 1;
+        endDate.setDate(endDate.getDate() - diffToMonday - 1); // Last Sunday
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - 6); // Last Monday
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+
+      case 'this_month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case 'last_month':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of prev month
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case 'last_3_months':
+        startDate = new Date(now);
+        startDate.setMonth(startDate.getMonth() - 3);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case 'last_6_months':
+        startDate = new Date(now);
+        startDate.setMonth(startDate.getMonth() - 6);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case 'this_year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      default:
+        return { startDate: null, endDate: null };
+    }
+
+    return { startDate, endDate };
   }
 
   /**
