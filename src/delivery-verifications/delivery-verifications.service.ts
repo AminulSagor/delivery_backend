@@ -186,7 +186,9 @@ export class DeliveryVerificationsService {
     const hasDifference = Math.abs(collectedAmount - expectedAmount) > 0.01;
     const amountDifference = collectedAmount - expectedAmount;
     const skipOtpVerification =
-      selectedStatus === ParcelStatus.DELIVERED && !hasDifference;
+      (selectedStatus === ParcelStatus.DELIVERED && !hasDifference) ||
+      selectedStatus === ParcelStatus.DELIVERY_RESCHEDULED ||
+      selectedStatus === ParcelStatus.RETURNED;
 
     // 3. Validate: Check if collected amount exceeds expected (potential over-collection)
     if (collectedAmount > expectedAmount) {

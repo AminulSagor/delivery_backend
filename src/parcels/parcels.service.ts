@@ -1586,8 +1586,8 @@ export class ParcelsService {
         parcel_tx_id: parcelTxId,
 
         // --- KEY DIFFERENCES FOR HUB MANAGER ---
-        status: ParcelStatus.IN_HUB, // Directly Received
-        current_hub_id: hubId, // Physically at this hub
+        status: ParcelStatus.PENDING, // Goes to receive queue first
+        current_hub_id: hubId, // Associated with this hub
         // -------------------------------------
 
         pickup_request_id: null, // No pickup request needed, it's already here
