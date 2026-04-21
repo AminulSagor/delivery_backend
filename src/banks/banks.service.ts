@@ -23,24 +23,27 @@ export class BanksService {
    * Create a new bank (Admin only)
    */
   async create(createBankDto: CreateBankDto): Promise<Bank> {
-    // Check if bank with same name or short_name exists
-    const existing = await this.bankRepository.findOne({
-      where: [
-        { name: createBankDto.name },
-        { short_name: createBankDto.short_name },
-      ],
-    });
+    // Check for duplicate (name + district + branch_name composite)
+    if (createBankDto.district && createBankDto.branch_name) {
+      const existing = await this.bankRepository.findOne({
+        where: {
+          name: createBankDto.name,
+          district: createBankDto.district,
+          branch_name: createBankDto.branch_name,
+        },
+      });
 
-    if (existing) {
-      throw new ConflictException(
-        `Bank with name "${createBankDto.name}" or short name "${createBankDto.short_name}" already exists`,
-      );
+      if (existing) {
+        throw new ConflictException(
+          `Bank "${createBankDto.name}" with branch "${createBankDto.branch_name}" in district "${createBankDto.district}" already exists`,
+        );
+      }
     }
 
     const bank = this.bankRepository.create(createBankDto);
     const savedBank = await this.bankRepository.save(bank);
 
-    this.logger.log(`[BANK CREATED] ${savedBank.name} (${savedBank.short_name})`);
+    this.logger.log(`[BANK CREATED] ${savedBank.name} (${savedBank.short_name}) - ${savedBank.branch_name || 'no branch'}`);
     return savedBank;
   }
 
@@ -80,23 +83,23 @@ export class BanksService {
   async update(id: string, updateBankDto: UpdateBankDto): Promise<Bank> {
     const bank = await this.findOne(id);
 
-    // Check for duplicate name/short_name if being updated
-    if (updateBankDto.name || updateBankDto.short_name) {
+    // Check for duplicate composite key if relevant fields are being updated
+    const newName = updateBankDto.name || bank.name;
+    const newDistrict = updateBankDto.district !== undefined ? updateBankDto.district : bank.district;
+    const newBranch = updateBankDto.branch_name !== undefined ? updateBankDto.branch_name : bank.branch_name;
+
+    if (newDistrict && newBranch) {
       const existing = await this.bankRepository
         .createQueryBuilder('bank')
         .where('bank.id != :id', { id })
-        .andWhere(
-          '(bank.name = :name OR bank.short_name = :short_name)',
-          {
-            name: updateBankDto.name || bank.name,
-            short_name: updateBankDto.short_name || bank.short_name,
-          },
-        )
+        .andWhere('bank.name = :name', { name: newName })
+        .andWhere('bank.district = :district', { district: newDistrict })
+        .andWhere('bank.branch_name = :branch', { branch: newBranch })
         .getOne();
 
       if (existing) {
         throw new ConflictException(
-          'Bank with this name or short name already exists',
+          'Bank with this name, district, and branch already exists',
         );
       }
     }
@@ -131,6 +134,91 @@ export class BanksService {
       `[BANK ${bank.is_active ? 'ACTIVATED' : 'DEACTIVATED'}] ${bank.name}`,
     );
     return updatedBank;
+  }
+
+  // ===== CASCADING SELECTION ENDPOINTS =====
+
+  /**
+   * Get distinct bank names (active banks only)
+   * Step 1 of cascading selection: User sees all available bank names
+   */
+  async getDistinctBankNames(): Promise<{ names: string[] }> {
+    const result = await this.bankRepository
+      .createQueryBuilder('bank')
+      .select('DISTINCT bank.name', 'name')
+      .where('bank.is_active = :active', { active: true })
+      .orderBy('bank.name', 'ASC')
+      .getRawMany();
+
+    return { names: result.map((r) => r.name) };
+  }
+
+  /**
+   * Get distinct districts for a given bank name
+   * Step 2 of cascading selection: User selected a bank name, now sees available districts
+   */
+  async getDistrictsByBankName(bankName: string): Promise<{ districts: string[] }> {
+    const result = await this.bankRepository
+      .createQueryBuilder('bank')
+      .select('DISTINCT bank.district', 'district')
+      .where('bank.is_active = :active', { active: true })
+      .andWhere('bank.name = :name', { name: bankName })
+      .andWhere('bank.district IS NOT NULL')
+      .orderBy('bank.district', 'ASC')
+      .getRawMany();
+
+    return { districts: result.map((r) => r.district) };
+  }
+
+  /**
+   * Get branches for a given bank name and district
+   * Step 3 of cascading selection: User selected bank + district, now sees branches
+   */
+  async getBranchesByBankAndDistrict(
+    bankName: string,
+    district: string,
+  ): Promise<{ branches: string[] }> {
+    const result = await this.bankRepository
+      .createQueryBuilder('bank')
+      .select('DISTINCT bank.branch_name', 'branch_name')
+      .where('bank.is_active = :active', { active: true })
+      .andWhere('bank.name = :name', { name: bankName })
+      .andWhere('bank.district = :district', { district })
+      .andWhere('bank.branch_name IS NOT NULL')
+      .orderBy('bank.branch_name', 'ASC')
+      .getRawMany();
+
+    return { branches: result.map((r) => r.branch_name) };
+  }
+
+  /**
+   * Get routing number for a specific bank + district + branch
+   * Step 4 of cascading selection: User selected bank + district + branch, gets routing
+   */
+  async getRoutingByBranch(
+    bankName: string,
+    district: string,
+    branchName: string,
+  ): Promise<{ routing: string | null; bank_id: string }> {
+    const bank = await this.bankRepository.findOne({
+      where: {
+        name: bankName,
+        district,
+        branch_name: branchName,
+        is_active: true,
+      },
+    });
+
+    if (!bank) {
+      throw new NotFoundException(
+        `No bank found for "${bankName}" in "${district}", branch "${branchName}"`,
+      );
+    }
+
+    return {
+      routing: bank.routing,
+      bank_id: bank.id,
+    };
   }
 
   /**
@@ -173,15 +261,27 @@ export class BanksService {
     let created = 0;
 
     for (const bankData of defaultBanks) {
+      // Check for existing bank name with null district/branch (seed stub)
       const exists = await this.bankRepository.findOne({
-        where: [{ name: bankData.name }, { short_name: bankData.short_name }],
+        where: {
+          name: bankData.name,
+          district: null as any,
+          branch_name: null as any,
+        },
       });
 
       if (!exists) {
-        await this.bankRepository.save(
-          this.bankRepository.create({ ...bankData, is_active: true }),
-        );
-        created++;
+        // Also check if any records with this name already exist
+        const anyExists = await this.bankRepository.findOne({
+          where: { name: bankData.name },
+        });
+
+        if (!anyExists) {
+          await this.bankRepository.save(
+            this.bankRepository.create({ ...bankData, is_active: true }),
+          );
+          created++;
+        }
       }
     }
 
