@@ -47,11 +47,11 @@ import { Rider } from '../riders/entities/rider.entity';
 import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { BulkTransferDto, TransferParcelDto } from './dto/transfer-parcel.dto';
+import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
-import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
 
 // --- EXPORTED TYPES (Required for Controller) ---
 export interface ParcelCreationResult {
@@ -4640,6 +4640,7 @@ export class ParcelsService {
       minAmount?: number;
       maxAmount?: number;
       deliveryType?: DeliveryType;
+      status?: ParcelStatus | 'ACTIVE';
     } = {},
   ) {
     const {
@@ -4657,16 +4658,22 @@ export class ParcelsService {
       minAmount,
       maxAmount,
       deliveryType,
+      status,
     } = options;
     const skip = (page - 1) * limit;
 
-    // Successful delivery statuses (completed deliveries with COD)
-    const successfulStatuses = [
-      ParcelStatus.DELIVERED,
-      ParcelStatus.PARTIAL_DELIVERY,
-      ParcelStatus.EXCHANGE,
-      ParcelStatus.PAID_RETURN,
-    ];
+    // If status is provided, use it; otherwise use default successful statuses
+    const statuses = status 
+      ? (status === 'ACTIVE' 
+          ? [ParcelStatus.DELIVERED, ParcelStatus.PARTIAL_DELIVERY, ParcelStatus.EXCHANGE, ParcelStatus.PAID_RETURN]
+          : [status]
+        )
+      : [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ];
 
     // Build query for cleared parcels
     const queryBuilder = this.parcelRepository
@@ -4690,7 +4697,7 @@ export class ParcelsService {
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.cod_cleared_at IS NULL') // Only not-yet-cleared parcels
       .andWhere('parcel.status IN (:...statuses)', {
-        statuses: successfulStatuses,
+        statuses: statuses,
       });
 
     this.applyParcelListFilters(queryBuilder, {
@@ -4719,7 +4726,7 @@ export class ParcelsService {
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.cod_cleared_at IS NULL')
       .andWhere('parcel.status IN (:...statuses)', {
-        statuses: successfulStatuses,
+        statuses: statuses,
       });
 
     const collectableResult = await collectableQuery.getRawOne();

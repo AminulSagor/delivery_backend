@@ -249,6 +249,7 @@ export class HubsController {
         minAmount: query.minAmount,
         maxAmount: query.maxAmount,
         deliveryType: query.deliveryType,
+        status: query.status,
       },
     );
 
