@@ -3485,6 +3485,9 @@ export class ParcelsService {
       where.status = In([
         ParcelStatus.RETURNED,
         ParcelStatus.DELIVERY_RESCHEDULED,
+        ParcelStatus.PAID_RETURN,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
       ]);
     } else {
       // Parcels returned to hub or merchant
