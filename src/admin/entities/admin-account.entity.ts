@@ -23,6 +23,15 @@ export class AdminAccount {
   @Column({ type: 'varchar', length: 100 })
   account_holder_name: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  district: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  branch_name: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  routing: string | null;
+
   @Column({
     type: 'enum',
     enum: AccountProviderType,

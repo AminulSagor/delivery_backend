@@ -566,13 +566,22 @@ export class HubsService {
           ${overallDateFilter}
       `;
 
-      const [riderStats, countResult, overallResult] = await Promise.all([
+      // Count ALL active riders in the hub (unaffected by search/filter params)
+      const activeRidersCountQuery = `
+        SELECT COUNT(*)::int AS total_active
+        FROM riders r
+        WHERE r.hub_id = $1 AND r.is_active = true
+      `;
+
+      const [riderStats, countResult, overallResult, activeRidersResult] = await Promise.all([
         this.dataSource.query(statsQuery + ` LIMIT ${limit} OFFSET ${offset}`, params),
         this.dataSource.query(countQuery, countFilterParams),
         this.dataSource.query(overallQuery, overallParams),
+        this.dataSource.query(activeRidersCountQuery, [hubId]),
       ]);
 
       const total = parseInt(countResult[0]?.total || '0', 10);
+      const totalActiveRiders = parseInt(activeRidersResult[0]?.total_active || '0', 10);
 
       // Overall metrics (across all riders in the hub, not just paginated)
       const overall = overallResult[0] || {};
@@ -617,6 +626,7 @@ export class HubsService {
       );
 
       return {
+        total_active_riders: totalActiveRiders,
         overall_success_rate: overallSuccessRate,
         total_delivered: totalDelivered,
         total_rescheduled: totalRescheduled,

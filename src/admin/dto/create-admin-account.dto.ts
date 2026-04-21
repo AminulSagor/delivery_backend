@@ -23,6 +23,18 @@ export class CreateAdminAccountDto {
   @IsString()
   account_holder_name: string;
 
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  branch_name?: string;
+
+  @IsOptional()
+  @IsString()
+  routing?: string;
+
   @IsNotEmpty()
   @IsEnum(AccountProviderType)
   provider_type: AccountProviderType;

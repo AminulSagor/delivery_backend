@@ -21,21 +21,20 @@ export class CreateBankDto {
   short_name: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(255)
-  district: string;
+  district?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(255)
-  branch_name: string;
+  branch_name?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(255)
-  routing: string;
+  routing?: string;
 
-  // Optional fields (not in entity yet, but okay if you plan to add later)
   @IsString()
   @IsOptional()
   @MaxLength(500)

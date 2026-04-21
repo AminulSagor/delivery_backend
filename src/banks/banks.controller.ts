@@ -6,8 +6,10 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { BanksService } from './banks.service';
 import { CreateBankDto } from './dto/create-bank.dto';
@@ -16,12 +18,13 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
-import { Public } from '../common/decorators/public.decorator';
 
 @Controller('banks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BanksController {
   constructor(private readonly banksService: BanksService) {}
+
+  // ===== ADMIN CRUD ENDPOINTS =====
 
   /**
    * Create a new bank (Admin only)
@@ -44,11 +47,10 @@ export class BanksController {
   }
 
   /**
-   * Get all active banks - Public endpoint for merchants
+   * Get all active banks - for all authenticated users
    * GET /banks/active
    */
   @Get('active')
-  @Public()
   findAllActive() {
     return this.banksService.findAllActive();
   }
@@ -62,6 +64,106 @@ export class BanksController {
   seedBanks() {
     return this.banksService.seedDefaultBanks();
   }
+
+  // ===== CASCADING SELECTION ENDPOINTS (all authenticated users) =====
+
+  /**
+   * Step 1: Get distinct bank names
+   * GET /banks/names
+   *
+   * Returns: { names: ["Dutch Bangla Bank Limited", "BRAC Bank Limited", ...] }
+   */
+  @Get('names')
+  async getBankNames() {
+    const result = await this.banksService.getDistinctBankNames();
+    return {
+      success: true,
+      data: result,
+      message: 'Bank names retrieved successfully',
+    };
+  }
+
+  /**
+   * Step 2: Get districts for a bank name
+   * GET /banks/districts?name=Dutch Bangla Bank Limited
+   *
+   * Returns: { districts: ["Dhaka", "Chittagong", ...] }
+   */
+  @Get('districts')
+  async getDistricts(@Query('name') name: string) {
+    if (!name || !name.trim()) {
+      throw new BadRequestException('Bank name is required');
+    }
+    const result = await this.banksService.getDistrictsByBankName(name.trim());
+    return {
+      success: true,
+      data: result,
+      message: 'Districts retrieved successfully',
+    };
+  }
+
+  /**
+   * Step 3: Get branches for a bank name + district
+   * GET /banks/branches?name=Dutch Bangla Bank Limited&district=Dhaka
+   *
+   * Returns: { branches: ["Gulshan Branch", "Dhanmondi Branch", ...] }
+   */
+  @Get('branches')
+  async getBranches(
+    @Query('name') name: string,
+    @Query('district') district: string,
+  ) {
+    if (!name || !name.trim()) {
+      throw new BadRequestException('Bank name is required');
+    }
+    if (!district || !district.trim()) {
+      throw new BadRequestException('District is required');
+    }
+    const result = await this.banksService.getBranchesByBankAndDistrict(
+      name.trim(),
+      district.trim(),
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Branches retrieved successfully',
+    };
+  }
+
+  /**
+   * Step 4: Get routing number for a specific bank + district + branch
+   * GET /banks/routing?name=Dutch Bangla Bank Limited&district=Dhaka&branch=Gulshan Branch
+   *
+   * Returns: { routing: "090261234", bank_id: "uuid" }
+   */
+  @Get('routing')
+  async getRouting(
+    @Query('name') name: string,
+    @Query('district') district: string,
+    @Query('branch') branch: string,
+  ) {
+    if (!name || !name.trim()) {
+      throw new BadRequestException('Bank name is required');
+    }
+    if (!district || !district.trim()) {
+      throw new BadRequestException('District is required');
+    }
+    if (!branch || !branch.trim()) {
+      throw new BadRequestException('Branch name is required');
+    }
+    const result = await this.banksService.getRoutingByBranch(
+      name.trim(),
+      district.trim(),
+      branch.trim(),
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Routing number retrieved successfully',
+    };
+  }
+
+  // ===== ADMIN SINGLE ITEM ENDPOINTS =====
 
   /**
    * Get a single bank by ID
