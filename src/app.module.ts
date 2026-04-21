@@ -22,7 +22,7 @@ import { CarrybeeModule } from './carrybee/carrybee.module';
 import { CarrybeeLocationsModule } from './carrybee-locations/carrybee-locations.module';
 import { UploadModule } from './upload/upload.module';
 import { MerchantFinanceModule } from './merchant-finance/merchant-finance.module';
-// import { BanksModule } from './banks/banks.module';
+import { BanksModule } from './banks/banks.module';
 import { AdvancePaymentsModule } from './advance-payments/advance-payments.module';
 import { StaffModule } from './staff/staff.module';
 
@@ -62,7 +62,7 @@ import { StaffModule } from './staff/staff.module';
     CarrybeeLocationsModule,
     UploadModule,
     MerchantFinanceModule,
-    // BanksModule,
+    BanksModule,
     AdvancePaymentsModule,
   ],
   controllers: [AppController],
