@@ -28,6 +28,7 @@ export class CreateParcelDto {
   merchant_order_id: string; // Merchant's own order reference
 
   @IsOptional()
+  @ValidateIf((o) => o.merchant_id !== '')
   @IsUUID()
   merchant_id?: string;
 
@@ -58,6 +59,7 @@ export class CreateParcelDto {
   customer_phone: string;
 
   @IsOptional()
+  @ValidateIf((o) => o.customer_secondary_phone !== '')
   @IsString()
   @Matches(/^01[0-9]{9}$/, {
     message:
