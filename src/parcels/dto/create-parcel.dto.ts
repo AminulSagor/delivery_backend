@@ -22,10 +22,11 @@ export class CreateParcelDto {
   // ===== MERCHANT REFERENCE =====
   // merchant_id comes from JWT (userId), not from body
 
-  @IsNotEmpty({ message: 'Merchant order ID is required' })
+  @IsOptional()
+  @ValidateIf((o) => o.merchant_order_id !== '')
   @IsString()
   @MaxLength(100)
-  merchant_order_id: string; // Merchant's own order reference
+  merchant_order_id?: string; // Merchant's own order reference
 
   @IsOptional()
   @ValidateIf((o) => o.merchant_id !== '')
