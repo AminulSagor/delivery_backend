@@ -416,6 +416,166 @@ export class HubsService {
   }
 
   /**
+   * Get rider performance statistics for hub manager dashboard
+   *
+   * Returns overall success rate and per-rider breakdown:
+   * Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
+   */
+  async getRiderPerformance(
+    hubId: string,
+    query: {
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<any> {
+    try {
+      const page = query.page || 1;
+      const limit = Math.min(query.limit || 10, 100);
+      const offset = (page - 1) * limit;
+
+      // Build date filter condition
+      let dateFilter = '';
+      const params: any[] = [hubId];
+      let paramIndex = 2;
+
+      if (query.startDate) {
+        dateFilter += ` AND p.delivered_at >= $${paramIndex}`;
+        params.push(new Date(query.startDate));
+        paramIndex++;
+      }
+      if (query.endDate) {
+        const endDate = new Date(query.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        dateFilter += ` AND p.delivered_at <= $${paramIndex}`;
+        params.push(endDate);
+        paramIndex++;
+      }
+
+      // Build search filter
+      let searchFilter = '';
+      if (query.search && query.search.trim()) {
+        searchFilter = ` AND (u.full_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex})`;
+        params.push(`%${query.search.trim()}%`);
+        paramIndex++;
+      }
+
+      // Main query: aggregate parcel stats per rider
+      const statsQuery = `
+        SELECT
+          r.id AS rider_id,
+          u.full_name AS rider_name,
+          u.phone AS rider_phone,
+          r.photo,
+          r.commission_per_delivery,
+          COALESCE(SUM(CASE WHEN p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE') THEN 1 ELSE 0 END), 0)::int AS delivered,
+          COALESCE(SUM(CASE WHEN p.status = 'DELIVERY_RESCHEDULED' THEN 1 ELSE 0 END), 0)::int AS rescheduled,
+          COALESCE(SUM(CASE WHEN p.status IN ('RETURNED', 'PAID_RETURN') THEN 1 ELSE 0 END), 0)::int AS returned,
+          COUNT(p.id)::int AS assigned,
+          MAX(p.delivered_at) AS last_delivery_date
+        FROM riders r
+        INNER JOIN users u ON r.user_id = u.id
+        LEFT JOIN parcels p ON p.assigned_rider_id = r.id
+          AND p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE', 'DELIVERY_RESCHEDULED', 'RETURNED', 'PAID_RETURN')
+          ${dateFilter}
+        WHERE r.hub_id = $1
+          AND r.is_active = true
+          ${searchFilter}
+        GROUP BY r.id, u.full_name, u.phone, r.photo, r.commission_per_delivery
+        ORDER BY assigned DESC
+      `;
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) AS total FROM (
+          SELECT r.id
+          FROM riders r
+          INNER JOIN users u ON r.user_id = u.id
+          WHERE r.hub_id = $1
+            AND r.is_active = true
+            ${searchFilter}
+          GROUP BY r.id
+        ) sub
+      `;
+
+      // Use only the params needed for count (hubId + search)
+      const countParams = [hubId];
+      if (query.search && query.search.trim()) {
+        countParams.push(`%${query.search.trim()}%`);
+      }
+
+      const [riderStats, countResult] = await Promise.all([
+        this.dataSource.query(statsQuery + ` LIMIT ${limit} OFFSET ${offset}`, params),
+        this.dataSource.query(countQuery, countParams),
+      ]);
+
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      // Calculate per-rider stats
+      const riders = riderStats.map((row: any) => {
+        const delivered = parseInt(row.delivered, 10);
+        const rescheduled = parseInt(row.rescheduled, 10);
+        const returned = parseInt(row.returned, 10);
+        const assigned = parseInt(row.assigned, 10);
+        const commissionPerDelivery = Number(row.commission_per_delivery) || 0;
+        const commission = Math.round(delivered * commissionPerDelivery * 100) / 100;
+        const successRate = assigned > 0
+          ? Math.round((delivered / assigned) * 1000) / 10
+          : 0;
+
+        return {
+          rider_id: row.rider_id,
+          rider_name: row.rider_name || 'N/A',
+          rider_phone: row.rider_phone || 'N/A',
+          photo: row.photo || null,
+          delivered,
+          rescheduled,
+          returned,
+          assigned,
+          commission,
+          success_rate: successRate,
+          last_delivery_date: row.last_delivery_date || null,
+        };
+      });
+
+      // Calculate overall stats
+      const totalDelivered = riders.reduce((sum, r) => sum + r.delivered, 0);
+      const totalAssigned = riders.reduce((sum, r) => sum + r.assigned, 0);
+      const overallSuccessRate = totalAssigned > 0
+        ? Math.round((totalDelivered / totalAssigned) * 1000) / 10
+        : 0;
+
+      this.logger.log(
+        `Rider performance for hub ${hubId}: ${riders.length} riders, ` +
+        `overall success rate: ${overallSuccessRate}%`,
+      );
+
+      return {
+        overall_success_rate: overallSuccessRate,
+        total_delivered: totalDelivered,
+        total_assigned: totalAssigned,
+        riders,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get rider performance for hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve rider performance. Please try again later.',
+      );
+    }
+  }
+
+  /**
    * Get rider settlement details
    */
   async getRiderSettlementDetails(

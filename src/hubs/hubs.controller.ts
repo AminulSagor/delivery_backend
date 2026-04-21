@@ -70,6 +70,7 @@ import { CreateHubExpenseDto } from './dto/create-hub-expense.dto';
 import { CollectCodDto } from './dto/collect-cod.dto';
 import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { RiderPerformanceQueryDto } from './dto/rider-performance-query.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -793,8 +794,8 @@ export class HubsController {
   }
 
   /**
-   * Create and Receive Parcel (Hub Manager)
-   * Creates a parcel and immediately sets status to IN_HUB
+   * Create Parcel (Hub Manager)
+   * Creates a parcel with PENDING status — must be received from the receive queue
    */
   @Post('parcels/create-and-receive')
   @Roles(UserRole.HUB_MANAGER)
@@ -814,7 +815,7 @@ export class HubsController {
       data: {
         parcel: toParcelListItem(parcel),
       },
-      message: 'Parcel created and received successfully',
+      message: 'Parcel created successfully. Please receive it from the receive queue.',
     };
   }
 
@@ -1355,6 +1356,36 @@ export class HubsController {
       success: true,
       data: { riders },
       message: 'Riders retrieved successfully',
+    };
+  }
+
+  /**
+   * Get rider performance statistics (Hub Manager)
+   *
+   * Returns overall success rate and per-rider breakdown:
+   * Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
+   *
+   * Query params: search, startDate, endDate, page, limit
+   */
+  @Get('riders/performance')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRiderPerformance(
+    @CurrentUser() user: any,
+    @Query() query: RiderPerformanceQueryDto,
+  ) {
+    const result = await this.hubsService.getRiderPerformance(user.hubId, {
+      search: query.search,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      page: query.page,
+      limit: query.limit,
+    });
+
+    return {
+      success: true,
+      data: result,
+      message: 'Rider performance retrieved successfully',
     };
   }
 
