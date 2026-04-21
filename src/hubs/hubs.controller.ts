@@ -1362,10 +1362,15 @@ export class HubsController {
   /**
    * Get rider performance statistics (Hub Manager)
    *
-   * Returns overall success rate and per-rider breakdown:
-   * Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
+   * Returns overall metrics (success rate, total rescheduled, total returned)
+   * and per-rider breakdown: Delivered, Rescheduled, Returned, Assigned, Commission, Success Rate
    *
-   * Query params: search, startDate, endDate, page, limit
+   * Query params:
+   * - search: Search by rider name or phone
+   * - riderId: Filter by specific rider UUID
+   * - period: Preset filter (today, this_week, last_week, this_month, last_month, last_3_months, last_6_months, this_year, all_time)
+   * - startDate / endDate: Custom date range (ISO format, overridden by period if set)
+   * - page / limit: Pagination
    */
   @Get('riders/performance')
   @Roles(UserRole.HUB_MANAGER)
@@ -1376,6 +1381,8 @@ export class HubsController {
   ) {
     const result = await this.hubsService.getRiderPerformance(user.hubId, {
       search: query.search,
+      riderId: query.riderId,
+      period: query.period,
       startDate: query.startDate,
       endDate: query.endDate,
       page: query.page,
