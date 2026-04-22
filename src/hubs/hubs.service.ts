@@ -225,14 +225,29 @@ export class HubsService {
     }
   }
 
-  async findAll(): Promise<Hub[]> {
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+  ): Promise<{ hubs: Hub[]; total: number }> {
     try {
-      const hubs = await this.hubRepository.find({
-        order: { created_at: 'DESC' },
-      });
+      const skip = (page - 1) * limit;
+
+      const query = this.hubRepository.createQueryBuilder('hub');
+
+      if (search) {
+        query.andWhere(
+          '(hub.branch_name ILIKE :search OR hub.hub_code ILIKE :search OR hub.manager_phone ILIKE :search OR hub.area ILIKE :search)',
+          { search: `%${search}%` }
+        );
+      }
+
+      query.orderBy('hub.created_at', 'DESC');
+
+      const [hubs, total] = await query.skip(skip).take(limit).getManyAndCount();
 
       this.logger.log(`Retrieved ${hubs.length} hubs`);
-      return hubs;
+      return { hubs, total };
     } catch (error) {
       this.logger.error(
         `Failed to retrieve hubs: ${error.message}`,

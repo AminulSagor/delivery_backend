@@ -66,6 +66,9 @@ export class StaffController {
     @CurrentUser() user: any,
     @Query('hubId') hubId?: string,
     @Query('isActive') isActive?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const effectiveHubId =
       user.role === UserRole.HUB_MANAGER ? user.hubId || null : hubId;
@@ -78,9 +81,16 @@ export class StaffController {
 
     const isActiveBoolean =
       isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    const staff = await this.staffService.findAll(
+      
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    
+    const { data: staff, total } = await this.staffService.findAll(
       effectiveHubId || undefined,
       isActiveBoolean,
+      search,
+      pageNum,
+      limitNum
     );
 
     return {
@@ -109,6 +119,12 @@ export class StaffController {
         is_active: s.is_active,
         created_at: s.created_at,
       })),
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      },
       message: 'Staff retrieved successfully',
     };
   }

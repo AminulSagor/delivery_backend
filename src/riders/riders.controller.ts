@@ -379,6 +379,7 @@ export class RidersController {
     @Query('hubId') hubId: string,
     @Query('isActive') isActive: string,
     @Query('approval_status') approvalStatus: string,
+    @Query('search') search: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
     @CurrentUser() user: any,
@@ -402,6 +403,7 @@ export class RidersController {
       parseInt(page),
       parseInt(limit),
       validApprovalStatus,
+      search,
     );
 
     return {

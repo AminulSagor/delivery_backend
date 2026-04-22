@@ -141,11 +141,24 @@ export class HubsController {
   @Roles(UserRole.ADMIN)
   @Get()
   @HttpCode(HttpStatus.OK)
-  async findAll() {
-    const hubs = await this.hubsService.findAll();
+  async findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+
+    const { hubs, total } = await this.hubsService.findAll(pageNum, limitNum, search);
     return {
       hubs: hubs.map(toHubListItem),
-      total: hubs.length,
+      total,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      },
       message: 'Hubs retrieved successfully',
     };
   }

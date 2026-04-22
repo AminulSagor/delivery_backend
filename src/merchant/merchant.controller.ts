@@ -77,12 +77,14 @@ export class MerchantController {
   async findAll(
     @Query('status') status?: MerchantStatus,
     @Query('district') district?: string,
+    @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     const result = await this.merchantService.findAll({
       status,
       district,
+      search,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
@@ -197,19 +199,36 @@ export class MerchantController {
 
   @Roles(UserRole.HUB_MANAGER)
   @Get('hub/assigned')
-  async getMerchantsAssignedToHub(@CurrentUser() user: any) {
+  async getMerchantsAssignedToHub(
+    @CurrentUser() user: any,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     if (!user.hubId) {
       throw new ForbiddenException('hubId missing in auth token');
     }
 
-    const merchants = await this.merchantService.findMerchantsAssignedToHub(
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+
+    const { data: merchants, total } = await this.merchantService.findMerchantsAssignedToHub(
       user.hubId,
+      search,
+      pageNum,
+      limitNum
     );
 
     return {
       success: true,
       data: merchants.map(toMerchantListItem),
       count: merchants.length,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      },
       message: 'Merchants assigned to your hub retrieved successfully',
     };
   }
