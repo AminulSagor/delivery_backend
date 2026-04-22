@@ -595,48 +595,72 @@ export class StoresService {
     return store;
   }
 
-  async findAllStores(merchantId?: string): Promise<any[]> {
-    // 1. Fetch stores with relations, optionally filtered by merchant
-    const whereCondition = merchantId ? { merchant_id: merchantId } : {};
-    const stores = await this.storesRepository.find({
-      where: whereCondition,
-      relations: ['merchant', 'merchant.user', 'hub'],
-      order: { created_at: 'DESC' },
-    });
+  async findAllStores(
+    merchantId?: string,
+    page: number = 1,
+    limit: number = 10,
+    search?: string
+  ): Promise<{ data: any[]; total: number }> {
+    const skip = (page - 1) * limit;
 
-    // 2. Fetch aggregated stats for ALL stores in one query
-    const stats = await this.storesRepository.manager
-      .createQueryBuilder(Parcel, 'parcel')
-      .select('parcel.store_id', 'store_id')
-      .addSelect('COUNT(parcel.id)', 'total_handled')
-      .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
-        'delivered_count',
-      )
-      .addSelect(
-        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
-        'return_count',
-      )
-      .groupBy('parcel.store_id')
-      .setParameters({
-        deliveredStatuses: [
-          ParcelStatus.DELIVERED,
-          ParcelStatus.PARTIAL_DELIVERY,
-          ParcelStatus.EXCHANGE,
-          ParcelStatus.PAID_RETURN,
-        ],
-        returnStatuses: [
-          ParcelStatus.RETURNED,
-          ParcelStatus.RETURNED_TO_HUB,
-          ParcelStatus.RETURN_TO_MERCHANT,
-          ParcelStatus.CANCELLED,
-          ParcelStatus.FAILED_DELIVERY,
-        ],
-      })
-      .getRawMany();
+    const query = this.storesRepository.createQueryBuilder('store')
+      .leftJoinAndSelect('store.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'user')
+      .leftJoinAndSelect('store.hub', 'hub');
+
+    if (merchantId) {
+      query.andWhere('store.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (search) {
+      query.andWhere(
+        '(store.business_name ILIKE :search OR store.store_code ILIKE :search OR user.full_name ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${search}%` }
+      );
+    }
+
+    query.orderBy('store.created_at', 'DESC');
+
+    const [stores, total] = await query.skip(skip).take(limit).getManyAndCount();
+
+    // 2. Fetch aggregated stats for the paginated stores in one query
+    let stats: any[] = [];
+    if (stores.length > 0) {
+      const storeIds = stores.map((s) => s.id);
+      stats = await this.storesRepository.manager
+        .createQueryBuilder(Parcel, 'parcel')
+        .select('parcel.store_id', 'store_id')
+        .addSelect('COUNT(parcel.id)', 'total_handled')
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
+          'delivered_count',
+        )
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
+          'return_count',
+        )
+        .where('parcel.store_id IN (:...storeIds)', { storeIds })
+        .groupBy('parcel.store_id')
+        .setParameters({
+          deliveredStatuses: [
+            ParcelStatus.DELIVERED,
+            ParcelStatus.PARTIAL_DELIVERY,
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
+          ],
+          returnStatuses: [
+            ParcelStatus.RETURNED,
+            ParcelStatus.RETURNED_TO_HUB,
+            ParcelStatus.RETURN_TO_MERCHANT,
+            ParcelStatus.CANCELLED,
+            ParcelStatus.FAILED_DELIVERY,
+          ],
+        })
+        .getRawMany();
+    }
 
     // 3. Merge stats into stores
-    return stores.map((store) => {
+    const data = stores.map((store) => {
       const storeStats = stats.find((s) => s.store_id === store.id) || {
         total_handled: '0',
         delivered_count: '0',
@@ -652,6 +676,8 @@ export class StoresService {
         },
       };
     });
+    
+    return { data, total };
   }
 
   async assignHubToStore(storeId: string, hubId: string): Promise<Store> {

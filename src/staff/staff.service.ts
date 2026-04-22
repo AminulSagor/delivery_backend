@@ -174,7 +174,15 @@ export class StaffService {
   /**
    * Get all staff with filters
    */
-  async findAll(hubId?: string, isActive?: boolean): Promise<Staff[]> {
+  async findAll(
+    hubId?: string,
+    isActive?: boolean,
+    search?: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<{ data: Staff[]; total: number }> {
+    const skip = (page - 1) * limit;
+
     const query = this.staffRepository
       .createQueryBuilder('staff')
       .leftJoinAndSelect('staff.user', 'user')
@@ -189,7 +197,15 @@ export class StaffService {
       query.andWhere('staff.is_active = :isActive', { isActive });
     }
 
-    return await query.getMany();
+    if (search) {
+      query.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR staff.staff_code ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const [data, total] = await query.skip(skip).take(limit).getManyAndCount();
+    return { data, total };
   }
 
   /**

@@ -492,6 +492,7 @@ export class RidersService {
     page: number = 1,
     limit: number = 20,
     approvalStatus?: RiderApprovalStatus,
+    search?: string,
   ): Promise<{ riders: Rider[]; total: number }> {
     const query = this.riderRepository
       .createQueryBuilder('rider')
@@ -510,6 +511,13 @@ export class RidersService {
       query.andWhere('rider.approval_status = :approvalStatus', {
         approvalStatus,
       });
+    }
+
+    if (search) {
+      query.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR rider.rider_code ILIKE :search)',
+        { search: `%${search}%` },
+      );
     }
 
     query

@@ -269,6 +269,7 @@ export class MerchantService {
   async findAll(filters?: {
     status?: MerchantStatus;
     district?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }): Promise<{
@@ -283,7 +284,8 @@ export class MerchantService {
 
     const query = this.merchantRepository
       .createQueryBuilder('merchant')
-      .leftJoinAndSelect('merchant.user', 'user');
+      .leftJoinAndSelect('merchant.user', 'user')
+      .leftJoin('stores', 'store', 'store.merchant_id = merchant.id');
 
     if (filters?.status) {
       query.andWhere('merchant.status = :status', { status: filters.status });
@@ -293,6 +295,13 @@ export class MerchantService {
       query.andWhere('merchant.district ILIKE :district', {
         district: `%${filters.district}%`,
       });
+    }
+
+    if (filters?.search) {
+      query.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR user.email ILIKE :search OR store.business_name ILIKE :search)',
+        { search: `%${filters.search}%` },
+      );
     }
 
     const [data, total] = await query
@@ -1152,7 +1161,14 @@ export class MerchantService {
     return Math.round((parsed + Number.EPSILON) * 100) / 100;
   }
 
-  async findMerchantsAssignedToHub(hubId: string) {
+  async findMerchantsAssignedToHub(
+    hubId: string,
+    search?: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<{ data: Merchant[]; total: number }> {
+    const skip = (page - 1) * limit;
+
     const qb = this.merchantRepository
       .createQueryBuilder('merchant')
       .leftJoinAndSelect('merchant.user', 'user')
@@ -1165,11 +1181,21 @@ export class MerchantService {
         },
       )
       .groupBy('merchant.id')
-      .addGroupBy('user.id')
-      .orderBy('merchant.created_at', 'DESC');
+      .addGroupBy('user.id');
 
-    const merchants = await qb.getMany();
-    return merchants;
+    if (search) {
+      qb.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR user.email ILIKE :search OR store.business_name ILIKE :search)',
+        { search: `%${search}%` }
+      );
+    }
+
+    qb.orderBy('merchant.created_at', 'DESC');
+
+    const total = await qb.getCount();
+    const merchants = await qb.offset(skip).limit(limit).getMany();
+
+    return { data: merchants, total };
   }
 
   async getHubParcelsInHubStatus(merchantId: string, hubId: string) {

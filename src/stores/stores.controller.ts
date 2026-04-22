@@ -58,10 +58,25 @@ export class StoresController {
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @Get('admin/all')
-  async findAllStores(@Query('merchant_id') merchantId?: string) {
-    const stores = await this.storesService.findAllStores(merchantId);
+  async findAllStores(
+    @Query('merchant_id') merchantId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+
+    const { data: stores, total } = await this.storesService.findAllStores(merchantId, pageNum, limitNum, search);
     return {
       stores: stores.map(toStoreDetail),
+      total,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      },
       message: 'All stores retrieved successfully',
     };
   }
