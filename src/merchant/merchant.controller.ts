@@ -26,6 +26,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import {
   toMerchantListItem,
   toMerchantDetail,
+  toMerchantDetailFull,
 } from '../common/interfaces/responses.interface';
 import { GetUploadUrlDto } from 'src/upload/dto/get-upload-url.dto';
 import { S3Service } from 'src/upload/s3-upload.service';
@@ -259,9 +260,9 @@ export class MerchantController {
   @Roles(UserRole.ADMIN)
   @Get(':id')
   async findOne(@Param('id') id: string) {
-    const merchant = await this.merchantService.findOne(id);
+    const data = await this.merchantService.findOneDetailed(id);
     return {
-      merchant: toMerchantDetail(merchant),
+      merchant: toMerchantDetailFull(data),
       message: 'Merchant retrieved successfully',
     };
   }

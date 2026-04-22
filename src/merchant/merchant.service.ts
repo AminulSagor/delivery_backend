@@ -326,6 +326,129 @@ export class MerchantService {
     return merchant;
   }
 
+  /**
+   * Admin: Get comprehensive merchant detail
+   * Includes: personal info, documents, payout methods, all stores with performance, parcel stats
+   */
+  async findOneDetailed(id: string): Promise<any> {
+    // 1. Load merchant with user, profile, approver
+    const merchant = await this.merchantRepository.findOne({
+      where: { id },
+      relations: ['user', 'merchant_profile', 'approver'],
+    });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${id} not found`);
+    }
+
+    // 2. Load all stores for this merchant (with hub relation)
+    const stores = await this.storeRepo.find({
+      where: { merchant_id: id },
+      relations: ['hub', 'merchant', 'merchant.user'],
+      order: { is_default: 'DESC', created_at: 'DESC' },
+    });
+
+    // 3. Calculate per-store performance stats
+    let storeStats: any[] = [];
+    if (stores.length > 0) {
+      const storeIds = stores.map((s) => s.id);
+      storeStats = await this.storeRepo.manager
+        .createQueryBuilder(Parcel, 'parcel')
+        .select('parcel.store_id', 'store_id')
+        .addSelect('COUNT(parcel.id)', 'total_handled')
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
+          'delivered_count',
+        )
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
+          'return_count',
+        )
+        .where('parcel.store_id IN (:...storeIds)', { storeIds })
+        .groupBy('parcel.store_id')
+        .setParameters({
+          deliveredStatuses: [
+            ParcelStatus.DELIVERED,
+            ParcelStatus.PARTIAL_DELIVERY,
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
+          ],
+          returnStatuses: [
+            ParcelStatus.RETURNED,
+            ParcelStatus.RETURNED_TO_HUB,
+            ParcelStatus.RETURN_TO_MERCHANT,
+            ParcelStatus.CANCELLED,
+            ParcelStatus.FAILED_DELIVERY,
+          ],
+        })
+        .getRawMany();
+    }
+
+    // Merge performance into stores
+    const storesWithPerformance = stores.map((store) => {
+      const stats = storeStats.find((s) => s.store_id === store.id) || {
+        total_handled: '0',
+        delivered_count: '0',
+        return_count: '0',
+      };
+      return {
+        ...store,
+        performance: {
+          total_parcels_handled: parseInt(stats.total_handled, 10),
+          successfully_delivered: parseInt(stats.delivered_count, 10),
+          total_returns: parseInt(stats.return_count, 10),
+        },
+      };
+    });
+
+    // 4. Load all payout methods
+    const payoutMethods = await this.payoutMethodRepository.find({
+      where: { merchant_id: id },
+      order: { is_default: 'DESC', created_at: 'ASC' },
+    });
+
+    // 5. Aggregated parcel stats for this merchant
+    const parcelStatsRaw = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COUNT(parcel.id)', 'total_parcels')
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
+        'total_delivered',
+      )
+      .addSelect(
+        `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
+        'total_returns',
+      )
+      .where('parcel.merchant_id = :merchantId', { merchantId: id })
+      .setParameters({
+        deliveredStatuses: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+        ],
+        returnStatuses: [
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.CANCELLED,
+          ParcelStatus.FAILED_DELIVERY,
+        ],
+      })
+      .getRawOne();
+
+    return {
+      merchant,
+      stores: storesWithPerformance,
+      payout_methods: payoutMethods,
+      parcel_stats: {
+        total_parcels: parseInt(parcelStatsRaw?.total_parcels || '0', 10),
+        total_delivered: parseInt(parcelStatsRaw?.total_delivered || '0', 10),
+        total_returns: parseInt(parcelStatsRaw?.total_returns || '0', 10),
+      },
+    };
+  }
+
   async getMerchantOverview(
     merchantId: string,
     options: {
@@ -1239,11 +1362,72 @@ export class MerchantService {
   }
 
   async update(id: string, dto: UpdateMerchantDto): Promise<Merchant> {
-    const merchant = await this.findOne(id);
+    const merchant = await this.merchantRepository.findOne({
+      where: { id },
+      relations: ['user'],
+    });
 
-    Object.assign(merchant, dto);
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${id} not found`);
+    }
 
-    return await this.merchantRepository.save(merchant);
+    // === Update basic merchant fields ===
+    if (dto.fullAddress !== undefined) merchant.full_address = dto.fullAddress;
+    if (dto.secondaryNumber !== undefined) merchant.secondary_number = dto.secondaryNumber;
+    if (dto.thana !== undefined) merchant.thana = dto.thana;
+    if (dto.district !== undefined) merchant.district = dto.district;
+
+    await this.merchantRepository.save(merchant);
+
+    // === Update document fields in merchant_profiles ===
+    if (dto.nid_number !== undefined || dto.trade_license_number !== undefined || dto.bin_number !== undefined) {
+      const profile = await this.getOrCreateProfile(id);
+
+      if (dto.nid_number !== undefined) {
+        profile.nid_number = dto.nid_number;
+        profile.nid_verified = false; // Reset verification when number changes
+      }
+      if (dto.trade_license_number !== undefined) {
+        profile.trade_license_number = dto.trade_license_number;
+        profile.trade_license_verified = false; // Reset verification when number changes
+      }
+      if (dto.bin_number !== undefined) {
+        profile.bin_number = dto.bin_number;
+        profile.bin_verified = false; // Reset verification when number changes
+      }
+
+      await this.profileRepo.save(profile);
+    }
+
+    // === Update stores ===
+    if (dto.stores && dto.stores.length > 0) {
+      for (const storeDto of dto.stores) {
+        const store = await this.storeRepo.findOne({
+          where: { id: storeDto.id, merchant_id: id },
+        });
+
+        if (!store) {
+          throw new NotFoundException(
+            `Store with ID ${storeDto.id} not found or does not belong to this merchant`,
+          );
+        }
+
+        if (storeDto.business_name !== undefined) store.business_name = storeDto.business_name;
+        if (storeDto.business_address !== undefined) store.business_address = storeDto.business_address;
+        if (storeDto.phone_number !== undefined) store.phone_number = storeDto.phone_number;
+        if (storeDto.email !== undefined) store.email = storeDto.email || null;
+        if (storeDto.district !== undefined) store.district = storeDto.district || null;
+        if (storeDto.thana !== undefined) store.thana = storeDto.thana || null;
+        if (storeDto.area !== undefined) store.area = storeDto.area || null;
+        if (storeDto.facebook_page !== undefined) store.facebook_page = storeDto.facebook_page || null;
+
+        await this.storeRepo.save(store);
+      }
+    }
+
+    console.log(`[MERCHANT UPDATED] Merchant ${id} updated by admin`);
+
+    return merchant;
   }
 
   // ===== PAYOUT METHOD MANAGEMENT =====
