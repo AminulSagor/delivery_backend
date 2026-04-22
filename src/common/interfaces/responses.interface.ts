@@ -742,6 +742,91 @@ export function toMerchantDetail(merchant: any): MerchantDetail {
   };
 }
 
+/**
+ * Comprehensive merchant detail for Admin GET /merchants/:id
+ * Includes: personal info, documents, payout methods, all stores with performance, parcel stats
+ */
+export function toMerchantDetailFull(data: any): any {
+  const merchant = data.merchant;
+  const profile = merchant?.merchant_profile || null;
+
+  return {
+    // === Basic Info ===
+    id: merchant.id,
+    user_id: merchant.user_id,
+    full_name: merchant.user?.full_name || '',
+    phone: merchant.user?.phone || '',
+    email: merchant.user?.email || null,
+    thana: merchant.thana,
+    district: merchant.district,
+    full_address: merchant.full_address || null,
+    secondary_number: merchant.secondary_number || null,
+    status: merchant.status,
+    is_active: merchant.user?.is_active ?? null,
+    is_advance_payment_disabled: !!merchant.is_advance_payment_disabled,
+    approved_at: merchant.approved_at || null,
+    created_at: merchant.created_at,
+    updated_at: merchant.updated_at,
+
+    // === Documents ===
+    documents: {
+      nid: {
+        number: profile?.nid_number || null,
+        front_url: profile?.nid_front_url || null,
+        back_url: profile?.nid_back_url || null,
+        verified: profile?.nid_verified || false,
+      },
+      trade_license: {
+        number: profile?.trade_license_number || null,
+        url: profile?.trade_license_url || null,
+        verified: profile?.trade_license_verified || false,
+      },
+      tin: {
+        number: profile?.tin_number || null,
+        url: profile?.tin_certificate_url || null,
+        verified: profile?.tin_verified || false,
+      },
+      bin: {
+        number: profile?.bin_number || null,
+        url: profile?.bin_certificate_url || null,
+        verified: profile?.bin_verified || false,
+      },
+    },
+
+    // === Payout Methods ===
+    payout_methods: (data.payout_methods || []).map((pm: any) => ({
+      id: pm.id,
+      method_type: pm.method_type,
+      status: pm.status,
+      is_default: !!pm.is_default,
+      bank_name: pm.bank_name || null,
+      branch_name: pm.branch_name || null,
+      account_holder_name: pm.account_holder_name || null,
+      account_number: pm.account_number || null,
+      routing_number: pm.routing_number || null,
+      bkash_number: pm.bkash_number || null,
+      bkash_account_holder_name: pm.bkash_account_holder_name || null,
+      bkash_account_type: pm.bkash_account_type || null,
+      nagad_number: pm.nagad_number || null,
+      nagad_account_holder_name: pm.nagad_account_holder_name || null,
+      nagad_account_type: pm.nagad_account_type || null,
+      verified_at: pm.verified_at || null,
+      created_at: pm.created_at,
+    })),
+
+    // === Stores ===
+    store_count: data.stores?.length || 0,
+    stores: (data.stores || []).map((store: any) => toFullStoreSummary(store)),
+
+    // === Aggregated Parcel Stats ===
+    parcel_stats: data.parcel_stats || {
+      total_parcels: 0,
+      total_delivered: 0,
+      total_returns: 0,
+    },
+  };
+}
+
 export function toStaffListItem(staff: any): StaffListItem {
   return {
     id: staff.id,
