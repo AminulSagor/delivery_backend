@@ -450,7 +450,7 @@ export class PickupRequestsService {
    * Only shows PENDING status by default (pickups ready for assignment)
    */
   async findAllForHub(
-    hubId: string,
+    hubId: string | null,
     page: number = 1,
     limit: number = 20,
     status?: PickupRequestStatus,
@@ -459,10 +459,14 @@ export class PickupRequestsService {
   ): Promise<PaginatedResponse<any>> {
     try {
       const where: FindOptionsWhere<PickupRequest> = {
-        hub_id: hubId,
         // Default to PENDING status (pickups ready for assignment)
         status: status || PickupRequestStatus.PENDING,
       };
+
+      // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+      if (hubId) {
+        where.hub_id = hubId;
+      }
 
       const [pickupRequests, total] =
         await this.pickupRequestRepository.findAndCount({
@@ -636,18 +640,24 @@ export class PickupRequestsService {
    * Shows pickups that riders are currently going to pick up
    */
   async getAcceptedPickupsForHub(
-    hubId: string,
+    hubId: string | null,
     page: number = 1,
     limit: number = 20,
   ): Promise<PaginatedResponse<any>> {
     try {
       const skip = (page - 1) * limit;
 
+      const where: FindOptionsWhere<PickupRequest> = {
+        status: PickupRequestStatus.CONFIRMED,
+      };
+
+      // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+      if (hubId) {
+        where.hub_id = hubId;
+      }
+
       const [items, total] = await this.pickupRequestRepository.findAndCount({
-        where: {
-          hub_id: hubId,
-          status: PickupRequestStatus.CONFIRMED,
-        },
+        where,
         relations: ['store', 'merchant', 'assignedRider', 'assignedRider.user'],
         order: { rider_assigned_at: 'DESC' },
         skip,
@@ -1384,7 +1394,7 @@ export class PickupRequestsService {
   async bulkAssignPickupsToRider(
     pickupIds: string[],
     riderId: string,
-    hubId: string,
+    hubId: string | null,
     notes?: string,
   ): Promise<{
     success: number;
@@ -1404,8 +1414,8 @@ export class PickupRequestsService {
       throw new BadRequestException('Cannot assign to inactive rider');
     }
 
-    // Verify rider belongs to the same hub
-    if (rider.hub_id !== hubId) {
+    // Verify rider belongs to the same hub (only for hub managers, not admin)
+    if (hubId && rider.hub_id !== hubId) {
       throw new ForbiddenException('Rider does not belong to your hub');
     }
 
@@ -1430,7 +1440,8 @@ export class PickupRequestsService {
           continue;
         }
 
-        if (pickup.hub_id !== hubId) {
+        // Hub validation: only enforce for hub managers (when hubId is provided)
+        if (hubId && pickup.hub_id !== hubId) {
           results.push({
             pickupId,
             success: false,

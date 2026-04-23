@@ -10,10 +10,13 @@ import {
   UseGuards,
   Req,
   ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
+import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import {
   ApproveTransferRecordDto,
@@ -88,6 +91,32 @@ export class AdminController {
     return {
       ...adminWithoutSensitive,
       message: 'Admin user activated successfully',
+    };
+  }
+
+  // ===== ALL PARCELS =====
+
+  /**
+   * Get all parcels in the system with rich data
+   * GET /admin/parcels
+   *
+   * Query params:
+   * - page, limit: pagination
+   * - search: search by tracking number, parcel_tx_id, customer name/phone
+   * - status: filter by ParcelStatus enum or 'ACTIVE'
+   * - hubId: optional hub filter
+   * - merchantId, storeId: optional filters
+   * - sortBy, order: sorting
+   */
+  @Get('parcels')
+  @HttpCode(HttpStatus.OK)
+  async getAllParcels(@Query() query: AdminParcelQueryDto) {
+    const result = await this.adminService.getAllParcels(query);
+
+    return {
+      success: true,
+      data: result,
+      message: 'All parcels retrieved successfully',
     };
   }
 

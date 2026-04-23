@@ -4470,7 +4470,7 @@ export class ParcelsService {
    * - View settled parcels that no longer need collection
    */
   async getDeliveryOutcomes(
-    hubId: string,
+    hubId: string | null,
     options: {
       status?: ParcelStatus;
       zone?: string;
@@ -4533,9 +4533,15 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.currentHub', 'currentHub')
       .leftJoinAndSelect('parcel.originHub', 'originHub')
       .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
-      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
-      .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.cod_cleared_at IS NOT NULL'); // Only show parcels AFTER COD collection
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
+
+    // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+    if (hubId) {
+      queryBuilder.where('parcel.current_hub_id = :hubId', { hubId });
+    } else {
+      queryBuilder.where('1=1');
+    }
+    queryBuilder.andWhere('parcel.cod_cleared_at IS NOT NULL'); // Only show parcels AFTER COD collection
 
     // Filter by specific status if provided
     if (status && completedStatuses.includes(status)) {
@@ -4579,8 +4585,14 @@ export class ParcelsService {
 
     const collectableQuery = this.parcelRepository
       .createQueryBuilder('parcel')
-      .select('SUM(parcel.cod_collected_amount)', 'total')
-      .where('parcel.current_hub_id = :hubId', { hubId })
+      .select('SUM(parcel.cod_collected_amount)', 'total');
+
+    if (hubId) {
+      collectableQuery.where('parcel.current_hub_id = :hubId', { hubId });
+    } else {
+      collectableQuery.where('1=1');
+    }
+    collectableQuery
       .andWhere('parcel.status IN (:...statuses)', {
         statuses: successfulStatuses,
       })
@@ -4905,7 +4917,7 @@ export class ParcelsService {
    * These parcels need to be re-assigned to a rider for redelivery
    */
   async getRescheduledDeliveries(
-    hubId: string,
+    hubId: string | null,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -4939,11 +4951,17 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.currentHub', 'currentHub')
       .leftJoinAndSelect('parcel.originHub', 'originHub')
       .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
-      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
-      .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.status = :status', {
-        status: ParcelStatus.DELIVERY_RESCHEDULED,
-      });
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
+
+    // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+    if (hubId) {
+      queryBuilder.where('parcel.current_hub_id = :hubId', { hubId });
+    } else {
+      queryBuilder.where('1=1');
+    }
+    queryBuilder.andWhere('parcel.status = :status', {
+      status: ParcelStatus.DELIVERY_RESCHEDULED,
+    });
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -4982,7 +5000,7 @@ export class ParcelsService {
    * Also includes the linked return parcel information
    */
   async getReturnToMerchantParcels(
-    hubId: string,
+    hubId: string | null,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -5016,11 +5034,17 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.currentHub', 'currentHub')
       .leftJoinAndSelect('parcel.originHub', 'originHub')
       .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
-      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
-      .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.status = :status', {
-        status: ParcelStatus.RETURN_TO_MERCHANT,
-      });
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
+
+    // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+    if (hubId) {
+      queryBuilder.where('parcel.current_hub_id = :hubId', { hubId });
+    } else {
+      queryBuilder.where('1=1');
+    }
+    queryBuilder.andWhere('parcel.status = :status', {
+      status: ParcelStatus.RETURN_TO_MERCHANT,
+    });
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -5095,14 +5119,19 @@ export class ParcelsService {
    *
    * Used for: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE outcomes
    */
-  async markReturnToMerchant(parcelId: string, hubId: string, notes?: string) {
+  async markReturnToMerchant(parcelId: string, hubId: string | null, notes?: string) {
+    const whereCondition: any = { id: parcelId };
+    if (hubId) {
+      whereCondition.current_hub_id = hubId;
+    }
+
     const originalParcel = await this.parcelRepository.findOne({
-      where: { id: parcelId, current_hub_id: hubId },
+      where: whereCondition,
       relations: ['store', 'merchant'],
     });
 
     if (!originalParcel) {
-      throw new NotFoundException('Parcel not found in your hub');
+      throw new NotFoundException(hubId ? 'Parcel not found in your hub' : 'Parcel not found');
     }
 
     const allowedStatuses = [
@@ -5253,7 +5282,7 @@ export class ParcelsService {
    */
   async bulkMarkReturnToMerchant(
     parcelIds: string[],
-    hubId: string,
+    hubId: string | null,
   ): Promise<{
     success: number;
     failed: number;
@@ -5328,13 +5357,18 @@ export class ParcelsService {
    *
    * Allowed from: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE, RETURNED_TO_HUB, IN_HUB
    */
-  async markAsRescheduled(parcelId: string, hubId: string) {
+  async markAsRescheduled(parcelId: string, hubId: string | null) {
+    const whereCondition: any = { id: parcelId };
+    if (hubId) {
+      whereCondition.current_hub_id = hubId;
+    }
+
     const parcel = await this.parcelRepository.findOne({
-      where: { id: parcelId, current_hub_id: hubId },
+      where: whereCondition,
     });
 
     if (!parcel) {
-      throw new NotFoundException('Parcel not found in your hub');
+      throw new NotFoundException(hubId ? 'Parcel not found in your hub' : 'Parcel not found');
     }
 
     const allowedStatuses = [
@@ -5374,7 +5408,7 @@ export class ParcelsService {
    */
   async bulkMarkAsRescheduled(
     parcelIds: string[],
-    hubId: string,
+    hubId: string | null,
   ): Promise<{
     success: number;
     failed: number;
