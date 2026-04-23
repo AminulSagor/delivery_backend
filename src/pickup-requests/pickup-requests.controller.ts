@@ -100,11 +100,12 @@ export class PickupRequestsController {
    */
   @Get('hub/my-requests')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async findAllForHub(
-    @CurrentUser('hubId') hubId: string,
+    @CurrentUser() user: any,
     @Query() query: PickupQueryDto,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const { status, page, limit, sortBy, order } = query;
     const result = await this.pickupRequestsService.findAllForHub(
       hubId,
@@ -160,11 +161,12 @@ export class PickupRequestsController {
    */
   @Get('hub/accepted-pickups')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async getAcceptedPickups(
-    @CurrentUser('hubId') hubId: string,
+    @CurrentUser() user: any,
     @Query() query: PickupQueryDto,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const { page, limit } = query;
     const result = await this.pickupRequestsService.getAcceptedPickupsForHub(
       hubId,
@@ -225,14 +227,14 @@ export class PickupRequestsController {
    */
   @Post('hub/bulk-assign-rider')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async bulkAssignToRider(
     @Body() assignDto: BulkAssignPickupToRiderDto,
     @CurrentUser() user: any,
   ) {
-    const hubId = user.hubId;
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
 
-    if (!hubId) {
+    if (!hubId && user.role !== UserRole.ADMIN) {
       return {
         success: false,
         message: 'Hub ID not found in user context',

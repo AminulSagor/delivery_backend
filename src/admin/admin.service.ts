@@ -5,17 +5,22 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
-import { Parcel } from '../parcels/entities/parcel.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import { HubTransferRecord } from '../hubs/entities/hub-transfer-record.entity';
+import { Store } from '../stores/entities/store.entity';
+import { Hub } from '../hubs/entities/hub.entity';
+import { Rider } from '../riders/entities/rider.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../common/enums/user-role.enum';
 import { TransferRecordStatus } from '../common/enums/transfer-record-status.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
+import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
+import { toParcelListItem } from '../common/interfaces/responses.interface';
 
 @Injectable()
 export class AdminService {
@@ -28,6 +33,10 @@ export class AdminService {
     private parcelRepository: Repository<Parcel>,
     @InjectRepository(HubTransferRecord)
     private hubTransferRecordRepository: Repository<HubTransferRecord>,
+    @InjectRepository(Store)
+    private storeRepository: Repository<Store>,
+    @InjectRepository(Hub)
+    private hubRepository: Repository<Hub>,
     private usersService: UsersService,
   ) {}
 
@@ -466,6 +475,210 @@ export class AdminService {
       merchants: paginatedList,
       total,
       summary: grandTotals,
+    };
+  }
+
+  // ===== ADMIN PARCEL LISTING =====
+
+  /**
+   * Get all parcels in the system with rich data (Admin)
+   * Supports search, filtering, and pagination
+   */
+  async getAllParcels(query: AdminParcelQueryDto) {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+      status,
+      hubId,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = query;
+
+    const skip = (page - 1) * limit;
+
+    // Active parcel statuses for the "ACTIVE" filter
+    const activeParcelStatuses = [
+      ParcelStatus.PENDING,
+      ParcelStatus.PICKED_UP,
+      ParcelStatus.IN_TRANSIT,
+      ParcelStatus.IN_HUB,
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.OUT_FOR_DELIVERY,
+      ParcelStatus.DELIVERY_RESCHEDULED,
+    ];
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
+
+    // Status filter
+    if (status === 'ACTIVE') {
+      queryBuilder.where('parcel.status IN (:...activeStatuses)', {
+        activeStatuses: activeParcelStatuses,
+      });
+    } else if (status) {
+      queryBuilder.where('parcel.status = :status', { status });
+    } else {
+      queryBuilder.where('1=1');
+    }
+
+    // Hub filter
+    if (hubId) {
+      queryBuilder.andWhere('parcel.current_hub_id = :hubId', { hubId });
+    }
+
+    // Merchant filter
+    if (merchantId) {
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId });
+    }
+
+    // Store filter
+    if (storeId) {
+      queryBuilder.andWhere('parcel.store_id = :storeId', { storeId });
+    }
+
+    // Customer name filter
+    if (customerName?.trim()) {
+      queryBuilder.andWhere('parcel.customer_name ILIKE :customerName', {
+        customerName: `%${customerName.trim()}%`,
+      });
+    }
+
+    // Customer phone filter
+    if (customerPhone?.trim()) {
+      queryBuilder.andWhere('parcel.customer_phone ILIKE :customerPhone', {
+        customerPhone: `%${customerPhone.trim()}%`,
+      });
+    }
+
+    // Merchant name filter
+    if (merchantName?.trim()) {
+      queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
+        merchantName: `%${merchantName.trim()}%`,
+      });
+    }
+
+    // Amount range filters
+    if (minAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) >= :minAmount',
+        { minAmount },
+      );
+    }
+
+    if (maxAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) <= :maxAmount',
+        { maxAmount },
+      );
+    }
+
+    // Delivery type filter
+    if (deliveryType !== undefined) {
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', {
+        deliveryType,
+      });
+    }
+
+    // Search filter
+    if (search?.trim()) {
+      const keyword = `%${search.trim()}%`;
+      queryBuilder.andWhere(
+        `(
+          CAST(parcel.id AS TEXT) ILIKE :keyword OR
+          parcel.tracking_number ILIKE :keyword OR
+          parcel.parcel_tx_id ILIKE :keyword OR
+          parcel.merchant_order_id ILIKE :keyword OR
+          parcel.customer_name ILIKE :keyword OR
+          parcel.customer_phone ILIKE :keyword OR
+          merchantUser.full_name ILIKE :keyword OR
+          store.business_name ILIKE :keyword OR
+          coverageArea.area ILIKE :keyword OR
+          coverageArea.zone ILIKE :keyword OR
+          coverageArea.city ILIKE :keyword OR
+          parcel.delivery_area ILIKE :keyword
+        )`,
+        { keyword },
+      );
+    }
+
+    // Sorting
+    const sortFieldMap: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      updated_at: 'parcel.updated_at',
+      tracking_number: 'parcel.tracking_number',
+      parcel_tx_id: 'parcel.parcel_tx_id',
+      customer_name: 'parcel.customer_name',
+      merchant_name: 'merchantUser.full_name',
+      status: 'parcel.status',
+      cod_amount: 'parcel.cod_amount',
+      total_charge: 'parcel.total_charge',
+    };
+
+    const normalizedSortBy = (sortBy || '').trim().toLowerCase();
+    const safeSortBy =
+      sortFieldMap[normalizedSortBy] || 'parcel.created_at';
+
+    queryBuilder.orderBy(safeSortBy, order || 'DESC');
+
+    // Get total count
+    const total = await queryBuilder.getCount();
+
+    // Apply pagination
+    queryBuilder.skip(skip).take(limit);
+
+    const parcels = await queryBuilder.getMany();
+
+    // Transform to response format
+    const items = parcels.map((parcel) => {
+      const item = toParcelListItem(parcel);
+
+      // Calculate age in days
+      const now = new Date();
+      const created = parcel.created_at ? new Date(parcel.created_at) : null;
+      const ageDays = created
+        ? Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      return {
+        ...item,
+        age_days: ageDays,
+      };
+    });
+
+    return {
+      parcels: items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
     };
   }
 }

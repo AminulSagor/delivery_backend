@@ -181,13 +181,14 @@ export class HubsController {
    * Pagination: page (default 1), limit (default 10, max 100)
    */
   @Get('parcels/delivery-outcomes')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getDeliveryOutcomes(
     @CurrentUser() user: any,
     @Query() query: DeliveryOutcomeQueryDto,
   ) {
-    const result = await this.parcelsService.getDeliveryOutcomes(user.hubId, {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
+    const result = await this.parcelsService.getDeliveryOutcomes(hubId, {
       status: query.status,
       zone: query.zone,
       merchantId: query.merchantId,
@@ -341,14 +342,15 @@ export class HubsController {
    * These need to be prepared for redelivery (reset to IN_HUB)
    */
   @Get('parcels/rescheduled')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getRescheduledDeliveries(
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const result = await this.parcelsService.getRescheduledDeliveries(
-      user.hubId,
+      hubId,
       query.page,
       query.limit,
       query.search,
@@ -379,14 +381,15 @@ export class HubsController {
    * These are original parcels that have been marked for return
    */
   @Get('parcels/return-to-merchant')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getReturnToMerchantParcels(
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const result = await this.parcelsService.getReturnToMerchantParcels(
-      user.hubId,
+      hubId,
       query.page,
       query.limit,
       query.search,
@@ -448,15 +451,16 @@ export class HubsController {
    * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
   @Post('parcels/bulk-return-to-merchant')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async bulkReturnToMerchant(
     @Body() dto: BulkReturnToMerchantDto,
     @CurrentUser() user: any,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const result = await this.parcelsService.bulkMarkReturnToMerchant(
       dto.parcel_ids,
-      user.hubId,
+      hubId,
     );
 
     return {
@@ -505,15 +509,16 @@ export class HubsController {
    * Request body: { "parcel_ids": ["uuid1", "uuid2", ...] }
    */
   @Post('parcels/bulk-reschedule-delivery')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async bulkRescheduleDelivery(
     @Body() dto: BulkRescheduleDeliveryDto,
     @CurrentUser() user: any,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const result = await this.parcelsService.bulkMarkAsRescheduled(
       dto.parcel_ids,
-      user.hubId,
+      hubId,
     );
 
     return {
