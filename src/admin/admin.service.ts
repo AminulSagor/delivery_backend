@@ -407,7 +407,7 @@ export class AdminService {
 
     // Calculate stats for each merchant
     const merchantClearanceList = Array.from(merchantMap.entries()).map(
-      ([, data]) => {
+      ([mid, data]) => {
         const parcels = data.parcels;
 
         // Calculate totals
@@ -429,11 +429,23 @@ export class AdminService {
         const dueAmount =
           totalCollectedAmount - totalDeliveryCharge - totalReturnCharge;
 
+        const totalReturned = parcels.filter(
+          (p) =>
+            p.status === ParcelStatus.RETURNED ||
+            p.status === ParcelStatus.RETURNED_TO_HUB ||
+            p.status === ParcelStatus.RETURN_TO_MERCHANT ||
+            p.status === ParcelStatus.PAID_RETURN ||
+            p.return_charge_applicable === true ||
+            String(p.return_charge_applicable) === 'true'
+        ).length;
+
         return {
+          merchant_id: mid,
           merchant_name: data.merchant_name,
           phone_number: data.phone_number,
           total_parcels: parcels.length,
-          total_delivered: parcels.length,
+          total_delivered: parcels.length - totalReturned, // Adjusted delivered to not include returned
+          total_returned: totalReturned,
           total_collected_amount: totalCollectedAmount,
           total_delivery_charge: totalDeliveryCharge,
           total_return_charge: totalReturnCharge,
@@ -454,6 +466,7 @@ export class AdminService {
       (acc, m) => ({
         total_parcels: acc.total_parcels + m.total_parcels,
         total_delivered: acc.total_delivered + m.total_delivered,
+        total_returned: acc.total_returned + m.total_returned,
         total_collected_amount:
           acc.total_collected_amount + m.total_collected_amount,
         total_delivery_charge:
@@ -464,6 +477,7 @@ export class AdminService {
       {
         total_parcels: 0,
         total_delivered: 0,
+        total_returned: 0,
         total_collected_amount: 0,
         total_delivery_charge: 0,
         total_return_charge: 0,
