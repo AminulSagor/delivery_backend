@@ -1517,6 +1517,37 @@ export class HubsController {
     };
   }
 
+  // ===== MERCHANT PERFORMANCE STATISTICS (HUB MANAGER & ADMIN) =====
+
+  /**
+   * Get detailed merchant performance statistics (Hub Manager & Admin)
+   * Includes total counts, top merchant info, and a list of all merchants with their performance metrics
+   */
+  @Get('merchants/performance')
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getMerchantPerformance(
+    @CurrentUser() user: any,
+    @Query('hub_id') queryHubId?: string,
+  ) {
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? queryHubId : user.hubId;
+
+    if (!effectiveHubId && user.role !== UserRole.ADMIN) {
+      throw new BadRequestException('Hub ID is required');
+    }
+
+    const result = await this.hubsService.getHubMerchantPerformance(
+      effectiveHubId,
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Merchant performance statistics retrieved successfully',
+    };
+  }
+
   // ===== TOP MERCHANT STATISTICS (HUB MANAGER) =====
 
   /**

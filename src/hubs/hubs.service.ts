@@ -1461,8 +1461,144 @@ export class HubsService {
   }
 
   /**
-   * Get the top merchant (by successful parcels) with their transaction details
+   * Get comprehensive merchant performance statistics for a hub
+   * Returns total count, top merchant, and a detailed list of all merchants in the hub
    */
+  async getHubMerchantPerformance(hubId: string): Promise<any> {
+    try {
+      // 1. Get stores (filter by hub if hubId is provided)
+      const whereCondition: any = {};
+      if (hubId) {
+        whereCondition.hub_id = hubId;
+      }
+
+      const stores = await this.storeRepository.find({
+        where: whereCondition,
+        relations: ['merchant', 'merchant.user'],
+      });
+
+      const storeIds = stores.map((store) => store.id);
+      if (storeIds.length === 0) {
+        return {
+          summary: {
+            total_merchants: 0,
+            top_merchant: null,
+          },
+          merchants: [],
+        };
+      }
+
+      // 2. Define statuses for aggregation
+      const deliveredStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+      ];
+      const returnedStatuses = [
+        ParcelStatus.RETURNED,
+        ParcelStatus.PAID_RETURN,
+        ParcelStatus.RETURN_TO_MERCHANT,
+        ParcelStatus.RETURNED_TO_HUB,
+      ];
+
+      // 3. Get all parcels for these stores
+      // Selecting minimal fields for performance
+      const parcels = await this.parcelRepository.find({
+        where: { store_id: In(storeIds) },
+        select: [
+          'id',
+          'merchant_id',
+          'store_id',
+          'status',
+          'cod_collected_amount',
+          'cod_amount',
+          'total_charge',
+        ],
+      });
+
+      // 4. Map stores to get info easily
+      const storeMap = new Map(stores.map((s) => [s.id, s]));
+
+      // 5. Aggregate stats by merchant
+      const merchantMap = new Map<string, any>();
+
+      for (const parcel of parcels) {
+        const mid = parcel.merchant_id;
+        const store = storeMap.get(parcel.store_id as string);
+
+        if (!merchantMap.has(mid)) {
+          merchantMap.set(mid, {
+            merchant_id: mid,
+            business_name: store?.business_name || 'N/A',
+            phone: store?.phone_number || store?.merchant?.user?.phone || 'N/A',
+            address:
+              store?.business_address || store?.merchant?.full_address || 'N/A',
+            total_parcels: 0,
+            delivered_parcels: 0,
+            returned_parcels: 0,
+            total_transactions: 0,
+          });
+        }
+
+        const data = merchantMap.get(mid);
+        data.total_parcels++;
+
+        // Successful delivered stats
+        if (deliveredStatuses.includes(parcel.status)) {
+          data.delivered_parcels++;
+          const amount = Number(
+            parcel.cod_collected_amount || parcel.cod_amount || 0,
+          );
+          data.total_transactions += amount;
+        }
+
+        // Return stats
+        if (returnedStatuses.includes(parcel.status)) {
+          data.returned_parcels++;
+        }
+      }
+
+      const merchantList = Array.from(merchantMap.values());
+
+      // 6. Find Top Merchant (by delivered parcel count)
+      const topMerchant =
+        merchantList.length > 0
+          ? [...merchantList].sort(
+              (a, b) => b.delivered_parcels - a.delivered_parcels,
+            )[0]
+          : null;
+
+      return {
+        summary: {
+          total_merchants: merchantList.length,
+          top_merchant: topMerchant
+            ? {
+                merchant_id: topMerchant.merchant_id,
+                business_name: topMerchant.business_name,
+                phone: topMerchant.phone,
+                address: topMerchant.address,
+                total_transactions: Number(
+                  topMerchant.total_transactions.toFixed(2),
+                ),
+              }
+            : null,
+        },
+        merchants: merchantList.map((m) => ({
+          ...m,
+          total_transactions: Number(m.total_transactions.toFixed(2)),
+        })),
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get hub merchant performance for hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve merchant performance data. Please try again later.',
+      );
+    }
+  }
+
   async getTopMerchantStatistics(hubId: string): Promise<{
     top_merchant: {
       merchant_id: string;
