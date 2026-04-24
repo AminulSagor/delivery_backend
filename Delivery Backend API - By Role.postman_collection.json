@@ -368,7 +368,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"identifier\": \"ride7680@example.com\",\n  \"password\": \"Rider123!\"\n}"
+                  "raw": "{\n  \"identifier\": \"01321148151\",\n  \"password\": \"Ibrahim@123\"\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/auth/login",
@@ -2665,7 +2665,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/merchants?status=PENDING&district=Dhaka&page=1&limit=10",
+                  "raw": "{{baseUrl}}/merchants?page=1&limit=10&search=sifat",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2675,11 +2675,13 @@
                   "query": [
                     {
                       "key": "status",
-                      "value": "PENDING"
+                      "value": "PENDING",
+                      "disabled": true
                     },
                     {
                       "key": "district",
-                      "value": "Dhaka"
+                      "value": "Dhaka",
+                      "disabled": true
                     },
                     {
                       "key": "page",
@@ -2688,6 +2690,10 @@
                     {
                       "key": "limit",
                       "value": "10"
+                    },
+                    {
+                      "key": "search",
+                      "value": "sifat"
                     }
                   ]
                 }
@@ -5560,7 +5566,7 @@
                     "header": [],
                     "body": {
                       "mode": "raw",
-                      "raw": "{\r\n    \"account_name\": \"BRAC Bank\",\r\n    \"account_number\": \"1234567890\",\r\n    \"account_holder_name\": \"John Doe\",\r\n    \"provider_type\": \"BANK\",\r\n    \"opening_balance\": 500000\r\n}",
+                      "raw": "{\r\n  \"account_name\": \"BRAC Bank\",\r\n  \"account_number\": \"1234567890\",\r\n  \"account_holder_name\": \"John Doe\",\r\n  \"district\": \"Dhaka\",\r\n  \"branch_name\": \"Gulshan Branch\",\r\n  \"routing\": \"060261234\",\r\n  \"provider_type\": \"BANK\",\r\n  \"opening_balance\": 500000\r\n}\r\n",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -6616,6 +6622,19 @@
                   "response": []
                 }
               ]
+            },
+            {
+              "name": "Banks",
+              "item": [
+                {
+                  "name": "add banks",
+                  "request": {
+                    "method": "GET",
+                    "header": []
+                  },
+                  "response": []
+                }
+              ]
             }
           ]
         },
@@ -6887,6 +6906,1480 @@
                     "merchant",
                     "invoice",
                     "list"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Parcel Management",
+          "item": [
+            {
+              "name": "Parcel Operations Copy",
+              "item": [
+                {
+                  "name": "Parcel Reports",
+                  "item": [
+                    {
+                      "name": "Get Parcel Reports",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/reports?page=1&limit=10",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "reports"
+                          ],
+                          "query": [
+                            {
+                              "key": "page",
+                              "value": "1"
+                            },
+                            {
+                              "key": "limit",
+                              "value": "10"
+                            }
+                          ]
+                        }
+                      },
+                      "response": [
+                        {
+                          "name": "Get Parcel Reports",
+                          "originalRequest": {
+                            "method": "GET",
+                            "header": [],
+                            "url": {
+                              "raw": "{{baseUrl}}/hubs/parcels/reports?page=1&limit=10",
+                              "host": [
+                                "{{baseUrl}}"
+                              ],
+                              "path": [
+                                "hubs",
+                                "parcels",
+                                "reports"
+                              ],
+                              "query": [
+                                {
+                                  "key": "page",
+                                  "value": "1"
+                                },
+                                {
+                                  "key": "limit",
+                                  "value": "10"
+                                }
+                              ]
+                            }
+                          },
+                          "status": "OK",
+                          "code": 200,
+                          "_postman_previewlanguage": "Text",
+                          "header": [
+                            {
+                              "key": "X-Powered-By",
+                              "value": "Express"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Origin",
+                              "value": "*"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Credentials",
+                              "value": "true"
+                            },
+                            {
+                              "key": "Content-Type",
+                              "value": "application/json; charset=utf-8"
+                            },
+                            {
+                              "key": "Content-Length",
+                              "value": "1393"
+                            },
+                            {
+                              "key": "ETag",
+                              "value": "W/\"571-CIZlpUIWbBP/oUS2tfaxggxFq/4\""
+                            },
+                            {
+                              "key": "Date",
+                              "value": "Sun, 11 Jan 2026 13:17:39 GMT"
+                            },
+                            {
+                              "key": "Connection",
+                              "value": "keep-alive"
+                            },
+                            {
+                              "key": "Keep-Alive",
+                              "value": "timeout=5"
+                            }
+                          ],
+                          "cookie": [],
+                          "body": "{\n    \"success\": true,\n    \"data\": [\n        {\n            \"id\": \"25dee474-5106-4adb-817c-d85a576afcef\",\n            \"tracking_number\": \"TRK-RPT-001\",\n            \"customer\": {\n                \"name\": \"Rahim Uddin\",\n                \"phone\": \"01700000001\",\n                \"address\": \"Unknown Road, House 99\"\n            },\n            \"merchant\": {\n                \"name\": \"Masum Enterprise\",\n                \"company\": \"Updated Store Name 1\"\n            },\n            \"zone\": \"Dhaka\",\n            \"reported_by\": {\n                \"name\": \"Unknown\",\n                \"photo\": null\n            },\n            \"report\": {\n                \"type\": \"INCORRECT_ADDRESS\",\n                \"reason\": \"Rider could not find the building\",\n                \"reported_at\": \"2026-01-11T13:06:50.191Z\"\n            }\n        },\n        {\n            \"id\": \"af8bfe5e-b225-40b5-910c-21e31beea082\",\n            \"tracking_number\": \"TRK-RPT-002\",\n            \"customer\": {\n                \"name\": \"Karim Mia\",\n                \"phone\": \"01800000002\",\n                \"address\": \"Sector 10, Uttara\"\n            },\n            \"merchant\": {\n                \"name\": \"Masum Enterprise\",\n                \"company\": \"Updated Store Name 1\"\n            },\n            \"zone\": \"Dhaka\",\n            \"reported_by\": {\n                \"name\": \"Unknown\",\n                \"photo\": null\n            },\n            \"report\": {\n                \"type\": \"PARCEL_DAMAGED\",\n                \"reason\": \"Box was crushed during transit\",\n                \"reported_at\": \"2026-01-11T13:06:50.191Z\"\n            }\n        },\n        {\n            \"id\": \"1dcee159-d776-4efb-8af6-a70676d14ea3\",\n            \"tracking_number\": \"TRK-RPT-003\",\n            \"customer\": {\n                \"name\": \"Ms. Fatema\",\n                \"phone\": \"01900000003\",\n                \"address\": \"Banani Road 11\"\n            },\n            \"merchant\": {\n                \"name\": \"Masum Enterprise\",\n                \"company\": \"Test Store\"\n            },\n            \"zone\": \"Dhaka\",\n            \"reported_by\": {\n                \"name\": \"Unknown\",\n                \"photo\": null\n            },\n            \"report\": {\n                \"type\": \"CUSTOMER_REFUSED_TO_PAY\",\n                \"reason\": \"Customer refused to pay delivery charge\",\n                \"reported_at\": \"2026-01-11T13:06:50.191Z\"\n            }\n        }\n    ],\n    \"pagination\": {\n        \"total\": 3,\n        \"page\": 1,\n        \"limit\": 10,\n        \"totalPages\": 1\n    },\n    \"message\": \"Parcel reports retrieved successfully\"\n}"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Get Report By ID",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/reports/{{reportId}}",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "reports",
+                            "{{reportId}}"
+                          ]
+                        }
+                      },
+                      "response": [
+                        {
+                          "name": "Get Report By ID",
+                          "originalRequest": {
+                            "method": "GET",
+                            "header": [],
+                            "url": {
+                              "raw": "{{baseUrl}}/hubs/parcels/reports/{{reportId}}",
+                              "host": [
+                                "{{baseUrl}}"
+                              ],
+                              "path": [
+                                "hubs",
+                                "parcels",
+                                "reports",
+                                "{{reportId}}"
+                              ]
+                            }
+                          },
+                          "status": "OK",
+                          "code": 200,
+                          "_postman_previewlanguage": "Text",
+                          "header": [
+                            {
+                              "key": "X-Powered-By",
+                              "value": "Express"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Origin",
+                              "value": "*"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Credentials",
+                              "value": "true"
+                            },
+                            {
+                              "key": "Content-Type",
+                              "value": "application/json; charset=utf-8"
+                            },
+                            {
+                              "key": "Content-Length",
+                              "value": "555"
+                            },
+                            {
+                              "key": "ETag",
+                              "value": "W/\"22b-DsINvBCvQYAWP0wUEDqt9AN9JuM\""
+                            },
+                            {
+                              "key": "Date",
+                              "value": "Sun, 11 Jan 2026 13:31:20 GMT"
+                            },
+                            {
+                              "key": "Connection",
+                              "value": "keep-alive"
+                            },
+                            {
+                              "key": "Keep-Alive",
+                              "value": "timeout=5"
+                            }
+                          ],
+                          "cookie": [],
+                          "body": "{\n    \"success\": true,\n    \"data\": {\n        \"id\": \"25dee474-5106-4adb-817c-d85a576afcef\",\n        \"tracking_number\": \"TRK-RPT-001\",\n        \"status\": \"RETURN_TO_MERCHANT\",\n        \"customer\": {\n            \"name\": \"Rahim Uddin\",\n            \"phone\": \"01700000001\",\n            \"address\": \"Unknown Road, House 99\"\n        },\n        \"merchant\": {\n            \"name\": \"Masum Enterprise\",\n            \"company\": \"Updated Store Name 1\"\n        },\n        \"zone\": \"Dhaka\",\n        \"reported_by\": {\n            \"name\": \"Unknown\",\n            \"photo\": null\n        },\n        \"report\": {\n            \"type\": \"INCORRECT_ADDRESS\",\n            \"reason\": \"Rider could not find the building\",\n            \"reported_at\": \"2026-01-11T13:06:50.191Z\",\n            \"is_resolved\": true\n        }\n    },\n    \"message\": \"Parcel report details retrieved successfully\"\n}"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Update Single Report",
+                      "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\r\n    \"action_status\": \"RETURN_TO_MERCHANT\",\r\n    \"admin_notes\": \"Address incorrect, returning.\"\r\n}",
+                          "options": {
+                            "raw": {
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/reports/{{reportId}}/resolve",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "reports",
+                            "{{reportId}}",
+                            "resolve"
+                          ]
+                        }
+                      },
+                      "response": [
+                        {
+                          "name": "Update Single Report",
+                          "originalRequest": {
+                            "method": "PATCH",
+                            "header": [],
+                            "body": {
+                              "mode": "raw",
+                              "raw": "{\r\n    \"action_status\": \"RETURN_TO_MERCHANT\",\r\n    \"admin_notes\": \"Address incorrect, returning.\"\r\n}",
+                              "options": {
+                                "raw": {
+                                  "language": "json"
+                                }
+                              }
+                            },
+                            "url": {
+                              "raw": "{{baseUrl}}/hubs/parcels/reports/{{reportId}}/resolve",
+                              "host": [
+                                "{{baseUrl}}"
+                              ],
+                              "path": [
+                                "hubs",
+                                "parcels",
+                                "reports",
+                                "{{reportId}}",
+                                "resolve"
+                              ]
+                            }
+                          },
+                          "status": "OK",
+                          "code": 200,
+                          "_postman_previewlanguage": "Text",
+                          "header": [
+                            {
+                              "key": "X-Powered-By",
+                              "value": "Express"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Origin",
+                              "value": "*"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Credentials",
+                              "value": "true"
+                            },
+                            {
+                              "key": "Content-Type",
+                              "value": "application/json; charset=utf-8"
+                            },
+                            {
+                              "key": "Content-Length",
+                              "value": "64"
+                            },
+                            {
+                              "key": "ETag",
+                              "value": "W/\"40-tc9qiyYG/YoAc2clWlyZZ0o5qC0\""
+                            },
+                            {
+                              "key": "Date",
+                              "value": "Sun, 11 Jan 2026 13:27:01 GMT"
+                            },
+                            {
+                              "key": "Connection",
+                              "value": "keep-alive"
+                            },
+                            {
+                              "key": "Keep-Alive",
+                              "value": "timeout=5"
+                            }
+                          ],
+                          "cookie": [],
+                          "body": "{\n    \"success\": true,\n    \"message\": \"Parcel report resolved successfully\"\n}"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Bulk Report Update",
+                      "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\r\n    \"parcel_ids\": [\r\n        \"af8bfe5e-b225-40b5-910c-21e31beea082\",\r\n        \"1dcee159-d776-4efb-8af6-a70676d14ea3\"\r\n    ],\r\n    \"action_status\": \"IN_HUB\",\r\n    \"admin_notes\": \"Investigating with rider.\"\r\n}",
+                          "options": {
+                            "raw": {
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/reports/bulk-resolve",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "reports",
+                            "bulk-resolve"
+                          ]
+                        }
+                      },
+                      "response": [
+                        {
+                          "name": "Bulk Report Update",
+                          "originalRequest": {
+                            "method": "POST",
+                            "header": [],
+                            "body": {
+                              "mode": "raw",
+                              "raw": "{\r\n    \"parcel_ids\": [\r\n        \"af8bfe5e-b225-40b5-910c-21e31beea082\",\r\n        \"1dcee159-d776-4efb-8af6-a70676d14ea3\"\r\n    ],\r\n    \"action_status\": \"IN_HUB\",\r\n    \"admin_notes\": \"Investigating with rider.\"\r\n}",
+                              "options": {
+                                "raw": {
+                                  "language": "json"
+                                }
+                              }
+                            },
+                            "url": {
+                              "raw": "{{baseUrl}}/hubs/parcels/reports/bulk-resolve",
+                              "host": [
+                                "{{baseUrl}}"
+                              ],
+                              "path": [
+                                "hubs",
+                                "parcels",
+                                "reports",
+                                "bulk-resolve"
+                              ]
+                            }
+                          },
+                          "status": "OK",
+                          "code": 200,
+                          "_postman_previewlanguage": "Text",
+                          "header": [
+                            {
+                              "key": "X-Powered-By",
+                              "value": "Express"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Origin",
+                              "value": "*"
+                            },
+                            {
+                              "key": "Access-Control-Allow-Credentials",
+                              "value": "true"
+                            },
+                            {
+                              "key": "Content-Type",
+                              "value": "application/json; charset=utf-8"
+                            },
+                            {
+                              "key": "Content-Length",
+                              "value": "67"
+                            },
+                            {
+                              "key": "ETag",
+                              "value": "W/\"43-VDrchHhPVaAWDjS8i18cVfmXL94\""
+                            },
+                            {
+                              "key": "Date",
+                              "value": "Sun, 11 Jan 2026 13:28:41 GMT"
+                            },
+                            {
+                              "key": "Connection",
+                              "value": "keep-alive"
+                            },
+                            {
+                              "key": "Keep-Alive",
+                              "value": "timeout=5"
+                            }
+                          ],
+                          "cookie": [],
+                          "body": "{\n    \"success\": true,\n    \"message\": \"2 parcel reports resolved successfully\"\n}"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "Process/UnProcess",
+                  "item": [
+                    {
+                      "name": "📅 Get Rescheduled Deliveries",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/rescheduled?page=1&limit=10",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "rescheduled"
+                          ],
+                          "query": [
+                            {
+                              "key": "page",
+                              "value": "1"
+                            },
+                            {
+                              "key": "limit",
+                              "value": "10"
+                            }
+                          ]
+                        }
+                      },
+                      "response": []
+                    },
+                    {
+                      "name": "📊 Get Delivery Outcomes (Returns/Exchanges)",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/delivery-outcomes?page=1&limit=10",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "delivery-outcomes"
+                          ],
+                          "query": [
+                            {
+                              "key": "page",
+                              "value": "1"
+                            },
+                            {
+                              "key": "limit",
+                              "value": "10",
+                              "description": "1-100 per page"
+                            },
+                            {
+                              "key": "status",
+                              "value": "RETURNED",
+                              "description": "PARTIAL_DELIVERY|EXCHANGE|PAID_RETURN|RETURNED",
+                              "disabled": true
+                            },
+                            {
+                              "key": "zone",
+                              "value": "Mirpur",
+                              "description": "Filter by zone/area name",
+                              "disabled": true
+                            },
+                            {
+                              "key": "merchantId",
+                              "value": "",
+                              "description": "Filter by merchant UUID",
+                              "disabled": true
+                            }
+                          ]
+                        }
+                      },
+                      "response": []
+                    },
+                    {
+                      "name": "Bulk Retrun To Merchant Assignment",
+                      "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\r\n  \"parcel_ids\": [\r\n    \"550e8400-e29b-41d4-a716-446655440001\",\r\n    \"550e8400-e29b-41d4-a716-446655440002\",\r\n    \"550e8400-e29b-41d4-a716-446655440003\"\r\n  ]\r\n}",
+                          "options": {
+                            "raw": {
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/bulk-return-to-merchant",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "bulk-return-to-merchant"
+                          ]
+                        }
+                      },
+                      "response": []
+                    },
+                    {
+                      "name": "Bulk Reschedule  Parcel",
+                      "request": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"parcel_ids\": [\n    \"550e8400-e29b-41d4-a716-446655440001\",\n    \"550e8400-e29b-41d4-a716-446655440002\",\n    \"550e8400-e29b-41d4-a716-446655440003\"\n  ]\n}"
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/bulk-reschedule-delivery",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "bulk-reschedule-delivery"
+                          ]
+                        }
+                      },
+                      "response": []
+                    },
+                    {
+                      "name": "Get Retrun To Merchant",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/return-to-merchant",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "return-to-merchant"
+                          ]
+                        }
+                      },
+                      "response": []
+                    }
+                  ]
+                },
+                {
+                  "name": "In Hub Parcels",
+                  "item": [
+                    {
+                      "name": "New Request",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/parcels/hub/in-hub",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "parcels",
+                            "hub",
+                            "in-hub"
+                          ],
+                          "query": [
+                            {
+                              "key": "page",
+                              "value": "1",
+                              "disabled": true
+                            },
+                            {
+                              "key": "limit",
+                              "value": "20",
+                              "disabled": true
+                            },
+                            {
+                              "key": "sortBy",
+                              "value": "created_at",
+                              "disabled": true
+                            },
+                            {
+                              "key": "order",
+                              "value": "DESC",
+                              "disabled": true
+                            }
+                          ]
+                        }
+                      },
+                      "response": []
+                    }
+                  ]
+                },
+                {
+                  "name": "Approve Rider OTP request",
+                  "item": [
+                    {
+                      "name": "Get Pending Reqest",
+                      "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/delivery-verifications/hub-approval/pending",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "delivery-verifications",
+                            "hub-approval",
+                            "pending"
+                          ]
+                        }
+                      },
+                      "response": []
+                    },
+                    {
+                      "name": "Approve OTP Request",
+                      "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/delivery-verifications/:id/hub-approval/approve",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "delivery-verifications",
+                            ":id",
+                            "hub-approval",
+                            "approve"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "{{verificationId}}"
+                            }
+                          ]
+                        }
+                      },
+                      "response": []
+                    }
+                  ]
+                },
+                {
+                  "name": "Get Hub Parcels",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels?merchantId=df32ef2e-96fe-4a1d-8723-78372129a05e&storeId=84a543a6-0dcf-4542-837d-2b0cf918aca2&rider_id=76668c67-0d97-428b-83ec-bad828cdf4b4&search=rrrr&status=IN_HUB",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels"
+                      ],
+                      "query": [
+                        {
+                          "key": "merchantId",
+                          "value": "df32ef2e-96fe-4a1d-8723-78372129a05e",
+                          "type": "text"
+                        },
+                        {
+                          "key": "storeId",
+                          "value": "84a543a6-0dcf-4542-837d-2b0cf918aca2",
+                          "type": "text"
+                        },
+                        {
+                          "key": "rider_id",
+                          "value": "76668c67-0d97-428b-83ec-bad828cdf4b4",
+                          "type": "text"
+                        },
+                        {
+                          "key": "search",
+                          "value": "rrrr",
+                          "type": "text"
+                        },
+                        {
+                          "key": "status",
+                          "value": "IN_HUB",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "🔄 Prepare for Redelivery",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/:id/prepare-redelivery",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        ":id",
+                        "prepare-redelivery"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "{{parcelId}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Get Parcels For Receipt",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/received?page=1&limit=20&search=sifat&sortBy=created_at&order=DESC&merchantId=df32ef2e-96fe-4a1d-8723-78372129a05e",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "received"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "20"
+                        },
+                        {
+                          "key": "search",
+                          "value": "sifat"
+                        },
+                        {
+                          "key": "sortBy",
+                          "value": "created_at"
+                        },
+                        {
+                          "key": "order",
+                          "value": "DESC"
+                        },
+                        {
+                          "key": "status",
+                          "value": "PENDING",
+                          "disabled": true
+                        },
+                        {
+                          "key": "merchantId",
+                          "value": "df32ef2e-96fe-4a1d-8723-78372129a05e",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Get Parcels For Assignment",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/for-assignment?page=1&limit=20&search=sifat",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "for-assignment"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "20"
+                        },
+                        {
+                          "key": "search",
+                          "value": "sifat",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Assign Return Parcel To Rider",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"rider_id\": \"{{riderId}}\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/:id/assign-rider",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        ":id",
+                        "assign-rider"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "{{returnParcelId}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Transfer Parcel To Hub",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"destination_hub_id\": \"destination-hub-uuid\",\n  \"transfer_notes\": \"Transferring to destination hub\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/:id/transfer",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        ":id",
+                        "transfer"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "{{parcelId}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Bulk Transfer Parcel To Hub",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"parcel_ids\": [\n    \"PARCEL_UUID_1\",\n    \"PARCEL_UUID_2\",\n    \"PARCEL_UUID_3\"\n  ],\n  \"destination_hub_id\": \"DESTINATION_HUB_UUID\",\n  \"transfer_notes\": \"Bulk transfer for evening dispatch\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/bulk-transfer",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "bulk-transfer"
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Bulk Transfer Parcel To Hub",
+                      "originalRequest": {
+                        "method": "PATCH",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"parcel_ids\": [\n    \"{{parcel_1}}\",\n    \"{{parcel_2}}\"\n  ],\n  \"destination_hub_id\": \"cae04efc-2dac-4b74-ba35-a2895845828e\",\n  \"transfer_notes\": \"Bulk transfer for evening dispatch\"\n}"
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/bulk-transfer",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "bulk-transfer"
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "Text",
+                      "header": [
+                        {
+                          "key": "Access-Control-Allow-Credentials",
+                          "value": "true"
+                        },
+                        {
+                          "key": "Access-Control-Allow-Origin",
+                          "value": "*"
+                        },
+                        {
+                          "key": "Content-Length",
+                          "value": "107"
+                        },
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json; charset=utf-8"
+                        },
+                        {
+                          "key": "Date",
+                          "value": "Sun, 25 Jan 2026 18:24:36 GMT"
+                        },
+                        {
+                          "key": "Etag",
+                          "value": "W/\"6b-pYdrM5PUwYP3Bl3WWRiG1TLweXE\""
+                        },
+                        {
+                          "key": "Server",
+                          "value": "railway-edge"
+                        },
+                        {
+                          "key": "X-Powered-By",
+                          "value": "Express"
+                        },
+                        {
+                          "key": "X-Railway-Edge",
+                          "value": "railway/asia-southeast1-eqsg3a"
+                        },
+                        {
+                          "key": "X-Railway-Request-Id",
+                          "value": "lOgYi9F8T5KnXJlnAQeqjw"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n    \"success\": true,\n    \"data\": {\n        \"transferred_count\": 2,\n        \"errors\": []\n    },\n    \"message\": \"Successfully transferred 2 parcels.\"\n}"
+                    }
+                  ]
+                },
+                {
+                  "name": "Get Incoming Parcels (IN_TRANSIT)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/incoming?page=1&limit=20&sortBy=created_at&order=DESC",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "incoming"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "20"
+                        },
+                        {
+                          "key": "sortBy",
+                          "value": "created_at"
+                        },
+                        {
+                          "key": "order",
+                          "value": "DESC"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Accept Incoming Parcel",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/:id/accept",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        ":id",
+                        "accept"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "{{parcelId}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Bulk Accept Incoming Parcel",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"parcel_ids\": [\r\n    \"75cd748f-8847-46ef-a870-2ef04493ab71\"\r\n  ]\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/bulk-accept",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "bulk-accept"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Get Outgoing Parcels",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/outgoing?page=1&limit=20",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "outgoing"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "20"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Get Outgoing Parcels",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/hubs/parcels/outgoing?page=1&limit=20",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "hubs",
+                            "parcels",
+                            "outgoing"
+                          ],
+                          "query": [
+                            {
+                              "key": "page",
+                              "value": "1"
+                            },
+                            {
+                              "key": "limit",
+                              "value": "20"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "Text",
+                      "header": [
+                        {
+                          "key": "Access-Control-Allow-Credentials",
+                          "value": "true"
+                        },
+                        {
+                          "key": "Access-Control-Allow-Origin",
+                          "value": "*"
+                        },
+                        {
+                          "key": "Content-Length",
+                          "value": "7588"
+                        },
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json; charset=utf-8"
+                        },
+                        {
+                          "key": "Date",
+                          "value": "Sun, 25 Jan 2026 18:29:24 GMT"
+                        },
+                        {
+                          "key": "Etag",
+                          "value": "W/\"1da4-Kz2JTNE4Y+KMXHuBZrkIf2GsQtg\""
+                        },
+                        {
+                          "key": "Server",
+                          "value": "railway-edge"
+                        },
+                        {
+                          "key": "X-Powered-By",
+                          "value": "Express"
+                        },
+                        {
+                          "key": "X-Railway-Edge",
+                          "value": "railway/asia-southeast1-eqsg3a"
+                        },
+                        {
+                          "key": "X-Railway-Request-Id",
+                          "value": "ye313GJxTLS6U61bDcO5xA"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n    \"success\": true,\n    \"data\": {\n        \"parcels\": [\n            {\n                \"id\": \"192a5e63-28d6-4220-bb0a-b80ce3277562\",\n                \"customer_id\": \"57597163-0dd1-48c7-a22f-c4aed6b01078\",\n                \"customer\": {\n                    \"id\": \"57597163-0dd1-48c7-a22f-c4aed6b01078\",\n                    \"customer_name\": \"Hub Customer\",\n                    \"phone_number\": \"01711112222\",\n                    \"secondary_number\": \"01722223333\",\n                    \"customer_address\": \"House 10, Road 5, Gulshan 1, Dhaka\",\n                    \"delivery_coverage_area_id\": \"15853427-df46-4004-9847-833355186c9f\",\n                    \"created_at\": \"2026-01-23T17:32:00.392Z\",\n                    \"updated_at\": \"2026-01-23T17:32:00.392Z\"\n                },\n                \"merchant_id\": \"17ff89bb-38f2-496d-925d-bd6e35f1020e\",\n                \"store_id\": \"badc26d3-9f5c-47c8-b828-3c1828169f3d\",\n                \"store\": {\n                    \"id\": \"badc26d3-9f5c-47c8-b828-3c1828169f3d\",\n                    \"store_code\": \"TES001\",\n                    \"merchant_id\": \"17ff89bb-38f2-496d-925d-bd6e35f1020e\",\n                    \"business_name\": \"Test Store 1\",\n                    \"business_address\": \"House 15, Road 05, Gulshan 1, Dhaka\",\n                    \"phone_number\": \"01794669664\",\n                    \"email\": \"teststore1@example.com\",\n                    \"facebook_page\": \"https://facebook.com/teststore1\",\n                    \"hub_id\": \"1044d859-f354-4cf9-8e31-73ad2e005a9c\",\n                    \"is_default\": true,\n                    \"status\": \"APPROVED\",\n                    \"district\": \"Dhaka\",\n                    \"thana\": \"Gulshan 1\",\n                    \"area\": \"Road 05\",\n                    \"carrybee_store_id\": \"9102\",\n                    \"carrybee_city_id\": 14,\n                    \"carrybee_zone_id\": 4,\n                    \"carrybee_area_id\": 208,\n                    \"is_carrybee_synced\": true,\n                    \"carrybee_synced_at\": \"2026-01-23T06:40:20.123Z\",\n                    \"created_at\": \"2026-01-23T06:40:18.648Z\",\n                    \"updated_at\": \"2026-01-23T13:15:02.970Z\"\n                },\n                \"pickup_request_id\": null,\n                \"tracking_number\": \"TRK-20260125-00003\",\n                \"parcel_tx_id\": null,\n                \"merchant_order_id\": \"HUB-ORD-001\",\n                \"delivery_area\": \"Gulshan 1, Dhaka\",\n                \"delivery_coverage_area_id\": \"15853427-df46-4004-9847-833355186c9f\",\n                \"customer_name\": \"Hub Customer\",\n                \"customer_phone\": \"01711112222\",\n                \"customer_secondary_phone\": \"01722223333\",\n                \"customer_address\": \"House 10, Road 5, Gulshan 1, Dhaka\",\n                \"product_description\": \"Electronics Item - Headphones\",\n                \"product_price\": \"1200.00\",\n                \"product_weight\": \"1.50\",\n                \"parcel_type\": 1,\n                \"delivery_charge\": \"60.00\",\n                \"weight_charge\": \"20.00\",\n                \"cod_charge\": \"12.00\",\n                \"total_charge\": \"92.00\",\n                \"is_cod\": true,\n                \"cod_amount\": \"1200.00\",\n                \"is_exchange\": false,\n                \"receivable_amount\": \"1108.00\",\n                \"cod_collected_amount\": \"0.00\",\n                \"return_charge\": \"0.00\",\n                \"delivery_charge_applicable\": true,\n                \"return_charge_applicable\": false,\n                \"financial_status\": \"PENDING\",\n                \"invoice_id\": null,\n                \"clearance_required\": false,\n                \"clearance_done\": false,\n                \"clearance_invoice_id\": null,\n                \"paid_amount\": null,\n                \"status\": \"IN_TRANSIT\",\n                \"payment_status\": \"UNPAID\",\n                \"paid_to_merchant\": false,\n                \"paid_to_merchant_at\": null,\n                \"delivery_type\": 1,\n                \"assigned_rider_id\": null,\n                \"assigned_at\": null,\n                \"rider_accepted_at\": null,\n                \"out_for_delivery_at\": null,\n                \"reschedule_count\": 0,\n                \"special_instructions\": \"Handle with care, fragile item\",\n                \"admin_notes\": null,\n                \"return_reason\": null,\n                \"current_hub_id\": null,\n                \"origin_hub_id\": \"1044d859-f354-4cf9-8e31-73ad2e005a9c\",\n                \"destination_hub_id\": \"cae04efc-2dac-4b74-ba35-a2895845828e\",\n                \"destinationHub\": {\n                    \"id\": \"cae04efc-2dac-4b74-ba35-a2895845828e\",\n                    \"hub_code\": \"DHK-BANANI\",\n                    \"branch_name\": \"Otto Duncan\",\n                    \"area\": \"Minus labore eos in\",\n                    \"address\": \"Cumque et fugiat et \",\n                    \"manager_user_id\": \"1124ee3f-e9c9-45ce-8a96-5eb30f81a65a\",\n                    \"created_at\": \"2026-01-24T16:55:00.160Z\",\n                    \"updated_at\": \"2026-01-24T16:55:00.160Z\"\n                },\n                \"is_inter_hub_transfer\": true,\n                \"transferred_at\": \"2026-01-25T18:24:36.738Z\",\n                \"received_at_destination_hub\": null,\n                \"transfer_notes\": \"Bulk transfer for evening dispatch\",\n                \"delivery_provider\": \"INTERNAL\",\n                \"third_party_provider_id\": null,\n                \"issue_type\": null,\n                \"issue_description\": null,\n                \"issue_reported_by_id\": null,\n                \"issue_reported_at\": null,\n                \"is_issue_resolved\": false,\n                \"carrybee_consignment_id\": null,\n                \"carrybee_delivery_fee\": null,\n                \"carrybee_cod_fee\": null,\n                \"assigned_to_carrybee_at\": null,\n                \"recipient_carrybee_city_id\": 14,\n                \"recipient_carrybee_zone_id\": 4,\n                \"recipient_carrybee_area_id\": 198,\n                \"original_parcel_id\": null,\n                \"is_return_parcel\": false,\n                \"picked_up_at\": null,\n                \"delivered_at\": null,\n                \"created_at\": \"2026-01-25T17:59:08.379Z\",\n                \"updated_at\": \"2026-01-25T18:24:36.743Z\"\n            },\n            {\n                \"id\": \"2f8feea6-ab9a-4c54-a497-74c42b7e1b3d\",\n                \"customer_id\": \"57597163-0dd1-48c7-a22f-c4aed6b01078\",\n                \"customer\": {\n                    \"id\": \"57597163-0dd1-48c7-a22f-c4aed6b01078\",\n                    \"customer_name\": \"Hub Customer\",\n                    \"phone_number\": \"01711112222\",\n                    \"secondary_number\": \"01722223333\",\n                    \"customer_address\": \"House 10, Road 5, Gulshan 1, Dhaka\",\n                    \"delivery_coverage_area_id\": \"15853427-df46-4004-9847-833355186c9f\",\n                    \"created_at\": \"2026-01-23T17:32:00.392Z\",\n                    \"updated_at\": \"2026-01-23T17:32:00.392Z\"\n                },\n                \"merchant_id\": \"17ff89bb-38f2-496d-925d-bd6e35f1020e\",\n                \"store_id\": \"badc26d3-9f5c-47c8-b828-3c1828169f3d\",\n                \"store\": {\n                    \"id\": \"badc26d3-9f5c-47c8-b828-3c1828169f3d\",\n                    \"store_code\": \"TES001\",\n                    \"merchant_id\": \"17ff89bb-38f2-496d-925d-bd6e35f1020e\",\n                    \"business_name\": \"Test Store 1\",\n                    \"business_address\": \"House 15, Road 05, Gulshan 1, Dhaka\",\n                    \"phone_number\": \"01794669664\",\n                    \"email\": \"teststore1@example.com\",\n                    \"facebook_page\": \"https://facebook.com/teststore1\",\n                    \"hub_id\": \"1044d859-f354-4cf9-8e31-73ad2e005a9c\",\n                    \"is_default\": true,\n                    \"status\": \"APPROVED\",\n                    \"district\": \"Dhaka\",\n                    \"thana\": \"Gulshan 1\",\n                    \"area\": \"Road 05\",\n                    \"carrybee_store_id\": \"9102\",\n                    \"carrybee_city_id\": 14,\n                    \"carrybee_zone_id\": 4,\n                    \"carrybee_area_id\": 208,\n                    \"is_carrybee_synced\": true,\n                    \"carrybee_synced_at\": \"2026-01-23T06:40:20.123Z\",\n                    \"created_at\": \"2026-01-23T06:40:18.648Z\",\n                    \"updated_at\": \"2026-01-23T13:15:02.970Z\"\n                },\n                \"pickup_request_id\": null,\n                \"tracking_number\": \"TRK-20260125-00004\",\n                \"parcel_tx_id\": null,\n                \"merchant_order_id\": \"HUB-ORD-002\",\n                \"delivery_area\": \"Gulshan 1, Dhaka\",\n                \"delivery_coverage_area_id\": \"15853427-df46-4004-9847-833355186c9f\",\n                \"customer_name\": \"Hub Customer\",\n                \"customer_phone\": \"01711112222\",\n                \"customer_secondary_phone\": \"01722223333\",\n                \"customer_address\": \"House 10, Road 5, Gulshan 1, Dhaka\",\n                \"product_description\": \"Electronics Item - Headphones\",\n                \"product_price\": \"1200.00\",\n                \"product_weight\": \"1.50\",\n                \"parcel_type\": 1,\n                \"delivery_charge\": \"60.00\",\n                \"weight_charge\": \"20.00\",\n                \"cod_charge\": \"12.00\",\n                \"total_charge\": \"92.00\",\n                \"is_cod\": true,\n                \"cod_amount\": \"1200.00\",\n                \"is_exchange\": false,\n                \"receivable_amount\": \"1108.00\",\n                \"cod_collected_amount\": \"0.00\",\n                \"return_charge\": \"0.00\",\n                \"delivery_charge_applicable\": true,\n                \"return_charge_applicable\": false,\n                \"financial_status\": \"PENDING\",\n                \"invoice_id\": null,\n                \"clearance_required\": false,\n                \"clearance_done\": false,\n                \"clearance_invoice_id\": null,\n                \"paid_amount\": null,\n                \"status\": \"IN_TRANSIT\",\n                \"payment_status\": \"UNPAID\",\n                \"paid_to_merchant\": false,\n                \"paid_to_merchant_at\": null,\n                \"delivery_type\": 1,\n                \"assigned_rider_id\": null,\n                \"assigned_at\": null,\n                \"rider_accepted_at\": null,\n                \"out_for_delivery_at\": null,\n                \"reschedule_count\": 0,\n                \"special_instructions\": \"Handle with care, fragile item\",\n                \"admin_notes\": null,\n                \"return_reason\": null,\n                \"current_hub_id\": null,\n                \"origin_hub_id\": \"1044d859-f354-4cf9-8e31-73ad2e005a9c\",\n                \"destination_hub_id\": \"cae04efc-2dac-4b74-ba35-a2895845828e\",\n                \"destinationHub\": {\n                    \"id\": \"cae04efc-2dac-4b74-ba35-a2895845828e\",\n                    \"hub_code\": \"DHK-BANANI\",\n                    \"branch_name\": \"Otto Duncan\",\n                    \"area\": \"Minus labore eos in\",\n                    \"address\": \"Cumque et fugiat et \",\n                    \"manager_user_id\": \"1124ee3f-e9c9-45ce-8a96-5eb30f81a65a\",\n                    \"created_at\": \"2026-01-24T16:55:00.160Z\",\n                    \"updated_at\": \"2026-01-24T16:55:00.160Z\"\n                },\n                \"is_inter_hub_transfer\": true,\n                \"transferred_at\": \"2026-01-25T18:24:36.738Z\",\n                \"received_at_destination_hub\": null,\n                \"transfer_notes\": \"Bulk transfer for evening dispatch\",\n                \"delivery_provider\": \"INTERNAL\",\n                \"third_party_provider_id\": null,\n                \"issue_type\": null,\n                \"issue_description\": null,\n                \"issue_reported_by_id\": null,\n                \"issue_reported_at\": null,\n                \"is_issue_resolved\": false,\n                \"carrybee_consignment_id\": null,\n                \"carrybee_delivery_fee\": null,\n                \"carrybee_cod_fee\": null,\n                \"assigned_to_carrybee_at\": null,\n                \"recipient_carrybee_city_id\": 14,\n                \"recipient_carrybee_zone_id\": 4,\n                \"recipient_carrybee_area_id\": 198,\n                \"original_parcel_id\": null,\n                \"is_return_parcel\": false,\n                \"picked_up_at\": null,\n                \"delivered_at\": null,\n                \"created_at\": \"2026-01-25T18:01:39.668Z\",\n                \"updated_at\": \"2026-01-25T18:24:36.772Z\"\n            }\n        ],\n        \"total\": 2,\n        \"page\": 1,\n        \"limit\": 20,\n        \"totalPages\": 1\n    },\n    \"message\": \"Outgoing parcels retrieved successfully\"\n}"
+                    }
+                  ]
+                },
+                {
+                  "name": "Parcel Bulk Assignment",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"rider_id\": \"{{riderId}}\",\n  \"parcel_ids\": [\n    \"{{parcel_0}}\",\n    \"{{parcel_1}}\", \n    \"{{parcel_2}}\",\n    \"{{parcel_3}}\",\n    \"{{parcel_4}}\"\n  ]\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/assign-rider",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "assign-rider"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Bulk Parcel Receive",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"parcel_ids\": [\n    \"0c7daa88-a147-4e69-9bcb-7d634f464e90\"\n  ]\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/hubs/parcels/receive",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "hubs",
+                        "parcels",
+                        "receive"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Update Delivery and weight charge of a parcel",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"delivery_charge\": 80.00,  \r\n  \"weight_charge\": 40.00    \r\n}\r\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/parcels/:id/hub-charges",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "parcels",
+                        ":id",
+                        "hub-charges"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "be640886-bbd3-4050-9c48-f50df73d65ae"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Pickup Requests Copy",
+          "item": [
+            {
+              "name": "Create Pickup Request",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if(pm.response.code===201){var d=pm.response.json();if(d.id)pm.collectionVariables.set('pickupRequestId',d.id);}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"estimated_parcels\": 5,\n  \"comment\": \"Please pickup in the morning\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/pickup-requests",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pickup-requests"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Create Pickup Request",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"store_id\": \"{{storeId}}\",\n  \"estimated_parcels\": 3,\n  \"comment\": \"Please pickup in the morning\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/pickup-requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "pickup-requests"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "Text",
+                  "header": [
+                    {
+                      "key": "Access-Control-Allow-Credentials",
+                      "value": "true"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "160"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Fri, 23 Jan 2026 17:44:28 GMT"
+                    },
+                    {
+                      "key": "Etag",
+                      "value": "W/\"a0-yk9KGfavNTx/mUH7bbUGbf97NPE\""
+                    },
+                    {
+                      "key": "Server",
+                      "value": "railway-edge"
+                    },
+                    {
+                      "key": "X-Powered-By",
+                      "value": "Express"
+                    },
+                    {
+                      "key": "X-Railway-Edge",
+                      "value": "railway/asia-southeast1-eqsg3a"
+                    },
+                    {
+                      "key": "X-Railway-Request-Id",
+                      "value": "_pR-01drQ5WfYyEVDcO5xA"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"success\": true,\n    \"data\": {\n        \"id\": \"ffaa9b2e-9ec8-4191-a156-e1cce8566f7d\",\n        \"request_code\": \"REQ-2001\",\n        \"pickup_count\": 4\n    },\n    \"message\": \"Pickup request created successfully\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "Get My Pickup Requests",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/pickup-requests?page=1&limit=20&status=PENDING",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pickup-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    },
+                    {
+                      "key": "status",
+                      "value": "PENDING"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get Pickup Request By ID",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/pickup-requests/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pickup-requests",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{pickupRequestId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Pickup Request",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"estimated_parcels\": 10,\n  \"comment\": \"Updated comment\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/pickup-requests/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pickup-requests",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{pickupRequestId}}"
+                    }
                   ]
                 }
               },
@@ -7854,13 +9347,40 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/hubs/parcels",
+                  "raw": "{{baseUrl}}/hubs/parcels?merchantId=df32ef2e-96fe-4a1d-8723-78372129a05e&storeId=84a543a6-0dcf-4542-837d-2b0cf918aca2&rider_id=76668c67-0d97-428b-83ec-bad828cdf4b4&search=rrrr&status=IN_HUB",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
                     "hubs",
                     "parcels"
+                  ],
+                  "query": [
+                    {
+                      "key": "merchantId",
+                      "value": "df32ef2e-96fe-4a1d-8723-78372129a05e",
+                      "type": "text"
+                    },
+                    {
+                      "key": "storeId",
+                      "value": "84a543a6-0dcf-4542-837d-2b0cf918aca2",
+                      "type": "text"
+                    },
+                    {
+                      "key": "rider_id",
+                      "value": "76668c67-0d97-428b-83ec-bad828cdf4b4",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "rrrr",
+                      "type": "text"
+                    },
+                    {
+                      "key": "status",
+                      "value": "IN_HUB",
+                      "type": "text"
+                    }
                   ]
                 }
               },
@@ -7898,7 +9418,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/hubs/parcels/received",
+                  "raw": "{{baseUrl}}/hubs/parcels/received?page=1&limit=20&search=sifat&sortBy=created_at&order=DESC&merchantId=df32ef2e-96fe-4a1d-8723-78372129a05e",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7906,6 +9426,38 @@
                     "hubs",
                     "parcels",
                     "received"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    },
+                    {
+                      "key": "search",
+                      "value": "sifat"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "created_at"
+                    },
+                    {
+                      "key": "order",
+                      "value": "DESC"
+                    },
+                    {
+                      "key": "status",
+                      "value": "PENDING",
+                      "disabled": true
+                    },
+                    {
+                      "key": "merchantId",
+                      "value": "df32ef2e-96fe-4a1d-8723-78372129a05e",
+                      "type": "text"
+                    }
                   ]
                 }
               },
@@ -7917,7 +9469,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/hubs/parcels/for-assignment?page=1&limit=20",
+                  "raw": "{{baseUrl}}/hubs/parcels/for-assignment?page=1&limit=20&search=sifat",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7934,6 +9486,11 @@
                     {
                       "key": "limit",
                       "value": "20"
+                    },
+                    {
+                      "key": "search",
+                      "value": "sifat",
+                      "type": "text"
                     }
                   ]
                 }
@@ -8183,7 +9740,7 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n  \"parcel_ids\": [\r\n    \"{{parcel_3}}\",\r\n    \"{{parcel_4}}\"\r\n  ]\r\n}",
+                  "raw": "{\r\n  \"parcel_ids\": [\r\n    \"75cd748f-8847-46ef-a870-2ef04493ab71\"\r\n  ]\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -8349,7 +9906,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"parcel_ids\": [\n    \"{{parcel_0}}\",\n    \"{{parcel_1}}\"\n  ]\n}"
+                  "raw": "{\n  \"parcel_ids\": [\n    \"0c7daa88-a147-4e69-9bcb-7d634f464e90\"\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/hubs/parcels/receive",
@@ -8372,7 +9929,7 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n  \"delivery_charge\": 80.00,  // optional\r\n  \"weight_charge\": 40.00    // optional\r\n}",
+                  "raw": "{\r\n  \"delivery_charge\": 80.00,  \r\n  \"weight_charge\": 40.00    \r\n}\r\n",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -8733,7 +10290,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"full_name\": \"Updated Rider Name\",\n  \"fixed_salary\": 18000,\n  \"commission_percentage\": 7\n}"
+                  "raw": "{\n  \"full_name\": \"John Doe\",\n  \"phone\": \"01234567890\",\n  \"email\": \"john@example.com\",\n  \"password\": \"newpassword123\",\n  \"photo\": \"photo_url_or_base64\",\n  \"guardian_mobile_no\": \"01987654321\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890123\",\n  \"license_no\": \"DL123456\",\n  \"present_address\": \"123 Current Address\",\n  \"permanent_address\": \"456 Permanent Address\",\n  \"fixed_salary\": 15000,\n  \"commission_per_delivery\": 25,\n  \"bank_name\": \"DBBL\",\n  \"bank_account_number\": \"1234567890\",\n  \"bank_branch\": \"Main Branch\",\n  \"nid_front_photo\": \"nid_front_url_or_base64\",\n  \"nid_back_photo\": \"nid_back_url_or_base64\",\n  \"license_front_photo\": \"license_front_url_or_base64\",\n  \"license_back_photo\": \"license_back_url_or_base64\",\n  \"parent_nid_front_photo\": \"parent_nid_front_url_or_base64\",\n  \"parent_nid_back_photo\": \"parent_nid_back_url_or_base64\",\n  \"hub_id\": \"hub-uuid-here\",\n  \"is_active\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/riders/:id",
@@ -8753,6 +10310,32 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Rider Performance",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/hubs/riders/performance",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "hubs",
+                    "riders",
+                    "performance"
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -8760,23 +10343,316 @@
           "name": "Pickup Requests",
           "item": [
             {
-              "name": "Get Hub Pending Pickup Requests",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/pickup-requests/hub/my-requests",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "pickup-requests",
-                    "hub",
-                    "my-requests"
+              "name": "Tabs",
+              "item": [
+                {
+                  "name": "Request List",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/pickup-requests/hub/my-requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "pickup-requests",
+                        "hub",
+                        "my-requests"
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Request List",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/pickup-requests/hub/my-requests",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "pickup-requests",
+                            "hub",
+                            "my-requests"
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": null,
+                      "header": [
+                        {
+                          "key": ":status",
+                          "value": 200
+                        },
+                        {
+                          "key": "access-control-allow-credentials",
+                          "value": "true"
+                        },
+                        {
+                          "key": "x-railway-cdn-edge",
+                          "value": "fastly/cache-ccu830023-CCU"
+                        },
+                        {
+                          "key": "content-type",
+                          "value": "application/json; charset=utf-8"
+                        },
+                        {
+                          "key": "date",
+                          "value": "Sun, 19 Apr 2026 11:34:03 GMT"
+                        },
+                        {
+                          "key": "etag",
+                          "value": "W/\"2cd-8bgLTryaJpTsvlqM4Zapi7XcMr0\""
+                        },
+                        {
+                          "key": "server",
+                          "value": "railway-edge"
+                        },
+                        {
+                          "key": "vary",
+                          "value": "Origin"
+                        },
+                        {
+                          "key": "x-powered-by",
+                          "value": "Express"
+                        },
+                        {
+                          "key": "x-railway-edge",
+                          "value": "railway/asia-southeast1-eqsg3a"
+                        },
+                        {
+                          "key": "x-railway-request-id",
+                          "value": "d79tpl7bRjSfidRf0ubPiw"
+                        },
+                        {
+                          "key": "x-cache",
+                          "value": "MISS"
+                        },
+                        {
+                          "key": "x-cache-hits",
+                          "value": "0"
+                        },
+                        {
+                          "key": "x-served-by",
+                          "value": "cache-ccu830023-CCU"
+                        },
+                        {
+                          "key": "content-length",
+                          "value": "717"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n    \"success\": true,\n    \"data\": {\n        \"pickupRequests\": [\n            {\n                \"id\": \"9fbdf954-b641-4826-8d88-b534e7c952e8\",\n                \"request_code\": \"REQ-2027\",\n                \"pickup_location\": \"Adabor Road  9, Adabor, Dhaka, Dhaka\",\n                \"store_name\": \"Meghswar Courier\",\n                \"store_phone\": \"01747657586\",\n                \"comment\": null,\n                \"pickup_count\": 3,\n                \"status\": \"PENDING\",\n                \"assigned_rider_id\": null\n            },\n            {\n                \"id\": \"4560e354-7409-41aa-a64d-4b66f991a17a\",\n                \"request_code\": \"REQ-2022\",\n                \"pickup_location\": \"Adabor Road  9, Adabor, Dhaka, Dhaka\",\n                \"store_name\": \"Meghswar Courier\",\n                \"store_phone\": \"01747657586\",\n                \"comment\": null,\n                \"pickup_count\": 1,\n                \"status\": \"PENDING\",\n                \"assigned_rider_id\": null\n            }\n        ],\n        \"pagination\": {\n            \"total\": 2,\n            \"page\": 1,\n            \"limit\": 20,\n            \"totalPages\": 1,\n            \"hasNext\": false,\n            \"hasPrev\": false\n        }\n    },\n    \"message\": \"Pickup requests retrieved successfully\"\n}"
+                    }
+                  ]
+                },
+                {
+                  "name": "Assigned Rider",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/merchants?page=1&limit=10&search=sifat",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "merchants"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "10"
+                        },
+                        {
+                          "key": "search",
+                          "value": "sifat"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Get Hub Confirmed Pickup Requests",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/pickup-requests/hub/confirmed-pickups",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "pickup-requests",
+                            "hub",
+                            "confirmed-pickups"
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "Text",
+                      "header": [
+                        {
+                          "key": "Access-Control-Allow-Credentials",
+                          "value": "true"
+                        },
+                        {
+                          "key": "Access-Control-Allow-Origin",
+                          "value": "*"
+                        },
+                        {
+                          "key": "Content-Length",
+                          "value": "738"
+                        },
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json; charset=utf-8"
+                        },
+                        {
+                          "key": "Date",
+                          "value": "Fri, 23 Jan 2026 18:15:32 GMT"
+                        },
+                        {
+                          "key": "Etag",
+                          "value": "W/\"2e2-6lpF2wVoyBVjwACKgkwr5ycY7ww\""
+                        },
+                        {
+                          "key": "Server",
+                          "value": "railway-edge"
+                        },
+                        {
+                          "key": "X-Powered-By",
+                          "value": "Express"
+                        },
+                        {
+                          "key": "X-Railway-Edge",
+                          "value": "railway/asia-southeast1-eqsg3a"
+                        },
+                        {
+                          "key": "X-Railway-Request-Id",
+                          "value": "wXrUq2zTT4iGMp-tV7rehQ"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n    \"success\": true,\n    \"data\": {\n        \"pickupRequests\": [\n            {\n                \"id\": \"4810cac5-1c20-4fbd-ae07-d6e5799fffb6\",\n                \"request_code\": \"REQ-2002\",\n                \"request_codes\": [\n                    \"REQ-2002\"\n                ],\n                \"pickup_location\": \"House 15, Road 05, Gulshan 1, Dhaka\",\n                \"store_name\": \"Test Store 1\",\n                \"store_phone\": \"01794669664\",\n                \"comment\": \"Partial pickup from REQ-2001\",\n                \"pickup_count\": 2,\n                \"status\": \"PICKED_UP\",\n                \"rider\": {\n                    \"id\": \"cf59c1d7-a042-4473-8a23-e8e82032ee0c\",\n                    \"name\": \"John Rider\",\n                    \"phone\": \"01712345673\"\n                },\n                \"riders\": [\n                    {\n                        \"id\": \"cf59c1d7-a042-4473-8a23-e8e82032ee0c\",\n                        \"name\": \"John Rider\",\n                        \"phone\": \"01712345673\"\n                    }\n                ],\n                \"completed_at\": \"2026-01-23T18:14:37.563Z\",\n                \"date\": \"2026-01-23\"\n            }\n        ],\n        \"pagination\": {\n            \"total\": 1,\n            \"page\": 1,\n            \"limit\": 20,\n            \"totalPages\": 1,\n            \"hasNext\": false,\n            \"hasPrev\": false\n        }\n    },\n    \"message\": \"Confirmed pickups retrieved successfully\"\n}"
+                    }
+                  ]
+                },
+                {
+                  "name": "Confirmed Pickup",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/pickup-requests/hub/accepted-pickups",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "pickup-requests",
+                        "hub",
+                        "accepted-pickups"
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Confirmed Pickup",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/pickup-requests/hub/accepted-pickups",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "pickup-requests",
+                            "hub",
+                            "accepted-pickups"
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": null,
+                      "header": [
+                        {
+                          "key": ":status",
+                          "value": 200
+                        },
+                        {
+                          "key": "access-control-allow-credentials",
+                          "value": "true"
+                        },
+                        {
+                          "key": "x-railway-cdn-edge",
+                          "value": "fastly/cache-ccu830023-CCU"
+                        },
+                        {
+                          "key": "content-type",
+                          "value": "application/json; charset=utf-8"
+                        },
+                        {
+                          "key": "date",
+                          "value": "Sun, 19 Apr 2026 11:33:36 GMT"
+                        },
+                        {
+                          "key": "etag",
+                          "value": "W/\"28f8-hfwBtYbgPWYJJcHsIneXtLEeGPI\""
+                        },
+                        {
+                          "key": "server",
+                          "value": "railway-edge"
+                        },
+                        {
+                          "key": "vary",
+                          "value": "Origin"
+                        },
+                        {
+                          "key": "x-powered-by",
+                          "value": "Express"
+                        },
+                        {
+                          "key": "x-railway-edge",
+                          "value": "railway/asia-southeast1-eqsg3a"
+                        },
+                        {
+                          "key": "x-railway-request-id",
+                          "value": "bkxa6TI7SLyAjriaAQeqjw"
+                        },
+                        {
+                          "key": "x-cache",
+                          "value": "MISS"
+                        },
+                        {
+                          "key": "x-cache-hits",
+                          "value": "0"
+                        },
+                        {
+                          "key": "x-served-by",
+                          "value": "cache-ccu830023-CCU"
+                        },
+                        {
+                          "key": "content-length",
+                          "value": "10488"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n    \"success\": true,\n    \"data\": {\n        \"pickupRequests\": [\n            {\n                \"id\": \"da165995-f2dd-4df9-bbe3-5bcdc1742da5\",\n                \"request_code\": \"REQ-2026\",\n                \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                \"merchant\": {\n                    \"id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"user_id\": \"6e0e480a-9794-47a3-8013-f642447b39c8\",\n                    \"thana\": \"Adabor\",\n                    \"district\": \"Dhaka\",\n                    \"full_address\": \"House 601,Road 9,Baitulaman Housing Socity,Adabor\",\n                    \"secondary_number\": \"+8801321148138\",\n                    \"status\": \"APPROVED\",\n                    \"is_advance_payment_disabled\": false,\n                    \"approved_at\": \"2026-03-26T17:30:57.407Z\",\n                    \"approved_by\": \"ecadb401-3304-416d-bf5e-ca209f8898ce\",\n                    \"created_at\": \"2026-03-26T17:29:09.218Z\",\n                    \"updated_at\": \"2026-03-26T17:30:57.430Z\"\n                },\n                \"store_id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                \"store\": {\n                    \"id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                    \"store_code\": \"MEG001\",\n                    \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"business_name\": \"Meghswar Courier\",\n                    \"business_address\": \"Adabor Road  9, Adabor, Dhaka, Dhaka\",\n                    \"phone_number\": \"01747657586\",\n                    \"email\": \"meghswarcourier2@gmail.com\",\n                    \"facebook_page\": \"facebook.com/meghswarcourier\",\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"is_default\": true,\n                    \"status\": \"PENDING\",\n                    \"district\": \"Dhaka\",\n                    \"thana\": \"Adabor\",\n                    \"area\": \"Adabor Road  9\",\n                    \"carrybee_store_id\": null,\n                    \"carrybee_city_id\": 14,\n                    \"carrybee_zone_id\": 42,\n                    \"carrybee_area_id\": 1382,\n                    \"is_carrybee_synced\": false,\n                    \"carrybee_synced_at\": null,\n                    \"auto_assign_to_carrybee\": false,\n                    \"created_at\": \"2026-03-26T18:00:04.834Z\",\n                    \"updated_at\": \"2026-04-13T08:13:06.893Z\"\n                },\n                \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                \"assigned_rider_id\": \"e6cb7904-d038-4407-bd99-f0047ce14e6e\",\n                \"assignedRider\": {\n                    \"id\": \"e6cb7904-d038-4407-bd99-f0047ce14e6e\",\n                    \"rider_code\": \"RDR13643\",\n                    \"user_id\": \"40e8d435-d71e-422a-a350-8c84bf417943\",\n                    \"user\": {\n                        \"id\": \"40e8d435-d71e-422a-a350-8c84bf417943\",\n                        \"full_name\": \"John Rider\",\n                        \"phone\": \"01792755670\",\n                        \"email\": \"ride7680@example.com\",\n                        \"password_hash\": \"$2b$10$mt3gvae7fh6/0/kttgt8qe55hrMi9faCmnOAzYINHaUAcWEIxmBH.\",\n                        \"role\": \"RIDER\",\n                        \"is_active\": true,\n                        \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0MGU4ZDQzNS1kNzFlLTQyMmEtYTM1MC04Yzg0YmY0MTc5NDMiLCJpYXQiOjE3NzU0NDU3NTgsImV4cCI6MTc3NjA1MDU1OH0.5KpSoUD-PXzNuoc428mVBGmIMY3jurZDsSvZfSeTQ1Y\",\n                        \"reset_otp\": null,\n                        \"reset_otp_expires\": null,\n                        \"created_at\": \"2026-04-04T12:56:35.141Z\",\n                        \"updated_at\": \"2026-04-06T03:26:01.127Z\"\n                    },\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"photo\": null,\n                    \"guardian_mobile_no\": \"01799999999\",\n                    \"bike_type\": \"MOTORCYCLE\",\n                    \"nid_number\": \"1204060890123\",\n                    \"license_no\": \"DL-12345\",\n                    \"present_address\": \"House 1, Road 1, Dhaka\",\n                    \"permanent_address\": \"Village, District\",\n                    \"fixed_salary\": \"15000.00\",\n                    \"commission_per_delivery\": \"5.00\",\n                    \"bank_name\": null,\n                    \"bank_account_number\": null,\n                    \"bank_branch\": null,\n                    \"nid_front_photo\": \"riders/nid/a2350f20-b635-48b1-bff0-0164bf4d9414-1768391531174.jpg\",\n                    \"nid_back_photo\": \"riders/nid/b2350f20-b635-48b1-bff0-0164bf4d9414-1768391531175.jpg\",\n                    \"license_front_photo\": \"riders/license/c2350f20-b635-48b1-bff0-0164bf4d9414-1768391531176.jpg\",\n                    \"license_back_photo\": \"riders/license/d2350f20-b635-48b1-bff0-0164bf4d9414-1768391531177.jpg\",\n                    \"parent_nid_front_photo\": \"riders/parent-nid/e2350f20-b635-48b1-bff0-0164bf4d9414-1768391531178.jpg\",\n                    \"parent_nid_back_photo\": \"riders/parent-nid/f2350f20-b635-48b1-bff0-0164bf4d9414-1768391531179.jpg\",\n                    \"approval_status\": \"PENDING\",\n                    \"approved_at\": null,\n                    \"approved_by\": null,\n                    \"is_active\": true,\n                    \"created_at\": \"2026-04-04T12:56:35.141Z\",\n                    \"updated_at\": \"2026-04-04T13:01:07.597Z\"\n                },\n                \"rider_assigned_at\": \"2026-04-07T12:51:47.029Z\",\n                \"completed_by_rider_id\": null,\n                \"estimated_parcels\": 1,\n                \"actual_parcels\": 1,\n                \"picked_up_count\": 0,\n                \"comment\": null,\n                \"status\": \"CONFIRMED\",\n                \"requested_at\": \"2026-04-05T20:03:41.241Z\",\n                \"confirmed_at\": \"2026-04-07T12:51:47.029Z\",\n                \"picked_up_at\": null,\n                \"cancelled_at\": null,\n                \"created_at\": \"2026-04-05T20:03:41.244Z\",\n                \"updated_at\": \"2026-04-07T12:51:47.039Z\"\n            },\n            {\n                \"id\": \"f2e48dab-e841-4a61-a505-aebe95fceb87\",\n                \"request_code\": \"REQ-2020\",\n                \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                \"merchant\": {\n                    \"id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"user_id\": \"6e0e480a-9794-47a3-8013-f642447b39c8\",\n                    \"thana\": \"Adabor\",\n                    \"district\": \"Dhaka\",\n                    \"full_address\": \"House 601,Road 9,Baitulaman Housing Socity,Adabor\",\n                    \"secondary_number\": \"+8801321148138\",\n                    \"status\": \"APPROVED\",\n                    \"is_advance_payment_disabled\": false,\n                    \"approved_at\": \"2026-03-26T17:30:57.407Z\",\n                    \"approved_by\": \"ecadb401-3304-416d-bf5e-ca209f8898ce\",\n                    \"created_at\": \"2026-03-26T17:29:09.218Z\",\n                    \"updated_at\": \"2026-03-26T17:30:57.430Z\"\n                },\n                \"store_id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                \"store\": {\n                    \"id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                    \"store_code\": \"MEG001\",\n                    \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"business_name\": \"Meghswar Courier\",\n                    \"business_address\": \"Adabor Road  9, Adabor, Dhaka, Dhaka\",\n                    \"phone_number\": \"01747657586\",\n                    \"email\": \"meghswarcourier2@gmail.com\",\n                    \"facebook_page\": \"facebook.com/meghswarcourier\",\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"is_default\": true,\n                    \"status\": \"PENDING\",\n                    \"district\": \"Dhaka\",\n                    \"thana\": \"Adabor\",\n                    \"area\": \"Adabor Road  9\",\n                    \"carrybee_store_id\": null,\n                    \"carrybee_city_id\": 14,\n                    \"carrybee_zone_id\": 42,\n                    \"carrybee_area_id\": 1382,\n                    \"is_carrybee_synced\": false,\n                    \"carrybee_synced_at\": null,\n                    \"auto_assign_to_carrybee\": false,\n                    \"created_at\": \"2026-03-26T18:00:04.834Z\",\n                    \"updated_at\": \"2026-04-13T08:13:06.893Z\"\n                },\n                \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                \"assigned_rider_id\": \"9682a7ae-59d3-4ef8-851e-04dbf548fd61\",\n                \"assignedRider\": {\n                    \"id\": \"9682a7ae-59d3-4ef8-851e-04dbf548fd61\",\n                    \"rider_code\": null,\n                    \"user_id\": \"3e871cc1-e2c3-4978-bd16-46a82bd7dfe8\",\n                    \"user\": {\n                        \"id\": \"3e871cc1-e2c3-4978-bd16-46a82bd7dfe8\",\n                        \"full_name\": \"Ibrahim Molla\",\n                        \"phone\": \"01321148151\",\n                        \"email\": \"ibrahimmolla@gmail.com\",\n                        \"password_hash\": \"$2b$10$OWnBNagYoQsl5lMIsi0Jgu5SmeOkhsnurRbdB7LMWWh3eeiZjO6Hm\",\n                        \"role\": \"RIDER\",\n                        \"is_active\": true,\n                        \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIzZTg3MWNjMS1lMmMzLTQ5NzgtYmQxNi00NmE4MmJkN2RmZTgiLCJpYXQiOjE3NzU2NzI3MjAsImV4cCI6MTc3NjI3NzUyMH0.KZKICfAbN150Kexm-k5dnkYY_eZMPgX5mk-jLtp7rL4\",\n                        \"reset_otp\": null,\n                        \"reset_otp_expires\": null,\n                        \"created_at\": \"2026-03-28T17:32:59.028Z\",\n                        \"updated_at\": \"2026-04-08T18:25:20.265Z\"\n                    },\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"photo\": null,\n                    \"guardian_mobile_no\": \"01721148152\",\n                    \"bike_type\": \"MOTORCYCLE\",\n                    \"nid_number\": \"5947061342844\",\n                    \"license_no\": \"DH-38438\",\n                    \"present_address\": \"72/3, Bashundhara Avenue, Dhaka\",\n                    \"permanent_address\": \"72/3, Bashundhara Avenue, Dhaka\",\n                    \"fixed_salary\": \"8000.00\",\n                    \"commission_per_delivery\": \"20.00\",\n                    \"bank_name\": null,\n                    \"bank_account_number\": null,\n                    \"bank_branch\": null,\n                    \"nid_front_photo\": null,\n                    \"nid_back_photo\": null,\n                    \"license_front_photo\": null,\n                    \"license_back_photo\": null,\n                    \"parent_nid_front_photo\": null,\n                    \"parent_nid_back_photo\": null,\n                    \"approval_status\": \"APPROVED\",\n                    \"approved_at\": null,\n                    \"approved_by\": null,\n                    \"is_active\": true,\n                    \"created_at\": \"2026-03-28T17:32:59.028Z\",\n                    \"updated_at\": \"2026-04-06T19:31:33.073Z\"\n                },\n                \"rider_assigned_at\": \"2026-03-28T19:29:47.722Z\",\n                \"completed_by_rider_id\": null,\n                \"estimated_parcels\": 1,\n                \"actual_parcels\": 1,\n                \"picked_up_count\": 0,\n                \"comment\": null,\n                \"status\": \"CONFIRMED\",\n                \"requested_at\": \"2026-03-27T09:27:06.369Z\",\n                \"confirmed_at\": \"2026-03-28T19:29:47.722Z\",\n                \"picked_up_at\": null,\n                \"cancelled_at\": null,\n                \"created_at\": \"2026-03-27T09:27:06.368Z\",\n                \"updated_at\": \"2026-03-28T19:29:47.732Z\"\n            },\n            {\n                \"id\": \"41149a11-cd0a-4c55-a120-7c681deac1cb\",\n                \"request_code\": \"REQ-2021\",\n                \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                \"merchant\": {\n                    \"id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"user_id\": \"6e0e480a-9794-47a3-8013-f642447b39c8\",\n                    \"thana\": \"Adabor\",\n                    \"district\": \"Dhaka\",\n                    \"full_address\": \"House 601,Road 9,Baitulaman Housing Socity,Adabor\",\n                    \"secondary_number\": \"+8801321148138\",\n                    \"status\": \"APPROVED\",\n                    \"is_advance_payment_disabled\": false,\n                    \"approved_at\": \"2026-03-26T17:30:57.407Z\",\n                    \"approved_by\": \"ecadb401-3304-416d-bf5e-ca209f8898ce\",\n                    \"created_at\": \"2026-03-26T17:29:09.218Z\",\n                    \"updated_at\": \"2026-03-26T17:30:57.430Z\"\n                },\n                \"store_id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                \"store\": {\n                    \"id\": \"7ab6c6ae-76e3-46ce-b77c-94524bb13f92\",\n                    \"store_code\": \"MEG001\",\n                    \"merchant_id\": \"457b676a-6186-4e68-8173-86755333e919\",\n                    \"business_name\": \"Meghswar Courier\",\n                    \"business_address\": \"Adabor Road  9, Adabor, Dhaka, Dhaka\",\n                    \"phone_number\": \"01747657586\",\n                    \"email\": \"meghswarcourier2@gmail.com\",\n                    \"facebook_page\": \"facebook.com/meghswarcourier\",\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"is_default\": true,\n                    \"status\": \"PENDING\",\n                    \"district\": \"Dhaka\",\n                    \"thana\": \"Adabor\",\n                    \"area\": \"Adabor Road  9\",\n                    \"carrybee_store_id\": null,\n                    \"carrybee_city_id\": 14,\n                    \"carrybee_zone_id\": 42,\n                    \"carrybee_area_id\": 1382,\n                    \"is_carrybee_synced\": false,\n                    \"carrybee_synced_at\": null,\n                    \"auto_assign_to_carrybee\": false,\n                    \"created_at\": \"2026-03-26T18:00:04.834Z\",\n                    \"updated_at\": \"2026-04-13T08:13:06.893Z\"\n                },\n                \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                \"assigned_rider_id\": \"9682a7ae-59d3-4ef8-851e-04dbf548fd61\",\n                \"assignedRider\": {\n                    \"id\": \"9682a7ae-59d3-4ef8-851e-04dbf548fd61\",\n                    \"rider_code\": null,\n                    \"user_id\": \"3e871cc1-e2c3-4978-bd16-46a82bd7dfe8\",\n                    \"user\": {\n                        \"id\": \"3e871cc1-e2c3-4978-bd16-46a82bd7dfe8\",\n                        \"full_name\": \"Ibrahim Molla\",\n                        \"phone\": \"01321148151\",\n                        \"email\": \"ibrahimmolla@gmail.com\",\n                        \"password_hash\": \"$2b$10$OWnBNagYoQsl5lMIsi0Jgu5SmeOkhsnurRbdB7LMWWh3eeiZjO6Hm\",\n                        \"role\": \"RIDER\",\n                        \"is_active\": true,\n                        \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIzZTg3MWNjMS1lMmMzLTQ5NzgtYmQxNi00NmE4MmJkN2RmZTgiLCJpYXQiOjE3NzU2NzI3MjAsImV4cCI6MTc3NjI3NzUyMH0.KZKICfAbN150Kexm-k5dnkYY_eZMPgX5mk-jLtp7rL4\",\n                        \"reset_otp\": null,\n                        \"reset_otp_expires\": null,\n                        \"created_at\": \"2026-03-28T17:32:59.028Z\",\n                        \"updated_at\": \"2026-04-08T18:25:20.265Z\"\n                    },\n                    \"hub_id\": \"855385af-cee7-4a17-875e-88bd511c3143\",\n                    \"photo\": null,\n                    \"guardian_mobile_no\": \"01721148152\",\n                    \"bike_type\": \"MOTORCYCLE\",\n                    \"nid_number\": \"5947061342844\",\n                    \"license_no\": \"DH-38438\",\n                    \"present_address\": \"72/3, Bashundhara Avenue, Dhaka\",\n                    \"permanent_address\": \"72/3, Bashundhara Avenue, Dhaka\",\n                    \"fixed_salary\": \"8000.00\",\n                    \"commission_per_delivery\": \"20.00\",\n                    \"bank_name\": null,\n                    \"bank_account_number\": null,\n                    \"bank_branch\": null,\n                    \"nid_front_photo\": null,\n                    \"nid_back_photo\": null,\n                    \"license_front_photo\": null,\n                    \"license_back_photo\": null,\n                    \"parent_nid_front_photo\": null,\n                    \"parent_nid_back_photo\": null,\n                    \"approval_status\": \"APPROVED\",\n                    \"approved_at\": null,\n                    \"approved_by\": null,\n                    \"is_active\": true,\n                    \"created_at\": \"2026-03-28T17:32:59.028Z\",\n                    \"updated_at\": \"2026-04-06T19:31:33.073Z\"\n                },\n                \"rider_assigned_at\": \"2026-03-28T19:16:04.168Z\",\n                \"completed_by_rider_id\": null,\n                \"estimated_parcels\": 9,\n                \"actual_parcels\": 4,\n                \"picked_up_count\": 0,\n                \"comment\": \"Urgent Pickup\",\n                \"status\": \"CONFIRMED\",\n                \"requested_at\": \"2026-03-28T18:21:24.592Z\",\n                \"confirmed_at\": \"2026-03-28T19:16:04.168Z\",\n                \"picked_up_at\": null,\n                \"cancelled_at\": null,\n                \"created_at\": \"2026-03-28T18:21:24.592Z\",\n                \"updated_at\": \"2026-03-28T19:16:04.177Z\"\n            }\n        ],\n        \"pagination\": {\n            \"total\": 3,\n            \"page\": 1,\n            \"limit\": 20,\n            \"totalPages\": 1,\n            \"hasNext\": false,\n            \"hasPrev\": false\n        }\n    },\n    \"message\": \"Accepted pickups retrieved successfully\"\n}"
+                    }
                   ]
                 }
-              },
-              "response": []
+              ]
             },
             {
               "name": "Bulk Assignment",
@@ -8878,91 +10754,6 @@
                   ],
                   "cookie": [],
                   "body": "{\n    \"success\": true,\n    \"data\": {\n        \"summary\": {\n            \"total\": 1,\n            \"success\": 1,\n            \"failed\": 0\n        },\n        \"results\": [\n            {\n                \"pickupId\": \"ffaa9b2e-9ec8-4191-a156-e1cce8566f7d\",\n                \"success\": true,\n                \"message\": \"Assigned successfully\"\n            }\n        ]\n    },\n    \"message\": \"All pickups assigned to rider successfully\"\n}"
-                }
-              ]
-            },
-            {
-              "name": "Get Hub Confirmed Pickup Requests",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/pickup-requests/hub/confirmed-pickups",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "pickup-requests",
-                    "hub",
-                    "confirmed-pickups"
-                  ]
-                }
-              },
-              "response": [
-                {
-                  "name": "Get Hub Confirmed Pickup Requests",
-                  "originalRequest": {
-                    "method": "GET",
-                    "header": [],
-                    "url": {
-                      "raw": "{{baseUrl}}/pickup-requests/hub/confirmed-pickups",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "pickup-requests",
-                        "hub",
-                        "confirmed-pickups"
-                      ]
-                    }
-                  },
-                  "status": "OK",
-                  "code": 200,
-                  "_postman_previewlanguage": "Text",
-                  "header": [
-                    {
-                      "key": "Access-Control-Allow-Credentials",
-                      "value": "true"
-                    },
-                    {
-                      "key": "Access-Control-Allow-Origin",
-                      "value": "*"
-                    },
-                    {
-                      "key": "Content-Length",
-                      "value": "738"
-                    },
-                    {
-                      "key": "Content-Type",
-                      "value": "application/json; charset=utf-8"
-                    },
-                    {
-                      "key": "Date",
-                      "value": "Fri, 23 Jan 2026 18:15:32 GMT"
-                    },
-                    {
-                      "key": "Etag",
-                      "value": "W/\"2e2-6lpF2wVoyBVjwACKgkwr5ycY7ww\""
-                    },
-                    {
-                      "key": "Server",
-                      "value": "railway-edge"
-                    },
-                    {
-                      "key": "X-Powered-By",
-                      "value": "Express"
-                    },
-                    {
-                      "key": "X-Railway-Edge",
-                      "value": "railway/asia-southeast1-eqsg3a"
-                    },
-                    {
-                      "key": "X-Railway-Request-Id",
-                      "value": "wXrUq2zTT4iGMp-tV7rehQ"
-                    }
-                  ],
-                  "cookie": [],
-                  "body": "{\n    \"success\": true,\n    \"data\": {\n        \"pickupRequests\": [\n            {\n                \"id\": \"4810cac5-1c20-4fbd-ae07-d6e5799fffb6\",\n                \"request_code\": \"REQ-2002\",\n                \"request_codes\": [\n                    \"REQ-2002\"\n                ],\n                \"pickup_location\": \"House 15, Road 05, Gulshan 1, Dhaka\",\n                \"store_name\": \"Test Store 1\",\n                \"store_phone\": \"01794669664\",\n                \"comment\": \"Partial pickup from REQ-2001\",\n                \"pickup_count\": 2,\n                \"status\": \"PICKED_UP\",\n                \"rider\": {\n                    \"id\": \"cf59c1d7-a042-4473-8a23-e8e82032ee0c\",\n                    \"name\": \"John Rider\",\n                    \"phone\": \"01712345673\"\n                },\n                \"riders\": [\n                    {\n                        \"id\": \"cf59c1d7-a042-4473-8a23-e8e82032ee0c\",\n                        \"name\": \"John Rider\",\n                        \"phone\": \"01712345673\"\n                    }\n                ],\n                \"completed_at\": \"2026-01-23T18:14:37.563Z\",\n                \"date\": \"2026-01-23\"\n            }\n        ],\n        \"pagination\": {\n            \"total\": 1,\n            \"page\": 1,\n            \"limit\": 20,\n            \"totalPages\": 1,\n            \"hasNext\": false,\n            \"hasPrev\": false\n        }\n    },\n    \"message\": \"Confirmed pickups retrieved successfully\"\n}"
                 }
               ]
             }
@@ -9485,7 +11276,7 @@
                       }
                     },
                     "url": {
-                      "raw": "{{baseUrl}}/hubs/parcels/cleared-deliveries?rider_id=9ed96784-1cb1-4a09-b5c9-a92fb0659b2d&page=1&limit=10",
+                      "raw": "{{baseUrl}}/hubs/parcels/cleared-deliveries?rider_id=9682a7ae-59d3-4ef8-851e-04dbf548fd61&page=1&limit=10",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -9497,7 +11288,7 @@
                       "query": [
                         {
                           "key": "rider_id",
-                          "value": "9ed96784-1cb1-4a09-b5c9-a92fb0659b2d"
+                          "value": "9682a7ae-59d3-4ef8-851e-04dbf548fd61"
                         },
                         {
                           "key": "page",
@@ -9506,6 +11297,16 @@
                         {
                           "key": "limit",
                           "value": "10"
+                        },
+                        {
+                          "key": "search",
+                          "value": "dsfdsf",
+                          "disabled": true
+                        },
+                        {
+                          "key": "status",
+                          "value": "DELIVERED",
+                          "disabled": true
                         }
                       ]
                     }
@@ -9519,7 +11320,7 @@
                     "header": [],
                     "body": {
                       "mode": "raw",
-                      "raw": "{\r\n  \"counted_amount\": 5000.00\r\n}",
+                      "raw": "{\r\n  \"counted_amount\": 35377\r\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -9527,7 +11328,7 @@
                       }
                     },
                     "url": {
-                      "raw": "{{baseUrl}}/hubs/finance/collect-cod/0db8cef3-9928-4952-bc4a-3a102d909823",
+                      "raw": "{{baseUrl}}/hubs/finance/collect-cod/9682a7ae-59d3-4ef8-851e-04dbf548fd61",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -9535,7 +11336,7 @@
                         "hubs",
                         "finance",
                         "collect-cod",
-                        "0db8cef3-9928-4952-bc4a-3a102d909823"
+                        "9682a7ae-59d3-4ef8-851e-04dbf548fd61"
                       ]
                     }
                   },
@@ -9578,7 +11379,7 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n    \"transferred_amount\": 50000,\r\n    \"admin_account_id\": \"REPLACE_WITH_ADMIN_ACCOUNT_UUID\",\r\n    \"transaction_reference_id\": \"TXN-1234567890\",\r\n    \"proof_file_url\": \"https://s3.amazonaws.com/your-bucket/proofs/deposit-slip.jpg\"\r\n    // \"notes\": \"Revenue transfer for Week 4\"\r\n}",
+                  "raw": "{\r\n    \"transferred_amount\": 110,\r\n    \"admin_account_id\": \"df165e20-58c4-4949-9474-2b066c0aa79e\",\r\n    \"transaction_reference_id\": \"TXN-1234567890\",\r\n    \"proof_file_url\": \"https://s3.amazonaws.com/your-bucket/proofs/deposit-slip.jpg\"\r\n    // \"notes\": \"Revenue transfer for Week 4\"\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -15264,6 +17065,52 @@
                     }
                   ]
                 }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Profile Settings",
+          "item": [
+            {
+              "name": "Documents",
+              "item": [
+                {
+                  "name": "Upload NID",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"nid_number\": \"10045798798\",\r\n  \"nid_front_url\": \"https://cdn.example.com/merchants/nid/front.jpg\",\r\n  \"nid_back_url\": \"https://cdn.example.com/merchants/nid/back.jpg\"\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/merchants/documents/nid",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "merchants",
+                        "documents",
+                        "nid"
+                      ]
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "New Request",
+              "request": {
+                "method": "GET",
+                "header": []
               },
               "response": []
             }
