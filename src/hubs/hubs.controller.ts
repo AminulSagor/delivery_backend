@@ -1391,13 +1391,15 @@ export class HubsController {
    * - page / limit: Pagination
    */
   @Get('riders/performance')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getRiderPerformance(
     @CurrentUser() user: any,
     @Query() query: RiderPerformanceQueryDto,
   ) {
-    const result = await this.hubsService.getRiderPerformance(user.hubId, {
+    const effectiveHubId = user.role === UserRole.ADMIN ? query.hub_id : user.hubId;
+    
+    const result = await this.hubsService.getRiderPerformance(effectiveHubId, {
       search: query.search,
       riderId: query.riderId,
       period: query.period,

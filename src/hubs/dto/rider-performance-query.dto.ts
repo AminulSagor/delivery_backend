@@ -14,6 +14,11 @@ export enum PerformancePeriod {
 }
 
 export class RiderPerformanceQueryDto {
+  /** Filter by specific hub ID (Admin only) */
+  @IsOptional()
+  @IsUUID()
+  hub_id?: string;
+
   /** Search by rider name or phone */
   @IsOptional()
   @IsString()

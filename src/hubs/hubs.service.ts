@@ -463,11 +463,20 @@ export class HubsService {
         query.endDate,
       );
 
-      // Build date filter condition
-      let dateFilter = '';
-      const params: any[] = [hubId];
-      let paramIndex = 2;
+      // Build filters and params
+      const params: any[] = [];
+      let paramIndex = 1;
 
+      // Hub Filter
+      let hubFilter = '';
+      if (hubId) {
+        hubFilter = ` AND r.hub_id = $${paramIndex}`;
+        params.push(hubId);
+        paramIndex++;
+      }
+
+      // Date Filters
+      let dateFilter = '';
       if (resolvedDates.startDate) {
         dateFilter += ` AND p.delivered_at >= $${paramIndex}`;
         params.push(resolvedDates.startDate);
@@ -513,7 +522,8 @@ export class HubsService {
         LEFT JOIN parcels p ON p.assigned_rider_id = r.id
           AND p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE', 'DELIVERY_RESCHEDULED', 'RETURNED', 'PAID_RETURN')
           ${dateFilter}
-        WHERE r.hub_id = $1
+        WHERE 1=1
+          ${hubFilter}
           AND r.is_active = true
           ${searchFilter}
           ${riderIdFilter}
@@ -521,11 +531,19 @@ export class HubsService {
         ORDER BY assigned DESC
       `;
 
-      // Count query (for pagination) — uses same filters but no date join
-      const countFilterParams: any[] = [hubId];
+      // Count query (for pagination)
+      const countFilterParams: any[] = [];
+      let countParamIdx = 1;
+
+      let countHubFilter = '';
+      if (hubId) {
+        countHubFilter = ` AND r.hub_id = $${countParamIdx}`;
+        countFilterParams.push(hubId);
+        countParamIdx++;
+      }
+
       let countSearchFilter = '';
       let countRiderIdFilter = '';
-      let countParamIdx = 2;
 
       if (query.search && query.search.trim()) {
         countSearchFilter = ` AND (u.full_name ILIKE $${countParamIdx} OR u.phone ILIKE $${countParamIdx})`;
@@ -543,7 +561,8 @@ export class HubsService {
           SELECT r.id
           FROM riders r
           INNER JOIN users u ON r.user_id = u.id
-          WHERE r.hub_id = $1
+          WHERE 1=1
+            ${countHubFilter}
             AND r.is_active = true
             ${countSearchFilter}
             ${countRiderIdFilter}
@@ -551,11 +570,18 @@ export class HubsService {
         ) sub
       `;
 
-      // Overall aggregation query (across ALL riders, not just the current page)
-      const overallParams: any[] = [hubId];
-      let overallDateFilter = '';
-      let overallParamIdx = 2;
+      // Overall aggregation query
+      const overallParams: any[] = [];
+      let overallParamIdx = 1;
 
+      let overallHubFilter = '';
+      if (hubId) {
+        overallHubFilter = ` AND r.hub_id = $${overallParamIdx}`;
+        overallParams.push(hubId);
+        overallParamIdx++;
+      }
+
+      let overallDateFilter = '';
       if (resolvedDates.startDate) {
         overallDateFilter += ` AND p.delivered_at >= $${overallParamIdx}`;
         overallParams.push(resolvedDates.startDate);
@@ -575,24 +601,32 @@ export class HubsService {
           COUNT(p.id)::int AS total_assigned
         FROM parcels p
         INNER JOIN riders r ON p.assigned_rider_id = r.id
-        WHERE r.hub_id = $1
+        WHERE 1=1
+          ${overallHubFilter}
           AND r.is_active = true
           AND p.status IN ('DELIVERED', 'PARTIAL_DELIVERY', 'EXCHANGE', 'DELIVERY_RESCHEDULED', 'RETURNED', 'PAID_RETURN')
           ${overallDateFilter}
       `;
 
-      // Count ALL active riders in the hub (unaffected by search/filter params)
+      // Count ALL active riders
+      const activeRidersCountParams: any[] = [];
+      let activeRidersHubFilter = '';
+      if (hubId) {
+        activeRidersCountParams.push(hubId);
+        activeRidersHubFilter = ' AND r.hub_id = $1';
+      }
+
       const activeRidersCountQuery = `
         SELECT COUNT(*)::int AS total_active
         FROM riders r
-        WHERE r.hub_id = $1 AND r.is_active = true
+        WHERE r.is_active = true ${activeRidersHubFilter}
       `;
 
       const [riderStats, countResult, overallResult, activeRidersResult] = await Promise.all([
         this.dataSource.query(statsQuery + ` LIMIT ${limit} OFFSET ${offset}`, params),
         this.dataSource.query(countQuery, countFilterParams),
         this.dataSource.query(overallQuery, overallParams),
-        this.dataSource.query(activeRidersCountQuery, [hubId]),
+        this.dataSource.query(activeRidersCountQuery, activeRidersCountParams),
       ]);
 
       const total = parseInt(countResult[0]?.total || '0', 10);
