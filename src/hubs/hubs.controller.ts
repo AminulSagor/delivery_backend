@@ -1353,10 +1353,11 @@ export class HubsController {
       );
     }
 
-    const count = await this.parcelsService.bulkResolveReports(dto, effectiveHubId);
+    const result = await this.parcelsService.bulkResolveReports(dto, effectiveHubId);
     return {
       success: true,
-      message: `${count} parcel reports resolved successfully`,
+      data: result,
+      message: `${result.success_count} parcel reports resolved, ${result.failed_count} failed`,
     };
   }
 
