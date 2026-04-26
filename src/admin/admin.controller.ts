@@ -16,6 +16,7 @@ import {
 import { AdminService } from './admin.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
+import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import {
@@ -145,6 +146,39 @@ export class AdminController {
       success: true,
       data: { transfer_record: record },
       message: 'Transfer record rejected successfully',
+    };
+  }
+
+  // ===== MERCHANT MANAGEMENT =====
+
+  /**
+   * Admin creates a merchant (auto-approved, no PENDING required)
+   * POST /admin/merchants
+   *
+   * Body: full_name, phone, password, business_name, business_address,
+   *       district, thana, carrybee_city_id, carrybee_zone_id, carrybee_area_id
+   *       (+ optional: email, secondary_number, area, full_address)
+   */
+  @Post('merchants')
+  async createMerchant(
+    @Body() dto: AdminCreateMerchantDto,
+    @Req() req: any,
+  ) {
+    const adminId = req.user.userId;
+    const merchant = await this.adminService.adminCreateMerchant(dto, adminId);
+
+    return {
+      success: true,
+      data: {
+        merchant_id: merchant.id,
+        user_id: merchant.user_id,
+        full_name: merchant.user?.full_name,
+        phone: merchant.user?.phone,
+        email: merchant.user?.email || null,
+        status: merchant.status,
+        approved_at: merchant.approved_at,
+      },
+      message: 'Merchant created and approved successfully',
     };
   }
 

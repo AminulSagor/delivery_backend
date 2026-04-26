@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
@@ -18,6 +18,7 @@ import { AdminAccount } from './entities/admin-account.entity';
 import { AdminAccountStatement } from './entities/admin-account-statement.entity';
 import { AdminAccountsController } from './controllers/admin-accounts.controller';
 import { AdminAccountsService } from './services/admin-accounts.service';
+import { MerchantModule } from '../merchant/merchant.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AdminAccountsService } from './services/admin-accounts.service';
       AdminAccountStatement,
     ]),
     UsersModule,
+    forwardRef(() => MerchantModule),
   ],
   controllers: [
     AdminAccountsController,
