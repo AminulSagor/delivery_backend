@@ -6136,6 +6136,34 @@ export class ParcelsService {
   }
 
   /**
+   * Delete (Clear) a resolved report from a parcel
+   */
+  async deleteResolvedReport(parcelId: string, hubId: string | null) {
+    const where: any = { id: parcelId };
+    if (hubId) {
+      where.current_hub_id = hubId;
+    }
+
+    const parcel = await this.parcelRepository.findOne({ where });
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found');
+    }
+
+    if (!parcel.is_issue_resolved) {
+      throw new BadRequestException('Cannot delete an unresolved report. Please resolve it first.');
+    }
+
+    // Clear the issue fields to effectively 'delete' the report from the parcel
+    parcel.issue_type = null as any; // Typeorm accepts null if nullable, assuming it is nullable
+    parcel.issue_description = null;
+    parcel.issue_reported_at = null;
+    parcel.is_issue_resolved = false; // Reset to false since there's no issue anymore
+    parcel.admin_notes = null;
+
+    return await this.parcelRepository.save(parcel);
+  }
+
+  /**
    * Hub Manager manually override delivery_charge and/or weight_charge for a received parcel
    * Only allowed when parcel is IN_HUB at the hub manager's hub.
    * Recalculates total_charge and receivable_amount using the existing formula:
