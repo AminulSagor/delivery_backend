@@ -6092,10 +6092,15 @@ export class ParcelsService {
    * Bulk Resolve
    */
   async bulkResolveReports(dto: BulkResolveReportDto, hubId: string | null) {
-    // 1. Fetch only parcels that have an unresolved issue
+    const results: Array<{
+      parcel_id: string;
+      success: boolean;
+      message: string;
+    }> = [];
+
+    // Fetch all requested parcels to check their state
     const where: any = {
       id: In(dto.parcel_ids),
-      is_issue_resolved: false,
     };
 
     if (hubId) {
@@ -6106,46 +6111,49 @@ export class ParcelsService {
       where,
     });
 
-    if (parcels.length === 0) return 0;
+    for (const id of dto.parcel_ids) {
+      const parcel = parcels.find(p => p.id === id);
 
-    const actualProcessedIds: string[] = [];
+      if (!parcel) {
+        results.push({ parcel_id: id, success: false, message: 'Parcel not found in your hub' });
+        continue;
+      }
 
-    if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
-      for (const parcel of parcels) {
-        parcel.status = ParcelStatus.RETURNED_TO_HUB;
-        await this.parcelRepository.save(parcel);
-        try {
+      if (parcel.is_issue_resolved) {
+        results.push({ parcel_id: id, success: false, message: 'Report is already resolved' });
+        continue;
+      }
+
+      try {
+        if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
+          parcel.status = ParcelStatus.RETURNED_TO_HUB;
+          await this.parcelRepository.save(parcel);
           await this.markReturnToMerchant(parcel.id, hubId);
-        } catch (e) {
-          this.logger.error(`Failed to mark return to merchant for parcel ${parcel.id}: ${e.message}`);
-        }
-      }
-    } else if (dto.action_status === ParcelStatus.DELIVERY_RESCHEDULED) {
-      for (const parcel of parcels) {
-        parcel.status = ParcelStatus.IN_HUB;
-        await this.parcelRepository.save(parcel);
-        try {
+        } else if (dto.action_status === ParcelStatus.DELIVERY_RESCHEDULED) {
+          parcel.status = ParcelStatus.IN_HUB;
+          await this.parcelRepository.save(parcel);
           await this.markAsRescheduled(parcel.id, hubId);
-        } catch (e) {
-          this.logger.error(`Failed to mark reschedule for parcel ${parcel.id}: ${e.message}`);
+        } else {
+          parcel.status = dto.action_status;
+          await this.parcelRepository.save(parcel);
         }
+
+        // Finalize report resolution
+        parcel.is_issue_resolved = true;
+        await this.parcelRepository.save(parcel);
+
+        results.push({ parcel_id: id, success: true, message: 'Resolved successfully' });
+      } catch (e: any) {
+        results.push({ parcel_id: id, success: false, message: e.message || 'Unknown error' });
       }
-    } else {
-      for (const parcel of parcels) {
-        parcel.status = dto.action_status;
-      }
-      await this.parcelRepository.save(parcels);
     }
 
-    // Finalize report resolution for all processed parcels
-    const updatedParcels = await this.parcelRepository.find({ where: { id: In(parcels.map(p => p.id)) } });
-    for (const p of updatedParcels) {
-      p.is_issue_resolved = true;
-      actualProcessedIds.push(p.id);
-    }
-
-    await this.parcelRepository.save(updatedParcels);
-    return actualProcessedIds.length;
+    const successCount = results.filter(r => r.success).length;
+    return {
+      results,
+      success_count: successCount,
+      failed_count: dto.parcel_ids.length - successCount,
+    };
   }
 
   /**
