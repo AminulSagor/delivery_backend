@@ -105,6 +105,24 @@ export class AdminService {
   }
 
   /**
+   * Admin: Get payout method types not yet added for a merchant
+   */
+  async getAvailableMerchantPayoutMethods(merchantId: string) {
+    return this.merchantService.getAvailablePayoutMethods(merchantId);
+  }
+
+  /**
+   * Admin: Get payout transaction history for a merchant
+   */
+  async getMerchantPayoutTransactions(
+    merchantId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    return this.merchantService.getPayoutTransactions(merchantId, page, limit);
+  }
+
+  /**
    * Admin: Add a payout method for a merchant (auto-verified — no pending step)
    */
   async adminAddPayoutMethod(

@@ -204,6 +204,45 @@ export class AdminController {
   }
 
   /**
+   * Get payout method types not yet added for a merchant
+   * GET /admin/merchants/:merchantId/payout-methods/available
+   */
+  @Get('merchants/:merchantId/payout-methods/available')
+  async getAvailableMerchantPayoutMethods(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+  ) {
+    const available =
+      await this.adminService.getAvailableMerchantPayoutMethods(merchantId);
+    return {
+      success: true,
+      data: { available_methods: available },
+      message: 'Available payout method types retrieved successfully',
+    };
+  }
+
+  /**
+   * Get payout transaction history for a merchant
+   * GET /admin/merchants/:merchantId/payout-transactions
+   */
+  @Get('merchants/:merchantId/payout-transactions')
+  async getMerchantPayoutTransactions(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    const result = await this.adminService.getMerchantPayoutTransactions(
+      merchantId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Payout transactions retrieved successfully',
+    };
+  }
+
+  /**
    * Admin adds a payout method for a merchant (auto-verified)
    * POST /admin/merchants/:merchantId/payout-methods
    *
