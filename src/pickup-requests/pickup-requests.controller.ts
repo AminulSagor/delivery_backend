@@ -133,11 +133,12 @@ export class PickupRequestsController {
    */
   @Get('hub/confirmed-pickups')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async getConfirmedPickups(
-    @CurrentUser('hubId') hubId: string,
+    @CurrentUser() user: any,
     @Query() query: PickupQueryDto,
   ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
     const { page, limit } = query;
     const result = await this.pickupRequestsService.getConfirmedPickupsForHub(
       hubId,

@@ -522,17 +522,22 @@ export class PickupRequestsService {
    * Shows pickups that riders have completed with rider info
    */
   async getConfirmedPickupsForHub(
-    hubId: string,
+    hubId: string | null,
     page: number = 1,
     limit: number = 20,
   ): Promise<PaginatedResponse<any>> {
     try {
+      const where: FindOptionsWhere<PickupRequest> = {
+        status: PickupRequestStatus.PICKED_UP,
+      };
+
+      if (hubId) {
+        where.hub_id = hubId;
+      }
+
       // Get all completed pickups (we'll group them)
       const pickupRequests = await this.pickupRequestRepository.find({
-        where: {
-          hub_id: hubId,
-          status: PickupRequestStatus.PICKED_UP,
-        },
+        where,
         relations: ['store', 'completedByRider', 'completedByRider.user'],
         order: { picked_up_at: 'DESC' },
       });
