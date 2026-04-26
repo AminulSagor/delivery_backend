@@ -6054,13 +6054,29 @@ export class ParcelsService {
     });
     if (!parcel) throw new NotFoundException('Parcel not found');
 
-    // Update status based on admin decision
-    parcel.status = dto.action_status;
-    // Fixed: Handle optional undefined with fallback to null
-    parcel.admin_notes = dto.admin_notes || null;
-    parcel.is_issue_resolved = true; // Mark as resolved so it leaves the report list
+    if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
+      // Force allowed status to bypass workflow validation
+      parcel.status = ParcelStatus.RETURNED_TO_HUB;
+      await this.parcelRepository.save(parcel);
+      await this.markReturnToMerchant(parcel.id, hubId, dto.admin_notes);
+    } else if (dto.action_status === ParcelStatus.DELIVERY_RESCHEDULED) {
+      // Force allowed status to bypass workflow validation
+      parcel.status = ParcelStatus.IN_HUB;
+      await this.parcelRepository.save(parcel);
+      await this.markAsRescheduled(parcel.id, hubId);
+    } else {
+      parcel.status = dto.action_status;
+      await this.parcelRepository.save(parcel);
+    }
 
-    return await this.parcelRepository.save(parcel);
+    // Finalize report resolution
+    const updatedParcel = await this.parcelRepository.findOne({ where: { id: parcelId } });
+    if (updatedParcel) {
+      if (dto.admin_notes) updatedParcel.admin_notes = dto.admin_notes;
+      updatedParcel.is_issue_resolved = true;
+      return await this.parcelRepository.save(updatedParcel);
+    }
+    return parcel;
   }
 
   /**
@@ -6080,14 +6096,71 @@ export class ParcelsService {
       where,
     });
 
-    for (const parcel of parcels) {
-      parcel.status = dto.action_status;
-      // Fixed: Handle optional undefined with fallback to null
-      parcel.admin_notes = dto.admin_notes || null;
-      parcel.is_issue_resolved = true;
+    if (parcels.length === 0) return [];
+
+    if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
+      for (const parcel of parcels) {
+        parcel.status = ParcelStatus.RETURNED_TO_HUB;
+        await this.parcelRepository.save(parcel);
+        try {
+          await this.markReturnToMerchant(parcel.id, hubId, dto.admin_notes);
+        } catch (e) {
+          this.logger.error(`Failed to mark return to merchant for parcel ${parcel.id}: ${e.message}`);
+        }
+      }
+    } else if (dto.action_status === ParcelStatus.DELIVERY_RESCHEDULED) {
+      for (const parcel of parcels) {
+        parcel.status = ParcelStatus.IN_HUB;
+        await this.parcelRepository.save(parcel);
+        try {
+          await this.markAsRescheduled(parcel.id, hubId);
+        } catch (e) {
+          this.logger.error(`Failed to mark reschedule for parcel ${parcel.id}: ${e.message}`);
+        }
+      }
+    } else {
+      for (const parcel of parcels) {
+        parcel.status = dto.action_status;
+      }
+      await this.parcelRepository.save(parcels);
     }
 
-    return await this.parcelRepository.save(parcels);
+    // Finalize report resolution for all processed parcels
+    const updatedParcels = await this.parcelRepository.find({ where: { id: In(dto.parcel_ids) } });
+    for (const p of updatedParcels) {
+      p.is_issue_resolved = true;
+      if (dto.admin_notes) p.admin_notes = dto.admin_notes;
+    }
+
+    return await this.parcelRepository.save(updatedParcels);
+  }
+
+  /**
+   * Delete (Clear) a resolved report from a parcel
+   */
+  async deleteResolvedReport(parcelId: string, hubId: string | null) {
+    const where: any = { id: parcelId };
+    if (hubId) {
+      where.current_hub_id = hubId;
+    }
+
+    const parcel = await this.parcelRepository.findOne({ where });
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found');
+    }
+
+    if (!parcel.is_issue_resolved) {
+      throw new BadRequestException('Cannot delete an unresolved report. Please resolve it first.');
+    }
+
+    // Clear the issue fields to effectively 'delete' the report from the parcel
+    parcel.issue_type = null as any; // Typeorm accepts null if nullable, assuming it is nullable
+    parcel.issue_description = null;
+    parcel.issue_reported_at = null;
+    parcel.is_issue_resolved = false; // Reset to false since there's no issue anymore
+    parcel.admin_notes = null;
+
+    return await this.parcelRepository.save(parcel);
   }
 
   /**

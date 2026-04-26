@@ -1360,6 +1360,32 @@ export class HubsController {
     };
   }
 
+  /**
+   * Delete (Clear) a Resolved Parcel Report
+   */
+  @Delete('parcels/reports/:id')
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async deleteResolvedReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? null : user.hubId || null;
+
+    if (user.role === UserRole.HUB_MANAGER && !effectiveHubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    await this.parcelsService.deleteResolvedReport(id, effectiveHubId);
+    return {
+      success: true,
+      message: 'Resolved parcel report deleted successfully',
+    };
+  }
+
   // ===== RIDER SETTLEMENT ENDPOINTS =====
 
   /**
