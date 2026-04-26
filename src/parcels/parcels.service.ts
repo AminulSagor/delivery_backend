@@ -5112,6 +5112,89 @@ export class ParcelsService {
   }
 
   /**
+   * Get Parcel History (Admin & Hub Manager)
+   * Admin sees all parcels. Hub manager sees parcels related to their hub.
+   */
+  async getParcelHistory(
+    hubId: string | null,
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    sortBy: string = 'updated_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    status?: ParcelStatus,
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider');
+
+    // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
+    if (hubId) {
+      queryBuilder.where(
+        '(parcel.current_hub_id = :hubId OR store.hub_id = :hubId)',
+        { hubId }
+      );
+    } else {
+      queryBuilder.where('1=1');
+    }
+
+    if (status) {
+      queryBuilder.andWhere('parcel.status = :status', { status });
+    }
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
+
+    const total = await queryBuilder.getCount();
+    queryBuilder.skip(skip).take(limit);
+    const parcels = await queryBuilder.getMany();
+
+    const items = parcels.map((parcel) => this.toDeliveryOutcomeItem(parcel));
+
+    return {
+      parcels: items,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
    * Hub Manager marks parcel as RETURN_TO_MERCHANT
    * Creates a NEW return parcel to track the return journey back to merchant
    *
