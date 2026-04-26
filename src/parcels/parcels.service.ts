@@ -6060,6 +6060,10 @@ export class ParcelsService {
     });
     if (!parcel) throw new NotFoundException('Parcel not found');
 
+    if (parcel.is_issue_resolved) {
+      throw new BadRequestException('This parcel report is already resolved');
+    }
+
     if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
       // Force allowed status to bypass workflow validation
       parcel.status = ParcelStatus.RETURNED_TO_HUB;
@@ -6088,9 +6092,10 @@ export class ParcelsService {
    * Bulk Resolve
    */
   async bulkResolveReports(dto: BulkResolveReportDto, hubId: string | null) {
-    // 4. Bulk Action Logic
+    // 1. Fetch only parcels that have an unresolved issue
     const where: any = {
       id: In(dto.parcel_ids),
+      is_issue_resolved: false,
     };
 
     if (hubId) {
@@ -6101,7 +6106,9 @@ export class ParcelsService {
       where,
     });
 
-    if (parcels.length === 0) return [];
+    if (parcels.length === 0) return 0;
+
+    const actualProcessedIds: string[] = [];
 
     if (dto.action_status === ParcelStatus.RETURN_TO_MERCHANT) {
       for (const parcel of parcels) {
@@ -6131,12 +6138,14 @@ export class ParcelsService {
     }
 
     // Finalize report resolution for all processed parcels
-    const updatedParcels = await this.parcelRepository.find({ where: { id: In(dto.parcel_ids) } });
+    const updatedParcels = await this.parcelRepository.find({ where: { id: In(parcels.map(p => p.id)) } });
     for (const p of updatedParcels) {
       p.is_issue_resolved = true;
+      actualProcessedIds.push(p.id);
     }
 
-    return await this.parcelRepository.save(updatedParcels);
+    await this.parcelRepository.save(updatedParcels);
+    return actualProcessedIds.length;
   }
 
   /**
