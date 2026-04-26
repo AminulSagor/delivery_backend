@@ -5956,6 +5956,7 @@ export class ParcelsService {
     // Map to the format shown in screenshot
     const data = parcels.map((p) => ({
       id: p.id,
+      parcel_tx_id: p.parcel_tx_id,
       tracking_number: p.tracking_number,
       customer: {
         name: p.customer_name,
@@ -5970,12 +5971,14 @@ export class ParcelsService {
       zone: p.delivery_area || 'N/A',
       reported_by: {
         name: p.assignedRider?.user?.full_name || 'Unknown',
+        phone: p.assignedRider?.user?.phone || null,
         photo: p.assignedRider?.photo || null,
       },
       report: {
         type: p.issue_type,
         reason: p.issue_description,
         reported_at: p.issue_reported_at,
+        updated_at: p.updated_at,
       },
     }));
 
@@ -6010,6 +6013,7 @@ export class ParcelsService {
     // Return the consistent report structure
     return {
       id: parcel.id,
+      parcel_tx_id: parcel.parcel_tx_id,
       tracking_number: parcel.tracking_number,
       status: parcel.status, // Included status
       customer: {
@@ -6025,12 +6029,14 @@ export class ParcelsService {
       zone: parcel.delivery_area || 'N/A',
       reported_by: {
         name: parcel.assignedRider?.user?.full_name || 'Unknown',
+        phone: parcel.assignedRider?.user?.phone || null,
         photo: parcel.assignedRider?.photo || null,
       },
       report: {
         type: parcel.issue_type,
         reason: parcel.issue_description,
         reported_at: parcel.issue_reported_at,
+        updated_at: parcel.updated_at,
         is_resolved: parcel.is_issue_resolved,
       },
     };
