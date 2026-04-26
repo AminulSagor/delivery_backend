@@ -18,9 +18,11 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { TransferRecordStatus } from '../common/enums/transfer-record-status.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
+import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
+import { MerchantService } from '../merchant/merchant.service';
 
 @Injectable()
 export class AdminService {
@@ -38,6 +40,7 @@ export class AdminService {
     @InjectRepository(Hub)
     private hubRepository: Repository<Hub>,
     private usersService: UsersService,
+    private merchantService: MerchantService,
   ) {}
 
   async create(dto: CreateAdminDto): Promise<User> {
@@ -75,6 +78,18 @@ export class AdminService {
     );
 
     return admin;
+  }
+
+  // ===== MERCHANT MANAGEMENT =====
+
+  /**
+   * Admin creates a merchant (auto-approved, no PENDING state)
+   */
+  async adminCreateMerchant(
+    dto: AdminCreateMerchantDto,
+    adminId: string,
+  ): Promise<Merchant> {
+    return this.merchantService.adminCreateMerchant(dto, adminId);
   }
 
   async findAll(): Promise<User[]> {

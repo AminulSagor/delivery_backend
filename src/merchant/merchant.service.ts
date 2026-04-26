@@ -11,6 +11,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { Merchant } from './entities/merchant.entity';
 import { User } from '../users/entities/user.entity';
 import { MerchantSignupDto } from './dto/create-merchant.dto';
+import { AdminCreateMerchantDto } from '../admin/dto/admin-create-merchant.dto';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -137,10 +138,95 @@ export class MerchantService {
   }
 
   /**
+   * Admin: Create a merchant directly (bypasses PENDING — auto-approved)
+   * Creates user + merchant + default store, all set to APPROVED/ACTIVE.
+   */
+  async adminCreateMerchant(
+    dto: AdminCreateMerchantDto,
+    adminId: string,
+  ): Promise<Merchant> {
+    // Check phone uniqueness
+    const existingByPhone = await this.usersService.findByPhone(dto.phone);
+    if (existingByPhone) {
+      throw new ConflictException('Phone number already registered');
+    }
+
+    // Check email uniqueness (if provided)
+    if (dto.email) {
+      const existingByEmail = await this.usersService.findByEmail(dto.email);
+      if (existingByEmail) {
+        throw new ConflictException('Email already registered');
+      }
+    }
+
+    // Hash password
+    const passwordHash = await this.usersService.hashPassword(dto.password);
+
+    // Create user with MERCHANT role (active immediately)
+    const user = await this.usersService.create({
+      full_name: dto.full_name,
+      phone: dto.phone,
+      email: dto.email || undefined,
+      password_hash: passwordHash,
+      role: UserRole.MERCHANT,
+      is_active: true,
+    });
+
+    // Create merchant — auto-approved, no waiting required
+    const merchant = new Merchant();
+    merchant.user_id = user.id;
+    merchant.thana = dto.thana;
+    merchant.district = dto.district;
+    merchant.full_address = dto.full_address || dto.business_address;
+    merchant.secondary_number = dto.secondary_number || null;
+    merchant.status = MerchantStatus.APPROVED;
+    merchant.approved_at = new Date();
+    merchant.approved_by = adminId;
+
+    await this.merchantRepository.save(merchant);
+
+    // Auto-create default store — also approved
+    const storeCode = await this.generateStoreCode(dto.business_name);
+    const storePhone = dto.phone.replace('+88', '');
+
+    const store = new Store();
+    store.merchant_id = merchant.id;
+    store.store_code = storeCode;
+    store.business_name = dto.business_name;
+    store.business_address = dto.business_address;
+    store.district = dto.district;
+    store.thana = dto.thana;
+    store.area = dto.area || null;
+    store.phone_number = storePhone;
+    store.email = dto.email || null;
+    store.is_default = true;
+    store.status = StoreStatus.APPROVED; // Approved by admin at creation
+    store.carrybee_city_id = dto.carrybee_city_id;
+    store.carrybee_zone_id = dto.carrybee_zone_id;
+    store.carrybee_area_id = dto.carrybee_area_id;
+
+    await this.storeRepo.save(store);
+
+    console.log(
+      `[ADMIN MERCHANT CREATED] Merchant: ${user.full_name} (${user.phone}) created by admin ${adminId} — Status: APPROVED`,
+    );
+    console.log(
+      `[DEFAULT STORE CREATED] Store: ${store.business_name} (${store.store_code}) — Status: ACTIVE`,
+    );
+
+    // Reload with relations for the response
+    return (await this.merchantRepository.findOne({
+      where: { id: merchant.id },
+      relations: ['user'],
+    }))!;
+  }
+
+  /**
    * Generate unique store code from business name
    * Format: First 3 letters + 3 digit number (e.g., TSH001)
    */
   private async generateStoreCode(businessName: string): Promise<string> {
+
     // Extract first 3 letters from business name (uppercase)
     const prefix = businessName
       .replace(/[^A-Za-z]/g, '') // Remove non-letters
