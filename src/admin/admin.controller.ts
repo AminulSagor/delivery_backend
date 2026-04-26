@@ -18,6 +18,7 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
+import { AddPayoutMethodDto } from '../merchant/dto/add-payout-method.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import {
   ApproveTransferRecordDto,
@@ -179,6 +180,93 @@ export class AdminController {
         approved_at: merchant.approved_at,
       },
       message: 'Merchant created and approved successfully',
+    };
+  }
+
+  // ===== MERCHANT PAYOUT METHODS =====
+
+  /**
+   * Get all payout methods for a merchant
+   * GET /admin/merchants/:merchantId/payout-methods
+   */
+  @Get('merchants/:merchantId/payout-methods')
+  async getMerchantPayoutMethods(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+  ) {
+    const methods =
+      await this.adminService.getMerchantPayoutMethods(merchantId);
+    return {
+      success: true,
+      data: { methods },
+      message: 'Payout methods retrieved successfully',
+    };
+  }
+
+  /**
+   * Admin adds a payout method for a merchant (auto-verified)
+   * POST /admin/merchants/:merchantId/payout-methods
+   *
+   * Body examples:
+   *  { "method_type": "BANK_ACCOUNT", "bank_name": "...", "branch_name": "...",
+   *    "account_holder_name": "...", "account_number": "...", "routing_number": "..." }
+   *  { "method_type": "BKASH", "bkash_number": "01XXXXXXXXX",
+   *    "bkash_account_holder_name": "...", "bkash_account_type": "PERSONAL" }
+   *  { "method_type": "NAGAD", "nagad_number": "01XXXXXXXXX",
+   *    "nagad_account_holder_name": "...", "nagad_account_type": "PERSONAL" }
+   */
+  @Post('merchants/:merchantId/payout-methods')
+  async addMerchantPayoutMethod(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Body() dto: AddPayoutMethodDto,
+    @Req() req: any,
+  ) {
+    const adminId = req.user.userId;
+    const method = await this.adminService.adminAddPayoutMethod(
+      merchantId,
+      dto,
+      adminId,
+    );
+    return {
+      success: true,
+      data: { method },
+      message: 'Payout method added and verified successfully',
+    };
+  }
+
+  /**
+   * Set a payout method as default for a merchant (Admin)
+   * PATCH /admin/merchants/:merchantId/payout-methods/:methodId/set-default
+   */
+  @Patch('merchants/:merchantId/payout-methods/:methodId/set-default')
+  async setMerchantPayoutMethodDefault(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Param('methodId', ParseUUIDPipe) methodId: string,
+  ) {
+    const method = await this.adminService.adminSetDefaultPayoutMethod(
+      merchantId,
+      methodId,
+    );
+    return {
+      success: true,
+      data: { method },
+      message: 'Default payout method updated successfully',
+    };
+  }
+
+  /**
+   * Delete a payout method for a merchant (Admin)
+   * DELETE /admin/merchants/:merchantId/payout-methods/:methodId
+   */
+  @Delete('merchants/:merchantId/payout-methods/:methodId')
+  @HttpCode(HttpStatus.OK)
+  async deleteMerchantPayoutMethod(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Param('methodId', ParseUUIDPipe) methodId: string,
+  ) {
+    await this.adminService.adminDeletePayoutMethod(merchantId, methodId);
+    return {
+      success: true,
+      message: 'Payout method deleted successfully',
     };
   }
 

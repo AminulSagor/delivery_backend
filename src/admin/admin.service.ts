@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
+import { MerchantPayoutMethod } from '../merchant/entities/merchant-payout-method.entity';
 import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import { HubTransferRecord } from '../hubs/entities/hub-transfer-record.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -19,6 +20,7 @@ import { TransferRecordStatus } from '../common/enums/transfer-record-status.enu
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
+import { AddPayoutMethodDto } from '../merchant/dto/add-payout-method.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
@@ -90,6 +92,49 @@ export class AdminService {
     adminId: string,
   ): Promise<Merchant> {
     return this.merchantService.adminCreateMerchant(dto, adminId);
+  }
+
+  /**
+   * Admin: Get all payout methods for a merchant
+   */
+  async getMerchantPayoutMethods(
+    merchantId: string,
+  ): Promise<MerchantPayoutMethod[]> {
+    return this.merchantService.getMerchantPayoutMethods(merchantId);
+  }
+
+  /**
+   * Admin: Add a payout method for a merchant (auto-verified — no pending step)
+   */
+  async adminAddPayoutMethod(
+    merchantId: string,
+    dto: AddPayoutMethodDto,
+    adminId: string,
+  ): Promise<MerchantPayoutMethod> {
+    // Add the method (starts as PENDING)
+    const method = await this.merchantService.addPayoutMethod(merchantId, dto);
+    // Immediately verify it on behalf of admin
+    return this.merchantService.verifyPayoutMethod(method.id, adminId);
+  }
+
+  /**
+   * Admin: Set a payout method as default for a merchant
+   */
+  async adminSetDefaultPayoutMethod(
+    merchantId: string,
+    methodId: string,
+  ): Promise<MerchantPayoutMethod> {
+    return this.merchantService.setDefaultPayoutMethod(merchantId, methodId);
+  }
+
+  /**
+   * Admin: Delete a payout method for a merchant
+   */
+  async adminDeletePayoutMethod(
+    merchantId: string,
+    methodId: string,
+  ): Promise<void> {
+    return this.merchantService.deletePayoutMethod(merchantId, methodId);
   }
 
   async findAll(): Promise<User[]> {
