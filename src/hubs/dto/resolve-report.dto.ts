@@ -11,10 +11,6 @@ export class ResolveReportDto {
   @IsNotEmpty()
   @IsEnum(ParcelStatus)
   action_status: ParcelStatus; // e.g., RETURN_TO_MERCHANT, IN_HUB (for retry)
-
-  @IsOptional()
-  @IsString()
-  admin_notes?: string;
 }
 
 export class BulkResolveReportDto extends ResolveReportDto {
