@@ -521,6 +521,7 @@ export class MerchantService {
       returnedParcels,
       reportedParcels,
       graphRows,
+      parcelsList,
     ] = await Promise.all([
       baseQb.clone().getCount(),
       baseQb
@@ -546,12 +547,28 @@ export class MerchantService {
         .groupBy('bucket')
         .orderBy('bucket', 'ASC')
         .getRawMany(),
+      baseQb
+        .clone()
+        .leftJoinAndSelect('parcel.store', 'parcelStore')
+        .leftJoinAndSelect('parcel.merchant', 'parcelMerchant')
+        .leftJoinAndSelect('parcelMerchant.user', 'parcelMerchantUser')
+        .leftJoinAndSelect('parcel.customer', 'parcelCustomer')
+        .leftJoinAndSelect('parcel.delivery_coverage_area', 'parcelArea')
+        .leftJoinAndSelect('parcel.assignedRider', 'parcelRider')
+        .leftJoinAndSelect('parcelRider.user', 'parcelRiderUser')
+        .leftJoinAndSelect('parcel.currentHub', 'parcelCurrentHub')
+        .leftJoinAndSelect('parcel.originHub', 'parcelOriginHub')
+        .leftJoinAndSelect('parcel.destinationHub', 'parcelDestinationHub')
+        .orderBy('parcel.created_at', 'DESC')
+        .getMany(),
     ]);
 
     const graph = graphRows.map((row: any) => ({
       bucket: new Date(row.bucket).toISOString().substring(0, 10),
       count: Number(row.count),
     }));
+
+    const parcels = (parcelsList || []).map((p) => toParcelListItem(p));
 
     return {
       merchant: {
@@ -571,6 +588,7 @@ export class MerchantService {
         returned: returnedParcels,
         reported: reportedParcels,
       },
+      parcels,
       graph,
       range,
       range_start: start,
