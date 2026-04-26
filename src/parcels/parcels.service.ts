@@ -6064,7 +6064,7 @@ export class ParcelsService {
       // Force allowed status to bypass workflow validation
       parcel.status = ParcelStatus.RETURNED_TO_HUB;
       await this.parcelRepository.save(parcel);
-      await this.markReturnToMerchant(parcel.id, hubId, dto.admin_notes);
+      await this.markReturnToMerchant(parcel.id, hubId);
     } else if (dto.action_status === ParcelStatus.DELIVERY_RESCHEDULED) {
       // Force allowed status to bypass workflow validation
       parcel.status = ParcelStatus.IN_HUB;
@@ -6078,7 +6078,6 @@ export class ParcelsService {
     // Finalize report resolution
     const updatedParcel = await this.parcelRepository.findOne({ where: { id: parcelId } });
     if (updatedParcel) {
-      if (dto.admin_notes) updatedParcel.admin_notes = dto.admin_notes;
       updatedParcel.is_issue_resolved = true;
       return await this.parcelRepository.save(updatedParcel);
     }
@@ -6109,7 +6108,7 @@ export class ParcelsService {
         parcel.status = ParcelStatus.RETURNED_TO_HUB;
         await this.parcelRepository.save(parcel);
         try {
-          await this.markReturnToMerchant(parcel.id, hubId, dto.admin_notes);
+          await this.markReturnToMerchant(parcel.id, hubId);
         } catch (e) {
           this.logger.error(`Failed to mark return to merchant for parcel ${parcel.id}: ${e.message}`);
         }
@@ -6135,7 +6134,6 @@ export class ParcelsService {
     const updatedParcels = await this.parcelRepository.find({ where: { id: In(dto.parcel_ids) } });
     for (const p of updatedParcels) {
       p.is_issue_resolved = true;
-      if (dto.admin_notes) p.admin_notes = dto.admin_notes;
     }
 
     return await this.parcelRepository.save(updatedParcels);
