@@ -180,6 +180,54 @@ export class HubsController {
    * Filters: status, zone, merchantId
    * Pagination: page (default 1), limit (default 10, max 100)
    */
+  @Get('parcels/history')
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getParcelHistory(
+    @CurrentUser() user: any,
+    @Query() query: DeliveryOutcomeQueryDto,
+  ) {
+    const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
+    const result = await this.parcelsService.getParcelHistory(
+      hubId,
+      query.page,
+      query.limit,
+      query.search,
+      query.sortBy,
+      query.order,
+      query.status,
+      query.merchantId,
+      undefined, // storeId
+      query.customerName,
+      query.customerPhone,
+      query.merchantName,
+      query.zone, // area/zone
+      query.minAmount,
+      query.maxAmount,
+      query.deliveryType,
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Parcel history retrieved successfully',
+    };
+  }
+
+  /**
+   * Get delivery outcomes (Hub Manager)
+   *
+   * PURPOSE: View parcels with delivery outcomes that have been cleared:
+   * - DELIVERED: Successfully delivered, COD collected from rider
+   * - PARTIAL_DELIVERY: Partial items delivered, COD collected
+   * - EXCHANGE: Items exchanged, COD collected
+   * - PAID_RETURN: Customer refused but paid return fee, COD collected
+   * - RETURNED: Customer refused, parcels returned
+   *
+   * Shows parcels AFTER COD collection (cod_cleared_at IS NOT NULL)
+   * Filters: status, zone, merchantId
+   * Pagination: page (default 1), limit (default 10, max 100)
+   */
   @Get('parcels/delivery-outcomes')
   @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
