@@ -4509,7 +4509,6 @@ export class ParcelsService {
     // Define all successful delivery statuses (parcels that have been completed)
     // These are parcels that have gone through the delivery process and COD has been collected
     const completedStatuses = [
-      ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
       ParcelStatus.PAID_RETURN,
@@ -4578,7 +4577,6 @@ export class ParcelsService {
 
     // Calculate total collectable amount (COD collected from completed deliveries)
     const successfulStatuses = [
-      ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
     ];
