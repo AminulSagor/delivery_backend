@@ -19,6 +19,7 @@ import { UpdateAdminDto } from './dto/update-admin.dto';
 import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { AddPayoutMethodDto } from '../merchant/dto/add-payout-method.dto';
+import { UpdatePayoutMethodDto } from '../merchant/dto/update-payout-method.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import {
   ApproveTransferRecordDto,
@@ -230,6 +231,31 @@ export class AdminController {
       success: true,
       data: { method },
       message: 'Payout method added and verified successfully',
+    };
+  }
+
+  /**
+   * Admin updates a payout method for a merchant
+   * PATCH /admin/merchants/:merchantId/payout-methods/:methodId
+   *
+   * Can update any field (bank details, bkash/nagad number, etc.)
+   * Note: method_type cannot be changed — create a new one instead.
+   */
+  @Patch('merchants/:merchantId/payout-methods/:methodId')
+  async updateMerchantPayoutMethod(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Param('methodId', ParseUUIDPipe) methodId: string,
+    @Body() dto: UpdatePayoutMethodDto,
+  ) {
+    const method = await this.adminService.adminUpdatePayoutMethod(
+      merchantId,
+      methodId,
+      dto,
+    );
+    return {
+      success: true,
+      data: { method },
+      message: 'Payout method updated successfully',
     };
   }
 

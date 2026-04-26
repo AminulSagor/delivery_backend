@@ -21,6 +21,7 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { AdminCreateMerchantDto } from './dto/admin-create-merchant.dto';
 import { AddPayoutMethodDto } from '../merchant/dto/add-payout-method.dto';
+import { UpdatePayoutMethodDto } from '../merchant/dto/update-payout-method.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
@@ -115,6 +116,17 @@ export class AdminService {
     const method = await this.merchantService.addPayoutMethod(merchantId, dto);
     // Immediately verify it on behalf of admin
     return this.merchantService.verifyPayoutMethod(method.id, adminId);
+  }
+
+  /**
+   * Admin: Update a payout method for a merchant
+   */
+  async adminUpdatePayoutMethod(
+    merchantId: string,
+    methodId: string,
+    dto: UpdatePayoutMethodDto,
+  ): Promise<MerchantPayoutMethod> {
+    return this.merchantService.updatePayoutMethod(merchantId, methodId, dto);
   }
 
   /**
