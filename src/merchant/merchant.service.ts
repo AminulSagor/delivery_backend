@@ -1565,6 +1565,45 @@ export class MerchantService {
     merchantId: string,
     dto: AddPayoutMethodDto,
   ): Promise<MerchantPayoutMethod> {
+    // Prevent exact duplicates
+    if (dto.method_type === PayoutMethodType.BANK_ACCOUNT) {
+      const existing = await this.payoutMethodRepository.findOne({
+        where: {
+          merchant_id: merchantId,
+          method_type: PayoutMethodType.BANK_ACCOUNT,
+          account_number: dto.account_number,
+          routing_number: dto.routing_number,
+        },
+      });
+      if (existing) throw new ConflictException('This bank account is already added');
+    } else if (dto.method_type === PayoutMethodType.BKASH) {
+      const existing = await this.payoutMethodRepository.findOne({
+        where: {
+          merchant_id: merchantId,
+          method_type: PayoutMethodType.BKASH,
+          bkash_number: dto.bkash_number,
+        },
+      });
+      if (existing) throw new ConflictException('This bKash number is already added');
+    } else if (dto.method_type === PayoutMethodType.NAGAD) {
+      const existing = await this.payoutMethodRepository.findOne({
+        where: {
+          merchant_id: merchantId,
+          method_type: PayoutMethodType.NAGAD,
+          nagad_number: dto.nagad_number,
+        },
+      });
+      if (existing) throw new ConflictException('This Nagad number is already added');
+    } else if (dto.method_type === PayoutMethodType.CASH) {
+      const existing = await this.payoutMethodRepository.findOne({
+        where: {
+          merchant_id: merchantId,
+          method_type: PayoutMethodType.CASH,
+        },
+      });
+      if (existing) throw new ConflictException('Cash payout method already exists');
+    }
+
     // Create payout method
     const payoutMethod = this.payoutMethodRepository.create({
       merchant_id: merchantId,
