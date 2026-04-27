@@ -27,6 +27,8 @@ import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import { MerchantService } from '../merchant/merchant.service';
 import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
+import { ParcelsService } from '../parcels/parcels.service';
+import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
 
 @Injectable()
 export class AdminService {
@@ -45,6 +47,7 @@ export class AdminService {
     private hubRepository: Repository<Hub>,
     private usersService: UsersService,
     private merchantService: MerchantService,
+    private parcelsService: ParcelsService,
   ) {}
 
   async create(dto: CreateAdminDto): Promise<User> {
@@ -156,6 +159,13 @@ export class AdminService {
     methodId: string,
   ): Promise<MerchantPayoutMethod> {
     return this.merchantService.setDefaultPayoutMethod(merchantId, methodId);
+  }
+
+  /**
+   * Admin: Create and receive a parcel
+   */
+  async createAndReceiveParcel(dto: AdminCreateParcelDto, adminId: string) {
+    return this.parcelsService.createByAdmin(dto, adminId);
   }
 
   /**
@@ -272,6 +282,23 @@ export class AdminService {
 
     return admin;
   }
+
+  // ===== DROPDOWN DATA METHODS =====
+
+
+  /**
+   * Get all stores for a specific merchant (for dropdowns)
+   */
+  async getMerchantStoresForDropdown(merchantId: string) {
+    return this.storeRepository.find({
+      where: { merchant_id: merchantId },
+      select: ['id', 'business_name', 'store_code', 'hub_id'],
+      order: { business_name: 'ASC' },
+    });
+  }
+
+
+  // ===== HUB TRANSFER RECORDS =====
 
   // ===== HUB TRANSFER RECORDS =====
 

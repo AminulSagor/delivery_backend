@@ -30,6 +30,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { Public } from '../common/decorators/public.decorator';
+import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
+import { toParcelListItem } from '../common/interfaces/responses.interface';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -76,6 +78,28 @@ export class AdminController {
       success: true,
       data: result,
       message: 'All parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Create and Receive Parcel (Admin)
+   * Creates a parcel and sets status to IN_HUB immediately at the specified hub
+   */
+  @Post('parcels/create-and-receive')
+  @HttpCode(HttpStatus.CREATED)
+  async createAndReceiveParcel(
+    @Body() dto: AdminCreateParcelDto,
+    @Req() req: any,
+  ) {
+    const adminId = req.user.userId;
+    const parcel = await this.adminService.createAndReceiveParcel(dto, adminId);
+
+    return {
+      success: true,
+      data: {
+        parcel: toParcelListItem(parcel),
+      },
+      message: 'Parcel created and received successfully at the specified hub.',
     };
   }
 
@@ -183,6 +207,26 @@ export class AdminController {
       message: 'Merchant created and approved successfully',
     };
   }
+
+  // ===== DROPDOWN DATA ENDPOINTS =====
+
+
+  /**
+   * Get all stores for a specific merchant
+   * GET /admin/merchants/:id/stores
+   */
+  @Get('merchants/:id/stores')
+  async getMerchantStores(@Param('id', ParseUUIDPipe) id: string) {
+    const stores = await this.adminService.getMerchantStoresForDropdown(id);
+    return {
+      success: true,
+      data: { stores },
+      message: 'Merchant stores retrieved successfully',
+    };
+  }
+
+
+  // ===== MERCHANT PAYOUT METHODS =====
 
   // ===== MERCHANT PAYOUT METHODS =====
 

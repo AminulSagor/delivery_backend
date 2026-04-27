@@ -19,6 +19,7 @@ import { AdminAccountStatement } from './entities/admin-account-statement.entity
 import { AdminAccountsController } from './controllers/admin-accounts.controller';
 import { AdminAccountsService } from './services/admin-accounts.service';
 import { MerchantModule } from '../merchant/merchant.module';
+import { ParcelsModule } from '../parcels/parcels.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { MerchantModule } from '../merchant/merchant.module';
     ]),
     UsersModule,
     forwardRef(() => MerchantModule),
+    ParcelsModule,
   ],
   controllers: [
     AdminAccountsController,
