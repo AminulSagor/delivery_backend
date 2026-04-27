@@ -1,0 +1,380 @@
+{
+  "info": {
+    "name": "Admin - Merchant & Payout Methods",
+    "description": "Admin endpoints for merchant creation and payout method management.\n\nAll endpoints require Admin JWT token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "merchantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "methodId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create Merchant (Auto-Approved)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Rahim Uddin\",\n  \"phone\": \"+8801712345678\",\n  \"password\": \"secure123\",\n  \"email\": \"rahim@example.com\",\n  \"secondary_number\": \"+8801987654321\",\n  \"business_name\": \"Rahim Electronics\",\n  \"business_address\": \"123, Gulshan Avenue, Dhaka\",\n  \"district\": \"Dhaka\",\n  \"thana\": \"Gulshan\",\n  \"area\": \"Gulshan-1\",\n  \"full_address\": \"Shop 5, 123 Gulshan Avenue, Dhaka-1212\",\n  \"carrybee_city_id\": 1,\n  \"carrybee_zone_id\": 4,\n  \"carrybee_area_id\": 22\n}"
+        },
+        "description": "Creates a merchant with APPROVED status instantly. Also creates a default store (APPROVED).\n\n**Required:** full_name, phone, password, business_name, business_address, district, thana, carrybee_city_id, carrybee_zone_id, carrybee_area_id\n\n**Optional:** email, secondary_number, area, full_address"
+      },
+      "response": [
+        {
+          "name": "201 - Success",
+          "status": "Created",
+          "code": 201,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n    \"user_id\": \"a1b2c3d4-0000-4000-8000-111111111111\",\n    \"full_name\": \"Rahim Uddin\",\n    \"phone\": \"+8801712345678\",\n    \"email\": \"rahim@example.com\",\n    \"status\": \"APPROVED\",\n    \"approved_at\": \"2026-04-27T00:30:00.000Z\"\n  },\n  \"message\": \"Merchant created and approved successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "409 - Phone Already Registered",
+          "status": "Conflict",
+          "code": 409,
+          "body": "{\n  \"statusCode\": 409,\n  \"message\": \"Phone number already registered\",\n  \"error\": \"Conflict\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "2. Get Merchant Payout Methods",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods"]
+        },
+        "description": "Returns all payout methods (bank, bKash, Nagad, cash) for a merchant."
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"methods\": [\n      {\n        \"id\": \"c4e5f6a7-0000-4000-8000-222222222222\",\n        \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n        \"method_type\": \"BANK_ACCOUNT\",\n        \"status\": \"VERIFIED\",\n        \"is_default\": true,\n        \"bank_name\": \"Dutch Bangla Bank\",\n        \"branch_name\": \"Gulshan Branch\",\n        \"account_holder_name\": \"Rahim Uddin\",\n        \"account_number\": \"1234567890\",\n        \"routing_number\": \"090261782\",\n        \"bkash_number\": null,\n        \"bkash_account_holder_name\": null,\n        \"bkash_account_type\": null,\n        \"nagad_number\": null,\n        \"nagad_account_holder_name\": null,\n        \"nagad_account_type\": null,\n        \"verified_at\": \"2026-04-27T00:31:00.000Z\",\n        \"verified_by\": \"admin-uuid-here\",\n        \"created_at\": \"2026-04-27T00:30:00.000Z\",\n        \"updated_at\": \"2026-04-27T00:31:00.000Z\"\n      },\n      {\n        \"id\": \"d5f6a7b8-0000-4000-8000-333333333333\",\n        \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n        \"method_type\": \"BKASH\",\n        \"status\": \"VERIFIED\",\n        \"is_default\": false,\n        \"bank_name\": null,\n        \"branch_name\": null,\n        \"account_holder_name\": null,\n        \"account_number\": null,\n        \"routing_number\": null,\n        \"bkash_number\": \"01712345678\",\n        \"bkash_account_holder_name\": \"Rahim Uddin\",\n        \"bkash_account_type\": \"PERSONAL\",\n        \"nagad_number\": null,\n        \"nagad_account_holder_name\": null,\n        \"nagad_account_type\": null,\n        \"verified_at\": \"2026-04-27T00:32:00.000Z\",\n        \"verified_by\": \"admin-uuid-here\",\n        \"created_at\": \"2026-04-27T00:32:00.000Z\",\n        \"updated_at\": \"2026-04-27T00:32:00.000Z\"\n      }\n    ]\n  },\n  \"message\": \"Payout methods retrieved successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "3. Get Available Payout Method Types",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods/available",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods", "available"]
+        },
+        "description": "Returns method types NOT yet added for this merchant. Possible values: BANK_ACCOUNT, BKASH, NAGAD, CASH. Each type can only be added once."
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"available_methods\": [\"NAGAD\", \"CASH\"]\n  },\n  \"message\": \"Available payout method types retrieved successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "4a. Add Bank Account",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"method_type\": \"BANK_ACCOUNT\",\n  \"bank_name\": \"Dutch Bangla Bank\",\n  \"branch_name\": \"Gulshan Branch\",\n  \"account_holder_name\": \"Rahim Uddin\",\n  \"account_number\": \"1234567890\",\n  \"routing_number\": \"090261782\"\n}"
+        },
+        "description": "Adds a BANK_ACCOUNT payout method. Auto-verified by admin.\n\n**Required fields:** bank_name, branch_name, account_holder_name, account_number, routing_number"
+      },
+      "response": [
+        {
+          "name": "201 - Success",
+          "status": "Created",
+          "code": 201,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"e6a7b8c9-0000-4000-8000-444444444444\",\n      \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n      \"method_type\": \"BANK_ACCOUNT\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": true,\n      \"bank_name\": \"Dutch Bangla Bank\",\n      \"branch_name\": \"Gulshan Branch\",\n      \"account_holder_name\": \"Rahim Uddin\",\n      \"account_number\": \"1234567890\",\n      \"routing_number\": \"090261782\",\n      \"verified_at\": \"2026-04-27T00:35:00.000Z\",\n      \"verified_by\": \"admin-uuid-here\",\n      \"created_at\": \"2026-04-27T00:35:00.000Z\",\n      \"updated_at\": \"2026-04-27T00:35:00.000Z\"\n    }\n  },\n  \"message\": \"Payout method added and verified successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "409 - Already Exists",
+          "status": "Conflict",
+          "code": 409,
+          "body": "{\n  \"statusCode\": 409,\n  \"message\": \"BANK_ACCOUNT payout method already exists\",\n  \"error\": \"Conflict\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "4b. Add bKash",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"method_type\": \"BKASH\",\n  \"bkash_number\": \"01712345678\",\n  \"bkash_account_holder_name\": \"Rahim Uddin\",\n  \"bkash_account_type\": \"PERSONAL\"\n}"
+        },
+        "description": "Adds a BKASH payout method. Auto-verified.\n\n**Required:** bkash_number (01XXXXXXXXX), bkash_account_holder_name, bkash_account_type (PERSONAL | MERCHANT | AGENT)"
+      },
+      "response": [
+        {
+          "name": "201 - Success",
+          "status": "Created",
+          "code": 201,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"f7b8c9d0-0000-4000-8000-555555555555\",\n      \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n      \"method_type\": \"BKASH\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": false,\n      \"bkash_number\": \"01712345678\",\n      \"bkash_account_holder_name\": \"Rahim Uddin\",\n      \"bkash_account_type\": \"PERSONAL\",\n      \"verified_at\": \"2026-04-27T00:36:00.000Z\",\n      \"verified_by\": \"admin-uuid-here\",\n      \"created_at\": \"2026-04-27T00:36:00.000Z\"\n    }\n  },\n  \"message\": \"Payout method added and verified successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "4c. Add Nagad",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"method_type\": \"NAGAD\",\n  \"nagad_number\": \"01812345678\",\n  \"nagad_account_holder_name\": \"Rahim Uddin\",\n  \"nagad_account_type\": \"MERCHANT\"\n}"
+        },
+        "description": "Adds a NAGAD payout method. Auto-verified.\n\n**Required:** nagad_number (01XXXXXXXXX), nagad_account_holder_name, nagad_account_type (PERSONAL | MERCHANT)"
+      },
+      "response": [
+        {
+          "name": "201 - Success",
+          "status": "Created",
+          "code": 201,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"a8b9c0d1-0000-4000-8000-666666666666\",\n      \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n      \"method_type\": \"NAGAD\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": false,\n      \"nagad_number\": \"01812345678\",\n      \"nagad_account_holder_name\": \"Rahim Uddin\",\n      \"nagad_account_type\": \"MERCHANT\",\n      \"verified_at\": \"2026-04-27T00:37:00.000Z\",\n      \"verified_by\": \"admin-uuid-here\",\n      \"created_at\": \"2026-04-27T00:37:00.000Z\"\n    }\n  },\n  \"message\": \"Payout method added and verified successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "4d. Add Cash",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"method_type\": \"CASH\"\n}"
+        },
+        "description": "Adds a CASH payout method. No extra fields needed. Auto-verified."
+      },
+      "response": [
+        {
+          "name": "201 - Success",
+          "status": "Created",
+          "code": 201,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"b9c0d1e2-0000-4000-8000-777777777777\",\n      \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n      \"method_type\": \"CASH\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": false,\n      \"verified_at\": \"2026-04-27T00:38:00.000Z\",\n      \"verified_by\": \"admin-uuid-here\",\n      \"created_at\": \"2026-04-27T00:38:00.000Z\"\n    }\n  },\n  \"message\": \"Payout method added and verified successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "5. Update Payout Method",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods/{{methodId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods", "{{methodId}}"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"account_number\": \"9876543210\",\n  \"routing_number\": \"090261799\"\n}"
+        },
+        "description": "Update any fields of a payout method. Send only changed fields.\n\nmethod_type CANNOT be changed.\n\n**Example bodies:**\n- Bank: {\"account_number\": \"...\", \"routing_number\": \"...\"}\n- bKash: {\"bkash_number\": \"01...\", \"bkash_account_holder_name\": \"...\"}\n- Nagad: {\"nagad_number\": \"01...\", \"nagad_account_type\": \"PERSONAL\"}"
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"c4e5f6a7-0000-4000-8000-222222222222\",\n      \"method_type\": \"BANK_ACCOUNT\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": true,\n      \"bank_name\": \"Dutch Bangla Bank\",\n      \"branch_name\": \"Gulshan Branch\",\n      \"account_holder_name\": \"Rahim Uddin\",\n      \"account_number\": \"9876543210\",\n      \"routing_number\": \"090261799\",\n      \"updated_at\": \"2026-04-27T01:00:00.000Z\"\n    }\n  },\n  \"message\": \"Payout method updated successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "404 - Not Found",
+          "status": "Not Found",
+          "code": 404,
+          "body": "{\n  \"statusCode\": 404,\n  \"message\": \"Payout method not found\",\n  \"error\": \"Not Found\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "6. Set Default Payout Method",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods/{{methodId}}/set-default",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods", "{{methodId}}", "set-default"]
+        },
+        "description": "Sets this method as the default payout method. Previous default is auto-unset.\n\nOnly VERIFIED methods can be set as default.\n\nNo request body needed."
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"d5f6a7b8-0000-4000-8000-333333333333\",\n      \"method_type\": \"BKASH\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": true,\n      \"bkash_number\": \"01712345678\",\n      \"bkash_account_holder_name\": \"Rahim Uddin\",\n      \"bkash_account_type\": \"PERSONAL\"\n    }\n  },\n  \"message\": \"Default payout method updated successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "400 - Not Verified",
+          "status": "Bad Request",
+          "code": 400,
+          "body": "{\n  \"statusCode\": 400,\n  \"message\": \"Only verified methods can be set as default\",\n  \"error\": \"Bad Request\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "7. Delete Payout Method",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-methods/{{methodId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-methods", "{{methodId}}"]
+        },
+        "description": "Permanently deletes a payout method.\n\nNo request body needed."
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"message\": \"Payout method deleted successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "404 - Not Found",
+          "status": "Not Found",
+          "code": 404,
+          "body": "{\n  \"statusCode\": 404,\n  \"message\": \"Payout method not found\",\n  \"error\": \"Not Found\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "8. Get Payout Transactions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/payout-transactions?page=1&limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "merchants", "{{merchantId}}", "payout-transactions"],
+          "query": [
+            { "key": "page", "value": "1", "description": "Page number (default: 1)" },
+            { "key": "limit", "value": "10", "description": "Results per page (default: 10)" }
+          ]
+        },
+        "description": "Paginated payout transaction history for a merchant.\n\n**Query params:** page (default 1), limit (default 10)"
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"transactions\": [\n      {\n        \"id\": \"f7b8c9d0-0000-4000-8000-555555555555\",\n        \"merchant_id\": \"b3d2f1a0-1234-4abc-9def-000000000001\",\n        \"payout_method_id\": \"c4e5f6a7-0000-4000-8000-222222222222\",\n        \"amount\": 15000.00,\n        \"status\": \"COMPLETED\",\n        \"reference\": \"TXN-20260427-001\",\n        \"note\": \"Weekly settlement\",\n        \"payout_method\": {\n          \"id\": \"c4e5f6a7-0000-4000-8000-222222222222\",\n          \"method_type\": \"BANK_ACCOUNT\",\n          \"bank_name\": \"Dutch Bangla Bank\",\n          \"account_number\": \"1234567890\"\n        },\n        \"initiator\": {\n          \"id\": \"admin-uuid-here\",\n          \"full_name\": \"System Admin\"\n        },\n        \"created_at\": \"2026-04-27T01:10:00.000Z\",\n        \"updated_at\": \"2026-04-27T01:10:00.000Z\"\n      }\n    ],\n    \"total\": 1,\n    \"page\": 1,\n    \"limit\": 10\n  },\n  \"message\": \"Payout transactions retrieved successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "9. Verify Merchant-Added Payout Method",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/merchants/payout-methods/{{methodId}}/verify",
+          "host": ["{{baseUrl}}"],
+          "path": ["merchants", "payout-methods", "{{methodId}}", "verify"]
+        },
+        "description": "Verifies a payout method that was added by the merchant (changes status from PENDING to VERIFIED).\n\nThis endpoint is on the /merchants controller (not /admin), but requires ADMIN role.\n\nNo request body needed."
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"method\": {\n      \"id\": \"d5f6a7b8-0000-4000-8000-333333333333\",\n      \"method_type\": \"BKASH\",\n      \"status\": \"VERIFIED\",\n      \"is_default\": false,\n      \"verified_at\": \"2026-04-27T01:15:00.000Z\",\n      \"verified_by\": \"admin-uuid-here\"\n    }\n  },\n  \"message\": \"Payout method verified successfully\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import {
 } from '../../common/enums/account-type.enum';
 
 @Entity('merchant_payout_methods')
-@Index(['merchant_id', 'method_type'], { unique: true })
+@Index(['merchant_id', 'method_type'])
 @Index(['merchant_id', 'is_default'])
 export class MerchantPayoutMethod {
   @PrimaryGeneratedColumn('uuid')

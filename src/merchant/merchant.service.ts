@@ -1542,15 +1542,7 @@ export class MerchantService {
   async getAvailablePayoutMethods(
     merchantId: string,
   ): Promise<PayoutMethodType[]> {
-    const existingMethods = await this.payoutMethodRepository.find({
-      where: { merchant_id: merchantId },
-      select: ['method_type'],
-    });
-
-    const usedMethods = existingMethods.map((m) => m.method_type);
-    const allMethods = Object.values(PayoutMethodType);
-
-    return allMethods.filter((method) => !usedMethods.includes(method));
+    return Object.values(PayoutMethodType);
   }
 
   /**
@@ -1573,17 +1565,6 @@ export class MerchantService {
     merchantId: string,
     dto: AddPayoutMethodDto,
   ): Promise<MerchantPayoutMethod> {
-    // Check if method already exists
-    const existing = await this.payoutMethodRepository.findOne({
-      where: { merchant_id: merchantId, method_type: dto.method_type },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        `${dto.method_type} payout method already exists`,
-      );
-    }
-
     // Create payout method
     const payoutMethod = this.payoutMethodRepository.create({
       merchant_id: merchantId,
