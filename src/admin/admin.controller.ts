@@ -204,19 +204,16 @@ export class AdminController {
   }
 
   /**
-   * Get payout method types not yet added for a merchant
-   * GET /admin/merchants/:merchantId/payout-methods/available
+   * Get all system-supported payout method types
+   * GET /admin/payout-methods/available
    */
-  @Get('merchants/:merchantId/payout-methods/available')
-  async getAvailableMerchantPayoutMethods(
-    @Param('merchantId', ParseUUIDPipe) merchantId: string,
-  ) {
-    const available =
-      await this.adminService.getAvailableMerchantPayoutMethods(merchantId);
+  @Get('payout-methods/available')
+  async getAvailablePayoutMethods() {
+    const available = this.adminService.getSystemPayoutMethodTypes();
     return {
       success: true,
       data: { available_methods: available },
-      message: 'Available payout method types retrieved successfully',
+      message: 'System-supported payout method types retrieved successfully',
     };
   }
 
