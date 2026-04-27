@@ -4,9 +4,9 @@ import { CreateParcelDto } from './create-parcel.dto';
 export class AdminCreateParcelDto extends CreateParcelDto {
   @IsNotEmpty()
   @IsUUID()
-  merchant_id: string;
+  declare merchant_id: string;
 
   @IsNotEmpty()
   @IsUUID()
-  store_id: string;
+  declare store_id: string;
 }
