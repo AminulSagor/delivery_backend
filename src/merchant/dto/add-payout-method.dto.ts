@@ -23,6 +23,11 @@ export class AddPayoutMethodDto {
   bank_name?: string;
 
   @ValidateIf((o) => o.method_type === PayoutMethodType.BANK_ACCOUNT)
+  @IsNotEmpty({ message: 'District is required for bank account' })
+  @IsString()
+  district?: string;
+
+  @ValidateIf((o) => o.method_type === PayoutMethodType.BANK_ACCOUNT)
   @IsNotEmpty({ message: 'Branch name is required for bank account' })
   @IsString()
   branch_name?: string;

@@ -56,6 +56,9 @@ export class MerchantPayoutMethod {
   bank_name: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
+  district: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
   branch_name: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })

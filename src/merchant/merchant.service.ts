@@ -1596,6 +1596,7 @@ export class MerchantService {
         dto.method_type === PayoutMethodType.CASH ? new Date() : null,
       // Bank account fields
       bank_name: dto.bank_name || null,
+      district: dto.district || null,
       branch_name: dto.branch_name || null,
       account_holder_name: dto.account_holder_name || null,
       account_number: dto.account_number || null,
