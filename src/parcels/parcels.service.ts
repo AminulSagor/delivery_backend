@@ -30,6 +30,7 @@ import {
 } from './entities/parcel.entity';
 import { FinancialStatus } from '../common/enums/financial-status.enum';
 import { CreateParcelDto } from './dto/create-parcel.dto';
+import { AdminCreateParcelDto } from './dto/admin-create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -1673,6 +1674,177 @@ export class ParcelsService {
         throw error;
       throw new InternalServerErrorException(
         'Failed to create and receive parcel',
+      );
+    }
+  }
+
+  /**
+   * Create parcel by Admin (Create & Receive)
+   * Sets status to IN_HUB immediately at the hub assigned to the store.
+   */
+  async createByAdmin(
+    dto: AdminCreateParcelDto,
+    adminId: string,
+  ): Promise<Parcel> {
+    try {
+      const { merchant_id, store_id } = dto;
+
+      // 1. Validate Store and Merchant relationship
+      const store = await this.storeRepository.findOne({
+        where: {
+          id: store_id,
+          merchant_id: merchant_id,
+        },
+      });
+
+      if (!store) {
+        throw new NotFoundException(
+          'Store not found or does not belong to the specified merchant.',
+        );
+      }
+
+      if (!store.hub_id) {
+        throw new BadRequestException(
+          `Store "${store.business_name}" is not assigned to any hub. Please assign a hub to the store first.`,
+        );
+      }
+
+      const hub_id = store.hub_id;
+
+      // 2. Find/Create Customer (Reused logic)
+      let customer;
+      try {
+        const result = await this.customerService.findOrCreateFromParcelPayload(
+          {
+            customer_name: dto.customer_name,
+            customer_phone: dto.customer_phone,
+            customer_address: dto.customer_address,
+            customer_secondary_phone: dto.customer_secondary_phone,
+            delivery_coverage_area_id: dto.delivery_coverage_area_id,
+          },
+        );
+        customer = result.customer;
+      } catch (error: any) {
+        throw new BadRequestException(
+          'Invalid customer details: ' + error.message,
+        );
+      }
+
+      // 3. Calculate Charges
+      const codAmount = dto.product_price || 0;
+      const isCod = codAmount > 0;
+
+      const charges = await this.calculateCharges(
+        merchant_id,
+        dto.delivery_coverage_area_id || null,
+        dto.product_weight || 0,
+        isCod,
+        codAmount,
+      );
+
+      // 4. Generate Tracking & Transaction IDs
+      const trackingNumber = await this.generateTrackingNumber();
+      const parcelPrefix = this.getParcelIdPrefix({
+        isExchange: dto.is_exchange,
+      });
+      const parcelTxId = await this.generateParcelTxId(parcelPrefix);
+
+      // 5. Carrybee Mapping
+      const deliveryArea = dto.delivery_coverage_area_id
+        ? await this.coverageAreaRepository.findOne({
+            where: { id: dto.delivery_coverage_area_id },
+          })
+        : null;
+
+      // 6. Create Parcel Entity
+      const parcel = this.parcelRepository.create({
+        ...dto,
+        customer_id: customer.id,
+        tracking_number: trackingNumber,
+        parcel_tx_id: parcelTxId,
+
+        // --- KEY DIFFERENCES FOR ADMIN ---
+        status: ParcelStatus.IN_HUB, // Set to IN_HUB immediately for Admin Receive
+        current_hub_id: hub_id,
+        // ---------------------------------
+
+        pickup_request_id: null,
+        payment_status: PaymentStatus.UNPAID,
+        delivery_type: dto.delivery_type || DeliveryType.NORMAL,
+        is_cod: isCod,
+        cod_amount: codAmount,
+        is_exchange: dto.is_exchange || false,
+
+        // Financials
+        delivery_charge: charges.delivery_charge,
+        weight_charge: charges.weight_charge,
+        cod_charge: charges.cod_charge,
+        total_charge: charges.total_charge,
+        receivable_amount: Math.max(0, charges.receivable_amount),
+
+        // Carrybee fields
+        recipient_carrybee_city_id: deliveryArea?.city_id || null,
+        recipient_carrybee_zone_id: deliveryArea?.zone_id || null,
+        recipient_carrybee_area_id: deliveryArea?.area_id || null,
+      });
+
+      const savedParcel = await this.parcelRepository.save(parcel);
+
+      this.logger.log(
+        `[ADMIN PARCEL CREATE] ${trackingNumber} created and received by Admin ${adminId} for Hub ${hub_id}`,
+      );
+
+      // 7. Auto-assign to Carrybee (If Enabled)
+      if (store.auto_assign_to_carrybee) {
+        try {
+          if (
+            savedParcel.recipient_carrybee_city_id &&
+            savedParcel.recipient_carrybee_zone_id &&
+            savedParcel.recipient_carrybee_area_id
+          ) {
+            this.logger.log(
+              `[AUTO-ASSIGN CARRYBEE] Admin - Attempting auto-assignment for parcel ${savedParcel.tracking_number}`,
+            );
+
+            this.carrybeeService
+              .assignParcelToCarrybee(
+                savedParcel.id,
+                {
+                  provider_id: null,
+                  notes: 'Auto-assigned by admin',
+                } as any,
+                hub_id,
+              )
+              .then(() => {
+                this.logger.log(
+                  `[AUTO-ASSIGN SUCCESS] Admin - Parcel ${savedParcel.tracking_number} assigned to Carrybee`,
+                );
+              })
+              .catch((error) => {
+                this.logger.error(
+                  `[AUTO-ASSIGN FAILED] Admin - Could not auto-assign parcel ${savedParcel.tracking_number}: ${error.message}`,
+                  error.stack,
+                );
+              });
+          }
+        } catch (error: any) {
+          this.logger.error(
+            `[AUTO-ASSIGN ERROR] Admin - ${error.message}`,
+            error.stack,
+          );
+        }
+      }
+
+      return savedParcel;
+    } catch (error: any) {
+      this.logger.error(`[ADMIN CREATE ERROR] ${error.message}`, error.stack);
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      throw new InternalServerErrorException(
+        'Failed to create and receive parcel by admin',
       );
     }
   }
