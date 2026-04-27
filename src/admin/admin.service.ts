@@ -26,6 +26,7 @@ import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
 import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import { MerchantService } from '../merchant/merchant.service';
+import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
 
 @Injectable()
 export class AdminService {
@@ -105,10 +106,10 @@ export class AdminService {
   }
 
   /**
-   * Admin: Get payout method types not yet added for a merchant
+   * Get all system-supported payout method types
    */
-  async getAvailableMerchantPayoutMethods(merchantId: string) {
-    return this.merchantService.getAvailablePayoutMethods(merchantId);
+  getSystemPayoutMethodTypes(): PayoutMethodType[] {
+    return Object.values(PayoutMethodType);
   }
 
   /**
