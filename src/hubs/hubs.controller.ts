@@ -983,15 +983,16 @@ export class HubsController {
    * Get parcels ready for rider assignment (IN_HUB)
    */
   @Get('parcels/for-assignment')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getParcelsForAssignment(
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
+    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
     const { parcels, total } =
       await this.parcelsService.getParcelsForAssignment(
-        user.hubId,
+        hubIdParam,
         query.page,
         query.limit,
         query.search,
@@ -1020,6 +1021,52 @@ export class HubsController {
         },
       },
       message: 'Parcels for assignment retrieved successfully',
+    };
+  }
+
+  /**
+   * Get completed Carrybee deliveries (DELIVERED) that were assigned to Carrybee
+   * Hub managers see parcels for their hub; Admin sees system-wide.
+   */
+  @Get('parcels/carrybee/completed')
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getCompletedCarrybeeParcels(
+    @CurrentUser() user: any,
+    @Query() query: HubParcelQueryDto,
+  ) {
+    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
+    const { parcels, total } =
+      await this.parcelsService.getCompletedCarrybeeParcels(
+        hubIdParam,
+        query.page,
+        query.limit,
+        query.search,
+        query.sortBy,
+        query.order,
+        query.merchantId,
+        query.storeId,
+        query.customerName,
+        query.customerPhone,
+        query.merchantName,
+        query.area,
+        query.minAmount,
+        query.maxAmount,
+        query.deliveryType,
+      );
+
+    return {
+      success: true,
+      data: {
+        parcels: parcels.map(toParcelListItem),
+        pagination: {
+          total,
+          page: query.page,
+          limit: query.limit,
+          totalPages: Math.ceil(total / (query.limit || 20)),
+        },
+      },
+      message: 'Completed Carrybee parcels retrieved successfully',
     };
   }
 

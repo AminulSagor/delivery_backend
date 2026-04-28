@@ -156,16 +156,17 @@ export class CarrybeeController {
   @Post('parcels/:parcelId/assign')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async assignParcelToCarrybee(
     @Param('parcelId', ParseUUIDPipe) parcelId: string,
     @Body() dto: AssignToCarrybeeDto,
     @CurrentUser() user: any,
   ) {
+    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
     const result = await this.carrybeeService.assignParcelToCarrybee(
       parcelId,
       dto,
-      user.hubId,
+      hubIdParam,
     );
 
     return {
@@ -180,14 +181,15 @@ export class CarrybeeController {
   @Post('parcels/assign/carrybee')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async assignParcelsToCarrybee(
     @Body() dto: AssignParcelToCarrybeeDto,
     @CurrentUser() user: any,
   ) {
+    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
     const result = await this.carrybeeService.assignParcelsToCarrybee(
       dto,
-      user.hubId,
+      hubIdParam,
     );
 
     // Optional: Return 207 Multi-Status if mixed results, or just 200 with details

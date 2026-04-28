@@ -3236,7 +3236,7 @@ export class ParcelsService {
    * Get parcels ready for rider assignment (status: IN_HUB)
    */
   async getParcelsForAssignment(
-    hubId: string,
+    hubId?: string,
     page: number = 1,
     limit: number = 20,
     search?: string,
@@ -3276,11 +3276,15 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
-      .andWhere('parcel.assigned_rider_id IS NULL')
-      .andWhere(
+      .andWhere('parcel.assigned_rider_id IS NULL');
+
+    // Apply hub filter only when hubId is provided (admin can pass undefined to query system-wide)
+    if (hubId) {
+      queryBuilder.andWhere(
         '((parcel.current_hub_id IS NOT NULL AND parcel.current_hub_id = :hubId) OR (parcel.current_hub_id IS NULL AND (pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)))',
         { hubId },
       );
+    }
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -3300,6 +3304,82 @@ export class ParcelsService {
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
 
+    return { parcels, total };
+  }
+
+  /**
+   * Get completed Carrybee deliveries (DELIVERED) that were assigned to Carrybee
+   * If hubId provided, scope to that hub; otherwise return system-wide (admin)
+   */
+  async getCompletedCarrybeeParcels(
+    hubId?: string,
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    sortBy: string = 'delivered_at',
+    order: 'ASC' | 'DESC' = 'DESC',
+    merchantId?: string,
+    storeId?: string,
+    customerName?: string,
+    customerPhone?: string,
+    merchantName?: string,
+    area?: string,
+    minAmount?: number,
+    maxAmount?: number,
+    deliveryType?: DeliveryType,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.pickupRequest', 'pickupRequest')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .where('parcel.delivery_provider = :provider', {
+        provider: DeliveryProvider.CARRYBEE,
+      })
+      .andWhere('parcel.status = :status', { status: ParcelStatus.DELIVERED })
+      .andWhere('parcel.carrybee_consignment_id IS NOT NULL')
+      .andWhere('parcel.assigned_to_carrybee_at IS NOT NULL');
+
+    // Apply hub filter when needed
+    if (hubId) {
+      queryBuilder.andWhere(
+        '((parcel.current_hub_id IS NOT NULL AND parcel.current_hub_id = :hubId) OR (parcel.current_hub_id IS NULL AND (pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)))',
+        { hubId },
+      );
+    }
+
+    this.applyParcelListFilters(queryBuilder, {
+      search,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      area,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    });
+
+    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
+    queryBuilder.skip(skip).take(limit);
+
+    const [parcels, total] = await queryBuilder.getManyAndCount();
     return { parcels, total };
   }
 
