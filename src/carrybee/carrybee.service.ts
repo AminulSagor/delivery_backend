@@ -434,7 +434,7 @@ export class CarrybeeService {
   async assignParcelToCarrybee(
     parcelId: string,
     dto: AssignToCarrybeeDto,
-    hubId: string,
+    hubId?: string,
   ) {
     // 1. Find parcel with all necessary relations
     const parcel = await this.parcelRepository.findOne({
@@ -451,14 +451,16 @@ export class CarrybeeService {
       throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
     }
 
-    // 2. Validate parcel belongs to hub
-    // Check both current_hub_id and store.hub_id for flexibility
-    const belongsToHub =
-      parcel.current_hub_id === hubId ||
-      (parcel.store && parcel.store.hub_id === hubId);
+    // 2. Validate parcel belongs to hub (only when hubId provided)
+    // Admin (no hubId) may skip this check to operate system-wide
+    if (hubId) {
+      const belongsToHub =
+        parcel.current_hub_id === hubId ||
+        (parcel.store && parcel.store.hub_id === hubId);
 
-    if (!belongsToHub) {
-      throw new BadRequestException('Parcel does not belong to your hub');
+      if (!belongsToHub) {
+        throw new BadRequestException('Parcel does not belong to your hub');
+      }
     }
 
     // 3. Validate parcel status
@@ -794,7 +796,7 @@ export class CarrybeeService {
   private async assignSingleParcel(
     parcelId: string,
     provider: ThirdPartyProvider,
-    hubId: string,
+    hubId?: string,
     notes?: string,
   ) {
     // 1. Find parcel
@@ -810,12 +812,14 @@ export class CarrybeeService {
 
     if (!parcel) throw new NotFoundException(`Parcel not found`);
 
-    // 2. Validate Hub
-    const belongsToHub =
-      parcel.current_hub_id === hubId ||
-      (parcel.store && parcel.store.hub_id === hubId);
-    if (!belongsToHub)
-      throw new BadRequestException('Parcel does not belong to your hub');
+    // 2. Validate Hub (skip if hubId not provided - admin)
+    if (hubId) {
+      const belongsToHub =
+        parcel.current_hub_id === hubId ||
+        (parcel.store && parcel.store.hub_id === hubId);
+      if (!belongsToHub)
+        throw new BadRequestException('Parcel does not belong to your hub');
+    }
 
     // 3. Validate Status
     if (parcel.status !== ParcelStatus.IN_HUB) {
