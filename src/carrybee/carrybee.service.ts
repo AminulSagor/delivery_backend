@@ -435,6 +435,7 @@ export class CarrybeeService {
     parcelId: string,
     dto: AssignToCarrybeeDto,
     hubId?: string,
+    bypassHubCheck: boolean = false,
   ) {
     // 1. Find parcel with all necessary relations
     const parcel = await this.parcelRepository.findOne({
@@ -451,9 +452,8 @@ export class CarrybeeService {
       throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
     }
 
-    // 2. Validate parcel belongs to hub (only when hubId provided)
-    // Admin (no hubId) may skip this check to operate system-wide
-    if (hubId) {
+    // 2. Validate parcel belongs to hub (skip check for admin/bypass)
+    if (!bypassHubCheck) {
       const belongsToHub =
         parcel.current_hub_id === hubId ||
         (parcel.store && parcel.store.hub_id === hubId);
@@ -754,7 +754,8 @@ export class CarrybeeService {
   // ===== BULK ASSIGNMENT =====
   async assignParcelsToCarrybee(
     dto: AssignParcelToCarrybeeDto,
-    hubId: string,
+    hubId?: string,
+    bypassHubCheck: boolean = false,
   ): Promise<{ success: any[]; failed: any[] }> {
     const { parcel_ids, provider_id, notes } = dto;
 
@@ -779,6 +780,7 @@ export class CarrybeeService {
           provider,
           hubId,
           notes,
+          bypassHubCheck,
         );
         success.push(result);
       } catch (error) {
@@ -798,6 +800,7 @@ export class CarrybeeService {
     provider: ThirdPartyProvider,
     hubId?: string,
     notes?: string,
+    bypassHubCheck: boolean = false,
   ) {
     // 1. Find parcel
     const parcel = await this.parcelRepository.findOne({
@@ -812,8 +815,8 @@ export class CarrybeeService {
 
     if (!parcel) throw new NotFoundException(`Parcel not found`);
 
-    // 2. Validate Hub (skip if hubId not provided - admin)
-    if (hubId) {
+    // 2. Validate Hub (skip for admin/bypass)
+    if (!bypassHubCheck) {
       const belongsToHub =
         parcel.current_hub_id === hubId ||
         (parcel.store && parcel.store.hub_id === hubId);

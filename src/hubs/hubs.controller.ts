@@ -983,16 +983,15 @@ export class HubsController {
    * Get parcels ready for rider assignment (IN_HUB)
    */
   @Get('parcels/for-assignment')
-  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @Roles(UserRole.HUB_MANAGER)
   @HttpCode(HttpStatus.OK)
   async getParcelsForAssignment(
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
     const { parcels, total } =
       await this.parcelsService.getParcelsForAssignment(
-        hubIdParam,
+        user.hubId,
         query.page,
         query.limit,
         query.search,
@@ -1025,20 +1024,15 @@ export class HubsController {
   }
 
   /**
-   * Get completed Carrybee deliveries (DELIVERED) that were assigned to Carrybee
-   * Hub managers see parcels for their hub; Admin sees system-wide.
+   * System-wide parcels ready for assignment (Admin)
    */
-  @Get('parcels/carrybee/completed')
-  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @Get('parcels/for-assignment/admin')
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  async getCompletedCarrybeeParcels(
-    @CurrentUser() user: any,
-    @Query() query: HubParcelQueryDto,
-  ) {
-    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
+  async getParcelsForAssignmentAdmin(@Query() query: HubParcelQueryDto) {
     const { parcels, total } =
-      await this.parcelsService.getCompletedCarrybeeParcels(
-        hubIdParam,
+      await this.parcelsService.getParcelsForAssignment(
+        undefined,
         query.page,
         query.limit,
         query.search,
@@ -1066,7 +1060,7 @@ export class HubsController {
           totalPages: Math.ceil(total / (query.limit || 20)),
         },
       },
-      message: 'Completed Carrybee parcels retrieved successfully',
+      message: 'Parcels for assignment (system-wide) retrieved successfully',
     };
   }
 
@@ -1075,17 +1069,19 @@ export class HubsController {
    * @deprecated Use POST /hubs/parcels/assign-rider instead
    */
   @Patch('parcels/:id/assign-rider')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async assignParcelToRider(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() assignDto: AssignParcelToRiderDto,
     @CurrentUser() user: any,
   ) {
+    const isAdmin = user.role === UserRole.ADMIN;
     const parcel = await this.parcelsService.assignToRider(
       id,
       assignDto,
-      user.hubId,
+      isAdmin ? undefined : user.hubId,
+      isAdmin,
     );
     return {
       success: true,
@@ -1102,15 +1098,17 @@ export class HubsController {
    * - Bulk:   { rider_id: "...", parcel_ids: ["...", "..."] }
    */
   @Post('parcels/assign-rider')
-  @Roles(UserRole.HUB_MANAGER)
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async assignParcelsToRider(
     @Body() assignDto: BulkAssignParcelsToRiderDto,
     @CurrentUser() user: any,
   ) {
+    const isAdmin = user.role === UserRole.ADMIN;
     const result = await this.parcelsService.bulkAssignToRider(
       assignDto,
-      user.hubId,
+      isAdmin ? undefined : user.hubId,
+      isAdmin,
     );
 
     // Calculate total from what was actually processed

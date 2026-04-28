@@ -162,11 +162,12 @@ export class CarrybeeController {
     @Body() dto: AssignToCarrybeeDto,
     @CurrentUser() user: any,
   ) {
-    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
+    const isAdmin = user.role === UserRole.ADMIN;
     const result = await this.carrybeeService.assignParcelToCarrybee(
       parcelId,
       dto,
-      hubIdParam,
+      isAdmin ? undefined : user.hubId,
+      isAdmin,
     );
 
     return {
@@ -186,10 +187,11 @@ export class CarrybeeController {
     @Body() dto: AssignParcelToCarrybeeDto,
     @CurrentUser() user: any,
   ) {
-    const hubIdParam = user.role === UserRole.ADMIN ? undefined : user.hubId;
+    const isAdmin = user.role === UserRole.ADMIN;
     const result = await this.carrybeeService.assignParcelsToCarrybee(
       dto,
-      hubIdParam,
+      isAdmin ? undefined : user.hubId,
+      isAdmin,
     );
 
     // Optional: Return 207 Multi-Status if mixed results, or just 200 with details

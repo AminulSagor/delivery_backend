@@ -3276,9 +3276,8 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
-      .andWhere('parcel.assigned_rider_id IS NULL');
-
-    // Apply hub filter only when hubId is provided (admin can pass undefined to query system-wide)
+      .andWhere('parcel.assigned_rider_id IS NULL')
+    // If hubId is provided, restrict to parcels located at that hub. Otherwise return system-wide parcels.
     if (hubId) {
       queryBuilder.andWhere(
         '((parcel.current_hub_id IS NOT NULL AND parcel.current_hub_id = :hubId) OR (parcel.current_hub_id IS NULL AND (pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)))',
@@ -3308,88 +3307,13 @@ export class ParcelsService {
   }
 
   /**
-   * Get completed Carrybee deliveries (DELIVERED) that were assigned to Carrybee
-   * If hubId provided, scope to that hub; otherwise return system-wide (admin)
-   */
-  async getCompletedCarrybeeParcels(
-    hubId?: string,
-    page: number = 1,
-    limit: number = 20,
-    search?: string,
-    sortBy: string = 'delivered_at',
-    order: 'ASC' | 'DESC' = 'DESC',
-    merchantId?: string,
-    storeId?: string,
-    customerName?: string,
-    customerPhone?: string,
-    merchantName?: string,
-    area?: string,
-    minAmount?: number,
-    maxAmount?: number,
-    deliveryType?: DeliveryType,
-  ) {
-    const skip = (page - 1) * limit;
-
-    const queryBuilder = this.parcelRepository
-      .createQueryBuilder('parcel')
-      .leftJoinAndSelect('parcel.merchant', 'merchant')
-      .leftJoinAndSelect('merchant.user', 'merchantUser')
-      .leftJoinAndSelect('parcel.store', 'store')
-      .leftJoinAndSelect('store.hub', 'storeHub')
-      .leftJoinAndSelect('store.merchant', 'storeMerchant')
-      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
-      .leftJoinAndSelect('parcel.customer', 'customer')
-      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
-      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
-      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
-      .leftJoinAndSelect('parcel.pickupRequest', 'pickupRequest')
-      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
-      .leftJoinAndSelect('parcel.originHub', 'originHub')
-      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
-      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
-      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
-      .where('parcel.delivery_provider = :provider', {
-        provider: DeliveryProvider.CARRYBEE,
-      })
-      .andWhere('parcel.status = :status', { status: ParcelStatus.DELIVERED })
-      .andWhere('parcel.carrybee_consignment_id IS NOT NULL')
-      .andWhere('parcel.assigned_to_carrybee_at IS NOT NULL');
-
-    // Apply hub filter when needed
-    if (hubId) {
-      queryBuilder.andWhere(
-        '((parcel.current_hub_id IS NOT NULL AND parcel.current_hub_id = :hubId) OR (parcel.current_hub_id IS NULL AND (pickupRequest.hub_id = :hubId OR store.hub_id = :hubId)))',
-        { hubId },
-      );
-    }
-
-    this.applyParcelListFilters(queryBuilder, {
-      search,
-      merchantId,
-      storeId,
-      customerName,
-      customerPhone,
-      merchantName,
-      area,
-      minAmount,
-      maxAmount,
-      deliveryType,
-    });
-
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
-    queryBuilder.skip(skip).take(limit);
-
-    const [parcels, total] = await queryBuilder.getManyAndCount();
-    return { parcels, total };
-  }
-
-  /**
    * Assign parcel to rider (Hub Manager only)
    */
   async assignToRider(
     parcelId: string,
     assignDto: AssignParcelToRiderDto,
-    hubId: string,
+    hubId?: string,
+    bypassHubCheck: boolean = false,
   ) {
     // Find parcel - load all required fields to avoid null constraint issues
     const parcel = await this.parcelRepository.findOne({
@@ -3423,8 +3347,10 @@ export class ParcelsService {
     }
 
     // Verify parcel is in the hub manager's hub (check current_hub_id)
-    if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
-      throw new ForbiddenException('You can only assign parcels from your hub');
+    if (!bypassHubCheck) {
+      if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
+        throw new ForbiddenException('You can only assign parcels from your hub');
+      }
     }
 
     // Verify parcel status is IN_HUB or DELIVERY_RESCHEDULED
@@ -3458,8 +3384,8 @@ export class ParcelsService {
       throw new BadRequestException('Rider is not active');
     }
 
-    // Verify rider belongs to the same hub
-    if (rider.hub_id !== hubId) {
+    // Verify rider belongs to the same hub (skip for admin/bypass)
+    if (!bypassHubCheck && rider.hub_id !== hubId) {
       throw new BadRequestException('Rider must belong to your hub');
     }
 
@@ -3504,7 +3430,7 @@ export class ParcelsService {
     }
 
     this.logger.log(
-      `[PARCEL ASSIGNED] Parcel: ${updatedParcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId}`,
+      `[PARCEL ASSIGNED] Parcel: ${updatedParcel.tracking_number}, Rider: ${rider.user.full_name}, Hub: ${hubId || 'system'}`,
     );
 
     await this.sendAssignForRiderSms(updatedParcel, rider);
@@ -3522,7 +3448,8 @@ export class ParcelsService {
    */
   async bulkAssignToRider(
     bulkAssignDto: BulkAssignParcelsToRiderDto,
-    hubId: string,
+    hubId?: string,
+    bypassHubCheck: boolean = false,
   ): Promise<{
     success: number;
     failed: number;
@@ -3562,8 +3489,8 @@ export class ParcelsService {
       throw new BadRequestException('Rider is not active');
     }
 
-    // Verify rider belongs to the same hub
-    if (rider.hub_id !== hubId) {
+    // Verify rider belongs to the same hub (skip for admin/bypass)
+    if (!bypassHubCheck && rider.hub_id !== hubId) {
       throw new BadRequestException('Rider must belong to your hub');
     }
 
@@ -3611,7 +3538,7 @@ export class ParcelsService {
         }
 
         // Verify parcel is in the hub manager's hub (check current_hub_id)
-        if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
+        if (!bypassHubCheck && (!parcel.current_hub_id || parcel.current_hub_id !== hubId)) {
           results.push({
             parcel_id: parcelId,
             parcel_tx_id: parcel.parcel_tx_id,
@@ -3691,7 +3618,7 @@ export class ParcelsService {
     }
 
     this.logger.log(
-      `[BULK ASSIGN COMPLETE] Rider: ${rider.user.full_name}, Success: ${successCount}, Failed: ${failedCount}, Hub: ${hubId}`,
+      `[BULK ASSIGN COMPLETE] Rider: ${rider.user.full_name}, Success: ${successCount}, Failed: ${failedCount}, Hub: ${hubId || 'system'}`,
     );
 
     return {
