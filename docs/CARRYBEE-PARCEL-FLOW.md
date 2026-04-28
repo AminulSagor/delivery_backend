@@ -53,22 +53,6 @@ This document describes the role of the Carrybee-related endpoints in this servi
 
 ## DTOs (validation summary)
 
-## Hubs endpoints (hub manager + admin)
-
-- `GET /hubs/parcels/for-assignment`
-  - Guard: `JwtAuthGuard`, `RolesGuard`
-  - Roles: `HUB_MANAGER`, `ADMIN`
-  - Behavior: Hub managers see parcels only for their hub; Admin sees system-wide parcels awaiting assignment.
-  - Query DTO: `HubParcelQueryDto` (pagination + filters)
-  - Response: { success: true, data: { parcels: [...], pagination }, message }
-
-- `GET /hubs/parcels/carrybee/completed`
-  - Guard: `JwtAuthGuard`, `RolesGuard`
-  - Roles: `HUB_MANAGER`, `ADMIN`
-  - Behavior: Lists completed (DELIVERED) Carrybee parcels that were assigned via Carrybee. Hub managers see their hub, Admin sees system-wide.
-  - Query DTO: `HubParcelQueryDto` (pagination + filters)
-  - Response: { success: true, data: { parcels: [...], pagination }, message }
-
 - `AssignToCarrybeeDto` (single assignment)
   - `provider_id?: string` (UUID, optional — auto-resolved if omitted)
   - `notes?: string` (optional)
