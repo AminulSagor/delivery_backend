@@ -101,7 +101,7 @@ export class CarrybeeService {
       }
     }
 
-    // Validate store has required location fields
+    // Validate store has required address fields
     if (!store.district || !store.thana) {
       throw new BadRequestException(
         'Store must have district and thana before syncing to Carrybee',
@@ -112,6 +112,17 @@ export class CarrybeeService {
     if (store.is_carrybee_synced && store.carrybee_store_id) {
       throw new BadRequestException(
         'Store is already synced to Carrybee. Contact support to re-sync.',
+      );
+    }
+
+    // Use provided DTO carrybee ids if present, otherwise fall back to stored values
+    const cityId = (dto && (dto.carrybee_city_id as any)) || store.carrybee_city_id;
+    const zoneId = (dto && (dto.carrybee_zone_id as any)) || store.carrybee_zone_id;
+    const areaId = (dto && (dto.carrybee_area_id as any)) || store.carrybee_area_id;
+
+    if (!cityId || !zoneId || !areaId) {
+      throw new BadRequestException(
+        'Carrybee location IDs (city_id, zone_id, area_id) are required to sync this store. Provide them in the request body or set them on the store first.',
       );
     }
 
@@ -130,15 +141,15 @@ export class CarrybeeService {
         contact_person_name: contactPersonName,
         contact_person_number: contactPhone,
         address: store.business_address,
-        city_id: dto.carrybee_city_id,
-        zone_id: dto.carrybee_zone_id,
-        area_id: dto.carrybee_area_id,
+        city_id: cityId,
+        zone_id: zoneId,
+        area_id: areaId,
       });
 
-      // Update store with Carrybee info
-      store.carrybee_city_id = dto.carrybee_city_id;
-      store.carrybee_zone_id = dto.carrybee_zone_id;
-      store.carrybee_area_id = dto.carrybee_area_id;
+      // Update store with Carrybee mapping used for sync
+      store.carrybee_city_id = cityId;
+      store.carrybee_zone_id = zoneId;
+      store.carrybee_area_id = areaId;
       store.is_carrybee_synced = true;
       store.carrybee_synced_at = new Date();
 
@@ -243,6 +254,27 @@ export class CarrybeeService {
     } catch (error) {
       throw new BadRequestException(`Auto-sync failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Public helper to sync a store by ID. Useful for workers and admin actions.
+   */
+  async syncStoreById(storeId: string) {
+    const store = await this.storeRepository.findOne({
+      where: { id: storeId },
+      relations: ['merchant', 'merchant.user'],
+    });
+
+    if (!store) {
+      throw new NotFoundException(`Store with ID ${storeId} not found`);
+    }
+
+    await this.internalSyncStore(store);
+    return {
+      store_id: store.id,
+      carrybee_store_id: store.carrybee_store_id,
+      is_carrybee_synced: store.is_carrybee_synced,
+    };
   }
 
   // ===== PARCEL ASSIGNMENT METHODS =====
