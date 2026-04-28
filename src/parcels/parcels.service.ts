@@ -17,6 +17,7 @@ import {
   In,
   IsNull,
   SelectQueryBuilder,
+  DataSource,
 } from 'typeorm';
 import {
   PaginatedResponse,
@@ -111,6 +112,7 @@ import { BulkAcceptDto } from 'src/hubs/dto/bulk-accept-parcels.dto';
 import { CarrybeeService } from '../carrybee/carrybee.service';
 import { SmsService } from '../utils/sms.service';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
+import { CarrybeeJob } from '../carrybee/entities/carrybee-job.entity';
 
 type ParcelStatusFilter = ParcelStatus | 'ACTIVE';
 
@@ -151,6 +153,7 @@ export class ParcelsService {
     @Inject(forwardRef(() => CarrybeeService))
     private carrybeeService: CarrybeeService,
     private smsService: SmsService,
+    private dataSource: DataSource,
   ) { }
 
   private formatSmsAmount(amount: number): string {
@@ -2716,6 +2719,46 @@ export class ParcelsService {
         `[PARCEL RECEIVED] Parcel ${parcel.tracking_number} marked as received by hub ${hubId}`,
       );
 
+      // Auto-assign to Carrybee if store is configured for auto-assignment
+      if (parcel.store?.auto_assign_to_carrybee) {
+        const useQueue = process.env.USE_CARRYBEE_QUEUE === 'true';
+        this.logger.log(
+          `[AUTO ASSIGN] Auto-assigning parcel ${parcel.tracking_number} to Carrybee from hub ${hubId} (queue=${useQueue})`,
+        );
+
+        if (useQueue) {
+          try {
+            const jobRepo = this.dataSource.getRepository(CarrybeeJob);
+            const job = jobRepo.create({
+              parcel_id: parcel.id,
+              type: 'assign_parcel',
+              payload: { hubId },
+              status: 'pending',
+              available_at: new Date(),
+            });
+            await jobRepo.save(job);
+            this.logger.log(
+              `[AUTO ASSIGN ENQUEUED] Parcel ${parcel.tracking_number} job ${job.id}`,
+            );
+          } catch (enqueueErr: any) {
+            this.logger.warn(
+              `[AUTO ASSIGN ENQUEUE FAILED] Parcel ${parcel.tracking_number}: ${enqueueErr?.message || enqueueErr}`,
+            );
+          }
+        } else {
+          try {
+            await this.carrybeeService.assignParcelToCarrybee(parcel.id, {} as any, hubId);
+            this.logger.log(
+              `[AUTO ASSIGN SUCCESS] Parcel ${parcel.tracking_number} assigned to Carrybee`,
+            );
+          } catch (assignErr: any) {
+            this.logger.warn(
+              `[AUTO ASSIGN FAILED] Parcel ${parcel.tracking_number}: ${assignErr?.message || assignErr}`,
+            );
+          }
+        }
+      }
+
       return parcel;
     } catch (error: any) {
       if (
@@ -2751,6 +2794,12 @@ export class ParcelsService {
       tracking_number?: string;
       success: boolean;
       error?: string;
+      assignment_attempted?: boolean;
+      carrybee_assigned?: boolean;
+      carrybee_consignment_id?: string | null;
+      carrybee_delivery_fee?: number | null;
+      carrybee_cod_fee?: number | null;
+      carrybee_error?: string | null;
     }>;
   }> {
     const results: Array<{
@@ -2759,6 +2808,12 @@ export class ParcelsService {
       tracking_number?: string;
       success: boolean;
       error?: string;
+      assignment_attempted?: boolean;
+      carrybee_assigned?: boolean;
+      carrybee_consignment_id?: string | null;
+      carrybee_delivery_fee?: number | null;
+      carrybee_cod_fee?: number | null;
+      carrybee_error?: string | null;
     }> = [];
     let successCount = 0;
     let failedCount = 0;
@@ -2820,11 +2875,77 @@ export class ParcelsService {
 
         await this.parcelRepository.save(parcel);
 
+        // Attempt auto-assignment to Carrybee if configured
+        let assignmentAttempted = false;
+        let carrybeeAssigned = false;
+        let carrybeeConsignmentId: string | null = null;
+        let carrybeeDeliveryFee: number | null = null;
+        let carrybeeCodFee: number | null = null;
+        let carrybeeError: string | null = null;
+
+        if (parcel.store?.auto_assign_to_carrybee) {
+          assignmentAttempted = true;
+          const useQueue = process.env.USE_CARRYBEE_QUEUE === 'true';
+          this.logger.log(
+            `[AUTO ASSIGN] Auto-assigning parcel ${parcel.tracking_number} to Carrybee from hub ${hubId} (queue=${useQueue})`,
+          );
+
+          if (useQueue) {
+            try {
+              const jobRepo = this.dataSource.getRepository(CarrybeeJob);
+              const job = jobRepo.create({
+                parcel_id: parcel.id,
+                type: 'assign_parcel',
+                payload: { hubId },
+                status: 'pending',
+                available_at: new Date(),
+              });
+              await jobRepo.save(job);
+              this.logger.log(
+                `[AUTO ASSIGN ENQUEUED] Parcel ${parcel.tracking_number} job ${job.id}`,
+              );
+            } catch (enqueueErr: any) {
+              carrybeeError = enqueueErr?.message || String(enqueueErr);
+              this.logger.warn(
+                `[AUTO ASSIGN ENQUEUE FAILED] Parcel ${parcel.tracking_number}: ${carrybeeError}`,
+              );
+            }
+          } else {
+            try {
+              const assignResult = await this.carrybeeService.assignParcelToCarrybee(
+                parcel.id,
+                {} as any,
+                hubId,
+              );
+              carrybeeAssigned = true;
+              carrybeeConsignmentId = assignResult.carrybee_consignment_id || null;
+              carrybeeDeliveryFee = assignResult.delivery_fee
+                ? Number(assignResult.delivery_fee)
+                : null;
+              carrybeeCodFee = assignResult.cod_fee ?? null;
+              this.logger.log(
+                `[AUTO ASSIGN SUCCESS] Parcel ${parcel.tracking_number} assigned to Carrybee (${carrybeeConsignmentId})`,
+              );
+            } catch (assignErr: any) {
+              carrybeeError = assignErr?.message || String(assignErr);
+              this.logger.warn(
+                `[AUTO ASSIGN FAILED] Parcel ${parcel.tracking_number}: ${carrybeeError}`,
+              );
+            }
+          }
+        }
+
         results.push({
           parcel_id: parcelId,
           parcel_tx_id: parcel.parcel_tx_id,
           tracking_number: parcel.tracking_number,
           success: true,
+          assignment_attempted: assignmentAttempted,
+          carrybee_assigned: carrybeeAssigned,
+          carrybee_consignment_id: carrybeeConsignmentId,
+          carrybee_delivery_fee: carrybeeDeliveryFee,
+          carrybee_cod_fee: carrybeeCodFee,
+          carrybee_error: carrybeeError,
         });
         successCount++;
 

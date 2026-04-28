@@ -41,7 +41,8 @@
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f api",
     "docker:dev": "docker-compose -f docker-compose.dev.yml up",
-    "docker:dev:build": "docker-compose -f docker-compose.dev.yml up --build"
+    "docker:dev:build": "docker-compose -f docker-compose.dev.yml up --build",
+    "start:worker": "ts-node -r tsconfig-paths/register scripts/run-carrybee-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.966.0",
@@ -66,6 +67,7 @@
     "pg": "^8.17.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sqlite3": "^5.1.7",
     "typeorm": "^0.3.27"
   },
   "devDependencies": {
