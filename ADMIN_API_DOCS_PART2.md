@@ -372,10 +372,12 @@
 | is_active     | boolean | ❌       |                                    |
 
 ### 11.2 Get All Providers
-`GET /third-party-providers`
+`GET /third-party-providers` — Access: Admin
+**Query:** `isActive` (boolean: true|false|all)
+**Description:** Returns all providers with aggregated stats like `delivered_count` and `type` (CARRYBEE or THIRD_PARTY).
 
 ### 11.3 Get Provider by ID
-`GET /third-party-providers/:id`
+`GET /third-party-providers/:id` — Returns provider with detailed stats.
 
 ### 11.4 Update Provider
 `PATCH /third-party-providers/:id`
