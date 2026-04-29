@@ -421,6 +421,35 @@ export class RidersController {
     };
   }
 
+  /**
+   * Get system riders (Admin / Hub Manager)
+   * Returns riders with `rider_status` field computed server-side.
+   */
+  @Get('system')
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async getSystemRiders(
+    @Query('hubId') hubId: string,
+    @Query('isActive') isActive: string,
+    @CurrentUser() user: any,
+  ) {
+    const effectiveHubId =
+      user.role === UserRole.HUB_MANAGER ? user.hubId : hubId;
+
+    const parsedIsActive =
+      isActive === 'false' ? false : isActive === 'all' ? undefined : true;
+
+    const riders = await this.ridersService.getSystemRiders(
+      effectiveHubId,
+      parsedIsActive,
+    );
+
+    return {
+      success: true,
+      data: { riders: riders.map(toRiderListItem) },
+      message: 'System riders retrieved successfully',
+    };
+  }
+
   // ===== ADMIN APPROVAL ROUTES (must be before :id routes) =====
 
   /**

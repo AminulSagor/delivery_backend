@@ -531,6 +531,48 @@ export class RidersService {
   }
 
   /**
+   * Get system riders list with assigned parcel counts (used for system-wide views)
+   */
+  async getSystemRiders(
+    hubId?: string,
+    isActive?: boolean,
+  ): Promise<Rider[]> {
+    const finalStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.CANCELLED,
+    ];
+
+    const query = this.riderRepository
+      .createQueryBuilder('rider')
+      .leftJoinAndSelect('rider.user', 'user')
+      .leftJoinAndSelect('rider.hub', 'hub')
+      .loadRelationCountAndMap(
+        'rider.assigned_parcels_count',
+        'rider.assignedParcels',
+        'assignedParcels',
+        (qb) => qb.andWhere('assignedParcels.status NOT IN (:...final)', { final: finalStatuses }),
+      );
+
+    if (hubId) {
+      query.andWhere('rider.hub_id = :hubId', { hubId });
+    }
+
+    if (isActive !== undefined) {
+      query.andWhere('rider.is_active = :isActive', { isActive });
+    }
+
+    query.orderBy('rider.created_at', 'DESC');
+
+    return await query.getMany();
+  }
+
+  /**
    * Get rider by ID
    */
   async findOne(id: string): Promise<Rider> {

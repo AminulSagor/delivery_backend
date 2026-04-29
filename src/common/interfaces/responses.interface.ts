@@ -79,6 +79,7 @@ export interface RiderListItem {
   photo: string | null;
   bike_type: string;
   is_active: boolean;
+  rider_status: string;
   hub?: {
     id: string;
     branch_name: string;
@@ -105,6 +106,7 @@ export interface RiderActionResponse {
   id: string;
   full_name: string;
   is_active: boolean;
+  rider_status: string;
 }
 
 // ===== STAFF RESPONSES =====
@@ -432,6 +434,17 @@ function toFullRiderSummary(rider: any) {
     return null;
   }
 
+  const assignedCount = Number(
+    rider.assigned_parcels_count ??
+      (Array.isArray(rider.assignedParcels) ? rider.assignedParcels.length : 0),
+  );
+
+  const riderStatus = !rider.is_active
+    ? 'Leave'
+    : assignedCount > 0
+    ? 'On duty'
+    : 'Break';
+
   return {
     id: rider.id,
     rider_code: rider.rider_code ?? null,
@@ -464,6 +477,7 @@ function toFullRiderSummary(rider: any) {
     user: toSafeUser(rider.user),
     hub: toHubSummary(rider.hub),
     approver: toSafeUser(rider.approver),
+    rider_status: riderStatus,
   };
 }
 
@@ -495,6 +509,14 @@ export function toParcelListItem(parcel: any): any {
   const received_at =
     parcel.received_at ?? parcel.received_at_destination_hub ?? null;
   const age = calculateParcelAge(parcel);
+
+  // Prepare assigned rider summary and ensure that when this rider
+  // is embedded inside a parcel response and the parcel has an
+  // assigned_rider_id, we mark the rider as 'On duty'.
+  const assignedRiderSummary = toFullRiderSummary(parcel.assignedRider);
+  if (assignedRiderSummary && parcel.assigned_rider_id) {
+    assignedRiderSummary.rider_status = 'On duty';
+  }
 
   return {
     id: parcel.id,
@@ -585,7 +607,7 @@ export function toParcelListItem(parcel: any): any {
     delivery_area: toCoverageAreaSummary(parcel.delivery_coverage_area),
     delivery_coverage_area: toCoverageAreaSummary(parcel.delivery_coverage_area),
 
-    assigned_rider: toFullRiderSummary(parcel.assignedRider),
+    assigned_rider: assignedRiderSummary,
     current_hub: toHubSummary(parcel.currentHub),
     origin_hub: toHubSummary(parcel.originHub),
     destination_hub: toHubSummary(parcel.destinationHub),

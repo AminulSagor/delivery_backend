@@ -201,6 +201,11 @@
 ### 7.9 Activate Rider
 `PATCH /riders/:id/activate`
 
+### 7.10 Get System Riders
+`GET /riders/system` — Access: Admin + Hub Manager
+**Query:** `hubId` (UUID, Admin only), `isActive` (boolean: true|false|all)
+**Description:** Returns a list of riders with a `rider_status` field (Leave, On duty, Break).
+
 ---
 
 # 8. STORE MANAGEMENT (`/stores`)
