@@ -385,6 +385,14 @@ function toThirdPartyProviderSummary(provider: any) {
     provider_name: provider.provider_name,
     description: provider.description ?? null,
     is_active: provider.is_active,
+    // human readable status
+    status: provider.is_active ? 'active' : 'inactive',
+    // include unique code as `unique_id` for convenience
+    unique_id: provider.provider_code ?? null,
+    // include aggregated delivered count if present
+    delivered_count: provider.delivered_count ?? 0,
+    // include inferred provider type if present
+    type: provider.type ?? null,
     created_at: provider.created_at ?? null,
     updated_at: provider.updated_at ?? null,
   };

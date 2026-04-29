@@ -10,6 +10,7 @@ import {
   Body,
   Patch,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { ThirdPartyProvidersService } from './third-party-providers.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -30,7 +31,7 @@ export class ThirdPartyProvidersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
   async findAllActive() {
-    const providers = await this.providersService.findAllActive();
+    const providers = await this.providersService.findAllWithStats(true);
     return {
       providers,
       message: 'Active providers retrieved successfully',
@@ -40,8 +41,14 @@ export class ThirdPartyProvidersController {
   @Get()
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN)
-  async findAll() {
-    const providers = await this.providersService.findAll();
+  async findAll(@Query('isActive') isActive: string) {
+    let parsedIsActive: boolean | undefined;
+    if (isActive === 'true') parsedIsActive = true;
+    else if (isActive === 'false') parsedIsActive = false;
+    else parsedIsActive = undefined;
+
+    const providers = await this.providersService.findAllWithStats(parsedIsActive);
+
     return {
       providers,
       message: 'All providers retrieved successfully',
@@ -52,7 +59,7 @@ export class ThirdPartyProvidersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const provider = await this.providersService.findOne(id);
+    const provider = await this.providersService.findOneWithStats(id);
     return {
       success: true,
       data: provider,
