@@ -1746,6 +1746,36 @@ Success response:
 }
 ```
 
+## 4.1.1 Get System Riders (Detailed Status)
+GET /riders/system
+
+Access:
+- HUB_MANAGER
+
+Query:
+- isActive: boolean (optional: true|false|all)
+
+Description:
+Returns riders with `rider_status` field (Leave, On duty, Break). Used for staffing overview.
+
+Success response:
+```json
+{
+  "success": true,
+  "data": {
+    "riders": [
+      {
+        "id": "uuid",
+        "full_name": "Rider Name",
+        "rider_status": "On duty",
+        "is_active": true
+      }
+    ]
+  },
+  "message": "System riders retrieved successfully"
+}
+```
+
 ## 4.2 Rider Settlement Details
 GET /hubs/riders/:riderId/settlement
 
