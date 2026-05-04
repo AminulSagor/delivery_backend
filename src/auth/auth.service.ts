@@ -12,6 +12,7 @@ import { SignOptions } from 'jsonwebtoken';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
+import { Store } from '../stores/entities/store.entity';
 import { MerchantProfile } from '../merchant/entities/merchant-profile.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { Hub } from '../hubs/entities/hub.entity';
@@ -35,6 +36,8 @@ export class AuthService {
     private usersService: UsersService,
     @InjectRepository(Merchant)
     private merchantRepository: Repository<Merchant>,
+    @InjectRepository(Store)
+    private storeRepository: Repository<Store>,
     @InjectRepository(MerchantProfile)
     private merchantProfileRepository: Repository<MerchantProfile>,
     @InjectRepository(HubManager)
@@ -419,12 +422,18 @@ export class AuthService {
         ...baseProfile,
         merchant_id: null,
         merchant: null,
+        store_count: 0,
       };
     }
+
+    const storeCount = await this.storeRepository.count({
+      where: { merchant_id: merchant.id },
+    });
 
     return {
       ...baseProfile,
       merchant_id: merchant.id,
+      store_count: storeCount,
       merchant: {
         id: merchant.id,
         thana: merchant.thana,
