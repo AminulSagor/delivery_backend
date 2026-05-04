@@ -39,10 +39,13 @@ export class MerchantSignupDto {
 
   // === STORE FIELDS ===
   @IsString()
-  business_name: string;
-
+  @IsOptional()
   @IsString()
-  business_address: string;
+  business_name?: string;
+
+  @IsOptional()
+  @IsString()
+  business_address?: string;
 
   // === LOCATION FIELDS (Auto-filled from address suggestion) ===
   @IsString()

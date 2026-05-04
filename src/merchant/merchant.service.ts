@@ -97,14 +97,14 @@ export class MerchantService {
     merchant.user_id = user.id;
     merchant.thana = dto.thana;
     merchant.district = dto.district;
-    merchant.full_address = dto.full_address || dto.business_address;
+    merchant.full_address = dto.full_address ?? dto.business_address ?? null;
     merchant.secondary_number = dto.secondary_number || null;
     merchant.status = MerchantStatus.PENDING;
 
     await this.merchantRepository.save(merchant);
 
     // === AUTO-CREATE DEFAULT STORE ===
-    const storeCode = await this.generateStoreCode(dto.business_name);
+    const storeCode = await this.generateStoreCode(dto.business_name ?? dto.full_name);
 
     // Convert phone from +8801... to 01... format for store
     const storePhone = dto.phone.replace('+88', '');
@@ -112,8 +112,8 @@ export class MerchantService {
     const store = new Store();
     store.merchant_id = merchant.id;
     store.store_code = storeCode;
-    store.business_name = dto.business_name;
-    store.business_address = dto.business_address;
+    store.business_name = dto.business_name ?? dto.full_name;
+    store.business_address = dto.business_address ?? dto.full_address ?? dto.full_name;
     store.district = dto.district;
     store.thana = dto.thana;
     store.area = dto.area || null;
@@ -192,8 +192,8 @@ export class MerchantService {
     const store = new Store();
     store.merchant_id = merchant.id;
     store.store_code = storeCode;
-    store.business_name = dto.business_name;
-    store.business_address = dto.business_address;
+    store.business_name = dto.business_name ?? dto.full_name;
+    store.business_address = dto.business_address ?? dto.full_address ?? dto.full_name;
     store.district = dto.district;
     store.thana = dto.thana;
     store.area = dto.area || null;
