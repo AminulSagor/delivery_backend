@@ -72,6 +72,9 @@ import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { RiderPerformanceQueryDto } from './dto/rider-performance-query.dto';
 import { BulkTransferFromRidersDto } from './dto/bulk-transfer-from-riders.dto';
+import { RiderTransferQueryDto } from './dto/rider-transfer-query.dto';
+import { RiderAssignedParcelsQueryDto } from './dto/rider-assigned-parcels-query.dto';
+import { TransferSelectedParcelsDto } from './dto/transfer-selected-parcels.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -1510,6 +1513,171 @@ export class HubsController {
     return {
       success: true,
       message: 'Resolved parcel report deleted successfully',
+    };
+  }
+
+  // ===== RIDER TRANSFER ENDPOINTS =====
+
+  /**
+   * Get riders list for the Rider Transfer page
+   *
+   * Hub Manager sees riders from their hub with:
+   * - rider ID, name, photo, phone, status (On Duty / Break / Leave)
+   * - license no, total assigned parcels count
+   */
+  @Get('rider-transfer/riders')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRidersForTransfer(
+    @CurrentUser() user: any,
+    @Query() query: RiderTransferQueryDto,
+  ) {
+    const result = await this.hubsService.getRidersForTransfer(user.hubId, {
+      search: query.search,
+      status: query.status,
+      page: query.page,
+      limit: query.limit,
+      sortBy: query.sortBy,
+      order: query.order,
+    });
+
+    return {
+      success: true,
+      data: {
+        riders: result.riders,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+      },
+      message: 'Riders retrieved successfully',
+    };
+  }
+
+  /**
+   * Get available target riders for transfer (excludes source rider)
+   *
+   * When a hub manager has selected parcels from rider A and wants to transfer,
+   * this endpoint returns all active riders in the hub EXCLUDING rider A.
+   *
+   * Query: exclude_rider_ids (comma-separated UUIDs) — rider(s) to exclude
+   */
+  @Get('rider-transfer/riders/available')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getAvailableRidersForTransfer(
+    @CurrentUser() user: any,
+    @Query('exclude_rider_ids') excludeRiderIdsStr?: string,
+    @Query('search') search?: string,
+  ) {
+    // Parse comma-separated exclude IDs
+    const excludeRiderIds = excludeRiderIdsStr
+      ? excludeRiderIdsStr.split(',').map((id) => id.trim()).filter((id) => id.length > 0)
+      : [];
+
+    const riders = await this.hubsService.getAvailableRidersForTransfer(
+      user.hubId,
+      excludeRiderIds,
+      search,
+    );
+
+    return {
+      success: true,
+      data: { riders },
+      message: 'Available riders retrieved successfully',
+    };
+  }
+
+  /**
+   * Get assigned parcels of a specific rider (for Rider Transfer page)
+   *
+   * Returns parcels with: parcel_id, parcel_tx_id, customer_info (name, phone, full_address),
+   * additional_notes, area, merchant (name, phone, photo), amount breakdown
+   * (total_amount, delivery_charge, cod_charge, weight_charge, discount),
+   * parcel_age, created_at, last_updated
+   *
+   * Supports: search, area, merchant, amount range, delivery type filters
+   */
+  @Get('rider-transfer/riders/:riderId/parcels')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRiderAssignedParcelsForTransfer(
+    @Param('riderId', ParseUUIDPipe) riderId: string,
+    @CurrentUser() user: any,
+    @Query() query: RiderAssignedParcelsQueryDto,
+  ) {
+    const result = await this.parcelsService.getRiderAssignedParcelsForTransfer(
+      riderId,
+      user.hubId,
+      {
+        page: query.page,
+        limit: query.limit,
+        search: query.search,
+        sortBy: query.sortBy,
+        order: query.order,
+        area: query.area,
+        merchantId: query.merchantId,
+        merchantName: query.merchantName,
+        deliveryType: query.deliveryType,
+        minAmount: query.minAmount,
+        maxAmount: query.maxAmount,
+        status: query.status,
+      },
+    );
+
+    return {
+      success: true,
+      data: {
+        rider: result.rider,
+        parcels: result.parcels,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+      },
+      message: 'Rider assigned parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Transfer selected parcels from one rider to another
+   *
+   * Hub Manager selects specific parcels from a rider's list and transfers
+   * them to a target rider. The source rider is determined from the parcels
+   * themselves (they're already assigned to someone).
+   *
+   * Body: { target_rider_id, parcel_ids[], notes? }
+   */
+  @Post('rider-transfer/transfer')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async transferSelectedParcels(
+    @Body() dto: TransferSelectedParcelsDto,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.transferSelectedParcels(
+      dto,
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: result.total,
+          transferred: result.transferred,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message:
+        result.failed === 0
+          ? `${result.transferred} parcel${result.transferred !== 1 ? 's' : ''} transferred successfully`
+          : `${result.transferred} parcel${result.transferred !== 1 ? 's' : ''} transferred, ${result.failed} failed`,
     };
   }
 

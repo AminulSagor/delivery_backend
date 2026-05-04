@@ -6827,4 +6827,449 @@ export class ParcelsService {
 
     return updated;
   }
+
+  // ===== RIDER TRANSFER METHODS =====
+
+  /**
+   * Get a rider's assigned parcels for the Rider Transfer page (Hub Manager only)
+   *
+   * Returns parcels with the exact response shape the UI needs:
+   * parcel_id, parcel_tx_id, customer_info, additional_notes, area,
+   * merchant info, amount breakdown, parcel_age, created_at, last_updated
+   */
+  async getRiderAssignedParcelsForTransfer(
+    riderId: string,
+    hubId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+      area?: string;
+      merchantId?: string;
+      merchantName?: string;
+      deliveryType?: any;
+      minAmount?: number;
+      maxAmount?: number;
+      status?: string;
+    } = {},
+  ): Promise<{
+    parcels: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    rider: any;
+  }> {
+    // Validate rider exists and belongs to hub
+    const rider = await this.riderRepository.findOne({
+      where: { id: riderId },
+      relations: ['user', 'hub'],
+    });
+
+    if (!rider) {
+      throw new NotFoundException('Rider not found');
+    }
+
+    if (rider.hub_id !== hubId) {
+      throw new BadRequestException('Rider does not belong to your hub');
+    }
+
+    const page = options.page || 1;
+    const limit = Math.min(options.limit || 20, 100);
+    const offset = (page - 1) * limit;
+    const sortBy = options.sortBy || 'assigned_at';
+    const order = options.order || 'DESC';
+
+    // Active assigned statuses — parcels that are currently "with" the rider
+    const activeAssignedStatuses = [
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.OUT_FOR_DELIVERY,
+      ParcelStatus.DELIVERY_RESCHEDULED,
+    ];
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .where('parcel.assigned_rider_id = :riderId', { riderId });
+
+    // Status filter
+    if (options.status) {
+      queryBuilder.andWhere('parcel.status = :status', { status: options.status });
+    } else {
+      queryBuilder.andWhere('parcel.status IN (:...statuses)', { statuses: activeAssignedStatuses });
+    }
+
+    // Search filter
+    if (options.search && options.search.trim()) {
+      const search = `%${options.search.trim()}%`;
+      queryBuilder.andWhere(
+        '(parcel.tracking_number ILIKE :search OR parcel.parcel_tx_id ILIKE :search OR parcel.customer_name ILIKE :search OR parcel.customer_phone ILIKE :search OR merchantUser.full_name ILIKE :search)',
+        { search },
+      );
+    }
+
+    // Area filter
+    if (options.area && options.area.trim()) {
+      queryBuilder.andWhere(
+        '(parcel.delivery_area ILIKE :area OR coverageArea.area ILIKE :area OR coverageArea.zone ILIKE :area)',
+        { area: `%${options.area.trim()}%` },
+      );
+    }
+
+    // Merchant filters
+    if (options.merchantId) {
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId: options.merchantId });
+    }
+    if (options.merchantName && options.merchantName.trim()) {
+      queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
+        merchantName: `%${options.merchantName.trim()}%`,
+      });
+    }
+
+    // Delivery type filter
+    if (options.deliveryType !== undefined) {
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', { deliveryType: options.deliveryType });
+    }
+
+    // Amount range filters
+    if (options.minAmount !== undefined) {
+      queryBuilder.andWhere('parcel.cod_amount >= :minAmount', { minAmount: options.minAmount });
+    }
+    if (options.maxAmount !== undefined) {
+      queryBuilder.andWhere('parcel.cod_amount <= :maxAmount', { maxAmount: options.maxAmount });
+    }
+
+    // Sorting
+    const allowedSortFields: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      assigned_at: 'parcel.assigned_at',
+      updated_at: 'parcel.updated_at',
+      cod_amount: 'parcel.cod_amount',
+      customer_name: 'parcel.customer_name',
+    };
+    const sortField = allowedSortFields[sortBy] || 'parcel.assigned_at';
+    queryBuilder.orderBy(sortField, order);
+
+    // Pagination
+    queryBuilder.skip(offset).take(limit);
+
+    const [parcels, total] = await queryBuilder.getManyAndCount();
+    const totalPages = Math.ceil(total / limit);
+
+    // Transform to the UI response shape
+    const now = new Date();
+    const transformedParcels = parcels.map((parcel) => {
+      const deliveryCharge = Number(parcel.delivery_charge ?? 0);
+      const weightCharge = Number(parcel.weight_charge ?? 0);
+      const codCharge = Number(parcel.cod_charge ?? 0);
+      const totalCharge = Number(parcel.total_charge ?? 0);
+      const discount = Math.max(
+        0,
+        Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) / 100,
+      );
+
+      // Parcel age in days
+      const createdAt = parcel.created_at ? new Date(parcel.created_at) : null;
+      const ageDays = createdAt
+        ? Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      const parcelAge = ageDays !== null ? `${ageDays} Day${ageDays !== 1 ? 's' : ''}` : null;
+
+      // Merchant info
+      const merchantUser = parcel.merchant?.user;
+      const merchantName = merchantUser?.full_name || 'N/A';
+      const merchantPhone = merchantUser?.phone || 'N/A';
+      // Merchant photo from store merchant or null
+      const merchantPhoto = parcel.store?.merchant?.user?.phone
+        ? null // merchants don't have a photo field in user entity
+        : null;
+
+      // Delivery area text
+      const areaText = parcel.delivery_coverage_area
+        ? `Area Of: ${parcel.delivery_coverage_area.area || parcel.delivery_coverage_area.zone || ''}`
+        : parcel.delivery_area || null;
+
+      return {
+        id: parcel.id,
+        parcel_id: parcel.id,
+        parcel_tx_id: parcel.parcel_tx_id || null,
+        tracking_number: parcel.tracking_number,
+        status: parcel.status,
+        customer_info: {
+          name: parcel.customer_name,
+          phone: parcel.customer_phone,
+          secondary_phone: parcel.customer_secondary_phone || null,
+          full_address: parcel.customer_address,
+        },
+        additional_notes: parcel.special_instructions || null,
+        area: areaText,
+        delivery_area: parcel.delivery_coverage_area
+          ? {
+              id: parcel.delivery_coverage_area.id,
+              area: parcel.delivery_coverage_area.area,
+              zone: parcel.delivery_coverage_area.zone,
+              city: (parcel.delivery_coverage_area as any).city || null,
+              division: (parcel.delivery_coverage_area as any).division || null,
+            }
+          : null,
+        merchant: {
+          id: parcel.merchant?.id || null,
+          name: merchantName,
+          phone: merchantPhone,
+          photo: merchantPhoto,
+        },
+        amount: {
+          total_amount: totalCharge,
+          delivery_charge: deliveryCharge,
+          cod_charge: codCharge,
+          weight_charge: weightCharge,
+          discount: discount,
+          cod_amount: Number(parcel.cod_amount ?? 0),
+          receivable_amount: Number(parcel.receivable_amount ?? 0),
+        },
+        parcel_age: parcelAge,
+        age_days: ageDays,
+        delivery_type: parcel.delivery_type ?? null,
+        is_cod: !!parcel.is_cod,
+        created_at: parcel.created_at,
+        last_updated: parcel.updated_at,
+        assigned_at: parcel.assigned_at,
+      };
+    });
+
+    // Rider summary
+    const riderSummary = {
+      id: rider.id,
+      rider_code: rider.rider_code ?? null,
+      full_name: rider.user?.full_name || 'N/A',
+      phone: rider.user?.phone || 'N/A',
+      photo: rider.photo ?? null,
+      hub: rider.hub
+        ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+        : null,
+    };
+
+    this.logger.log(
+      `[RIDER TRANSFER] Retrieved ${transformedParcels.length} parcels for rider ${riderId} (total: ${total})`,
+    );
+
+    return {
+      parcels: transformedParcels,
+      total,
+      page,
+      limit,
+      totalPages,
+      rider: riderSummary,
+    };
+  }
+
+  /**
+   * Transfer SELECTED parcels to a target rider (Hub Manager only)
+   *
+   * Unlike bulkTransferFromRiders which transfers ALL parcels from source riders,
+   * this method transfers specific parcel IDs chosen by the hub manager.
+   */
+  async transferSelectedParcels(
+    dto: { target_rider_id: string; parcel_ids: string[]; notes?: string },
+    hubId: string,
+  ): Promise<{
+    total: number;
+    transferred: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const { target_rider_id, parcel_ids } = dto;
+
+    // Validate target rider
+    const targetRider = await this.riderRepository.findOne({
+      where: { id: target_rider_id },
+      relations: ['hub', 'user'],
+    });
+
+    if (!targetRider) {
+      throw new NotFoundException('Target rider not found');
+    }
+    if (!targetRider.is_active) {
+      throw new BadRequestException('Target rider is not active');
+    }
+    if (targetRider.hub_id !== hubId) {
+      throw new BadRequestException('Target rider must belong to your hub');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+    let transferred = 0;
+    let failed = 0;
+
+    try {
+      for (const parcelId of parcel_ids) {
+        try {
+          const parcel = await queryRunner.manager.findOne(Parcel, {
+            where: { id: parcelId },
+            relations: [
+              'merchant',
+              'merchant.user',
+              'customer',
+              'store',
+              'store.hub',
+              'store.merchant',
+              'store.merchant.user',
+              'assignedRider',
+              'assignedRider.user',
+              'assignedRider.hub',
+              'delivery_coverage_area',
+              'currentHub',
+              'originHub',
+              'destinationHub',
+              'thirdPartyProvider',
+            ],
+          });
+
+          if (!parcel) {
+            results.push({ parcel_id: parcelId, success: false, error: 'Parcel not found' });
+            failed++;
+            continue;
+          }
+
+          // Verify parcel is currently assigned to a rider
+          if (!parcel.assigned_rider_id) {
+            results.push({
+              parcel_id: parcelId,
+              parcel_tx_id: parcel.parcel_tx_id,
+              tracking_number: parcel.tracking_number,
+              success: false,
+              error: 'Parcel is not assigned to any rider',
+            });
+            failed++;
+            continue;
+          }
+
+          // Prevent transferring to the same rider
+          if (parcel.assigned_rider_id === target_rider_id) {
+            results.push({
+              parcel_id: parcelId,
+              parcel_tx_id: parcel.parcel_tx_id,
+              tracking_number: parcel.tracking_number,
+              success: false,
+              error: 'Parcel is already assigned to the target rider',
+            });
+            failed++;
+            continue;
+          }
+
+          // Verify parcel belongs to this hub
+          if (parcel.current_hub_id && parcel.current_hub_id !== hubId) {
+            // Also check store hub as fallback
+            if (!parcel.store || parcel.store.hub_id !== hubId) {
+              results.push({
+                parcel_id: parcelId,
+                parcel_tx_id: parcel.parcel_tx_id,
+                tracking_number: parcel.tracking_number,
+                success: false,
+                error: 'Parcel is not in your hub',
+              });
+              failed++;
+              continue;
+            }
+          }
+
+          // Store previous rider info for logging
+          const previousRiderId = parcel.assigned_rider_id;
+
+          // Update assignment
+          await queryRunner.manager.update(Parcel, parcel.id, {
+            assigned_rider_id: targetRider.id,
+            assigned_at: new Date(),
+          });
+
+          // Reload parcel for SMS
+          const updatedParcel = await queryRunner.manager.findOne(Parcel, {
+            where: { id: parcel.id },
+            relations: [
+              'merchant',
+              'merchant.user',
+              'customer',
+              'store',
+              'store.hub',
+              'store.merchant',
+              'store.merchant.user',
+              'assignedRider',
+              'assignedRider.user',
+              'assignedRider.hub',
+              'delivery_coverage_area',
+              'currentHub',
+              'originHub',
+              'destinationHub',
+              'thirdPartyProvider',
+            ],
+          });
+
+          results.push({
+            parcel_id: parcel.id,
+            parcel_tx_id: parcel.parcel_tx_id,
+            tracking_number: parcel.tracking_number,
+            success: true,
+          });
+          transferred++;
+
+          this.logger.log(
+            `[RIDER TRANSFER] Parcel: ${parcel.tracking_number}, From: ${previousRiderId}, To: ${targetRider.user?.full_name || targetRider.id}`,
+          );
+
+          // Notify new rider via SMS
+          await this.sendAssignForRiderSms(updatedParcel || parcel, targetRider);
+        } catch (err: any) {
+          results.push({
+            parcel_id: parcelId,
+            success: false,
+            error: err.message || 'Unknown error',
+          });
+          failed++;
+        }
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+
+    this.logger.log(
+      `[RIDER TRANSFER COMPLETE] Hub: ${hubId}, Transferred: ${transferred}, Failed: ${failed}`,
+    );
+
+    return { total: parcel_ids.length, transferred, failed, results };
+  }
 }
+

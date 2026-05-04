@@ -3103,4 +3103,235 @@ export class HubsService {
 
     return await this.hubRepository.save(hub);
   }
+
+  // ===== RIDER TRANSFER METHODS =====
+
+  /**
+   * Get riders list for the Rider Transfer page
+   * Returns rider info with status (On Duty / Break / Leave), license, and assigned parcel count
+   *
+   * Hub Manager sees only riders from their hub.
+   */
+  async getRidersForTransfer(
+    hubId: string,
+    options: {
+      search?: string;
+      status?: 'on_duty' | 'break' | 'leave';
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+    } = {},
+  ): Promise<{ riders: any[]; total: number; page: number; limit: number; totalPages: number }> {
+    try {
+      const page = options.page || 1;
+      const limit = Math.min(options.limit || 20, 100);
+      const offset = (page - 1) * limit;
+      const sortBy = options.sortBy || 'created_at';
+      const order = options.order || 'DESC';
+
+      // Final statuses that should NOT be counted as "assigned"
+      const finalStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+        ParcelStatus.PAID_RETURN,
+        ParcelStatus.RETURNED,
+        ParcelStatus.RETURN_TO_MERCHANT,
+        ParcelStatus.RETURNED_TO_HUB,
+        ParcelStatus.CANCELLED,
+      ];
+
+      const query = this.riderRepository
+        .createQueryBuilder('rider')
+        .leftJoinAndSelect('rider.user', 'user')
+        .leftJoinAndSelect('rider.hub', 'hub')
+        .loadRelationCountAndMap(
+          'rider.assigned_parcels_count',
+          'rider.assignedParcels',
+          'assignedParcels',
+          (qb) =>
+            qb.andWhere('assignedParcels.status NOT IN (:...final)', {
+              final: finalStatuses,
+            }),
+        )
+        .where('rider.hub_id = :hubId', { hubId });
+
+      // Search filter
+      if (options.search && options.search.trim()) {
+        query.andWhere(
+          '(user.full_name ILIKE :search OR user.phone ILIKE :search OR rider.rider_code ILIKE :search)',
+          { search: `%${options.search.trim()}%` },
+        );
+      }
+
+      // Status filter — applied after fetching because rider_status is derived
+      // For "leave" we can filter at DB level (is_active = false)
+      if (options.status === 'leave') {
+        query.andWhere('rider.is_active = :isActive', { isActive: false });
+      } else if (options.status === 'on_duty' || options.status === 'break') {
+        query.andWhere('rider.is_active = :isActive', { isActive: true });
+      }
+
+      // Sorting
+      const allowedSortFields: Record<string, string> = {
+        created_at: 'rider.created_at',
+        full_name: 'user.full_name',
+        phone: 'user.phone',
+      };
+      const sortField = allowedSortFields[sortBy] || 'rider.created_at';
+      query.orderBy(sortField, order);
+
+      const [allRiders, totalBeforeStatusFilter] = await query.getManyAndCount();
+
+      // Derive rider_status and apply on_duty/break filter
+      let ridersWithStatus = allRiders.map((rider) => {
+        const assignedCount = Number((rider as any).assigned_parcels_count ?? 0);
+        let riderStatus: string;
+        if (!rider.is_active) {
+          riderStatus = 'Leave';
+        } else if (assignedCount > 0) {
+          riderStatus = 'On Duty';
+        } else {
+          riderStatus = 'Break';
+        }
+
+        return {
+          id: rider.id,
+          rider_code: rider.rider_code ?? null,
+          full_name: rider.user?.full_name || 'N/A',
+          phone: rider.user?.phone || 'N/A',
+          photo: rider.photo ?? null,
+          rider_status: riderStatus,
+          license_no: rider.license_no ?? null,
+          assigned_parcels_count: assignedCount,
+          is_active: rider.is_active,
+          hub: rider.hub
+            ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+            : null,
+        };
+      });
+
+      // Post-filter for on_duty / break (need assigned count to determine)
+      if (options.status === 'on_duty') {
+        ridersWithStatus = ridersWithStatus.filter((r) => r.rider_status === 'On Duty');
+      } else if (options.status === 'break') {
+        ridersWithStatus = ridersWithStatus.filter((r) => r.rider_status === 'Break');
+      }
+
+      const total = ridersWithStatus.length;
+      const totalPages = Math.ceil(total / limit);
+      const paginated = ridersWithStatus.slice(offset, offset + limit);
+
+      this.logger.log(
+        `[RIDER TRANSFER] Retrieved ${paginated.length} riders for hub ${hubId} (total: ${total})`,
+      );
+
+      return { riders: paginated, total, page, limit, totalPages };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get riders for transfer in hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve riders. Please try again later.',
+      );
+    }
+  }
+
+  /**
+   * Get available target riders for transfer — excludes specified rider(s)
+   *
+   * Used when the hub manager has selected a source rider's parcels and
+   * needs to pick a target rider. The source rider is excluded from the list
+   * to prevent accidentally transferring parcels to the same rider.
+   */
+  async getAvailableRidersForTransfer(
+    hubId: string,
+    excludeRiderIds: string[] = [],
+    search?: string,
+  ): Promise<any[]> {
+    try {
+      // Final statuses that should NOT be counted as "assigned"
+      const finalStatuses = [
+        ParcelStatus.DELIVERED,
+        ParcelStatus.PARTIAL_DELIVERY,
+        ParcelStatus.EXCHANGE,
+        ParcelStatus.PAID_RETURN,
+        ParcelStatus.RETURNED,
+        ParcelStatus.RETURN_TO_MERCHANT,
+        ParcelStatus.RETURNED_TO_HUB,
+        ParcelStatus.CANCELLED,
+      ];
+
+      const query = this.riderRepository
+        .createQueryBuilder('rider')
+        .leftJoinAndSelect('rider.user', 'user')
+        .leftJoinAndSelect('rider.hub', 'hub')
+        .loadRelationCountAndMap(
+          'rider.assigned_parcels_count',
+          'rider.assignedParcels',
+          'assignedParcels',
+          (qb) =>
+            qb.andWhere('assignedParcels.status NOT IN (:...final)', {
+              final: finalStatuses,
+            }),
+        )
+        .where('rider.hub_id = :hubId', { hubId })
+        .andWhere('rider.is_active = :isActive', { isActive: true });
+
+      // Exclude source rider(s)
+      if (excludeRiderIds.length > 0) {
+        query.andWhere('rider.id NOT IN (:...excludeIds)', {
+          excludeIds: excludeRiderIds,
+        });
+      }
+
+      // Search filter
+      if (search && search.trim()) {
+        query.andWhere(
+          '(user.full_name ILIKE :search OR user.phone ILIKE :search)',
+          { search: `%${search.trim()}%` },
+        );
+      }
+
+      query.orderBy('user.full_name', 'ASC');
+
+      const riders = await query.getMany();
+
+      const result = riders.map((rider) => {
+        const assignedCount = Number((rider as any).assigned_parcels_count ?? 0);
+        const riderStatus = assignedCount > 0 ? 'On Duty' : 'Break';
+
+        return {
+          id: rider.id,
+          rider_code: rider.rider_code ?? null,
+          full_name: rider.user?.full_name || 'N/A',
+          phone: rider.user?.phone || 'N/A',
+          photo: rider.photo ?? null,
+          bike_type: rider.bike_type ?? null,
+          rider_status: riderStatus,
+          license_no: rider.license_no ?? null,
+          assigned_parcels_count: assignedCount,
+          hub: rider.hub
+            ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+            : null,
+        };
+      });
+
+      this.logger.log(
+        `[RIDER TRANSFER] Available riders for hub ${hubId}: ${result.length} (excluded: ${excludeRiderIds.length})`,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get available riders for transfer in hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve available riders. Please try again later.',
+      );
+    }
+  }
 }
