@@ -121,9 +121,9 @@ export class MerchantService {
     store.email = dto.email || null;
     store.is_default = true; // First store is default
     store.status = StoreStatus.PENDING; // Requires admin approval
-    store.carrybee_city_id = dto.carrybee_city_id;
-    store.carrybee_zone_id = dto.carrybee_zone_id;
-    store.carrybee_area_id = dto.carrybee_area_id;
+    store.carrybee_city_id = dto.carrybee_city_id ?? null;
+    store.carrybee_zone_id = dto.carrybee_zone_id ?? null;
+    store.carrybee_area_id = dto.carrybee_area_id ?? null;
 
     await this.storeRepo.save(store);
 
@@ -201,9 +201,9 @@ export class MerchantService {
     store.email = dto.email || null;
     store.is_default = true;
     store.status = StoreStatus.APPROVED; // Approved by admin at creation
-    store.carrybee_city_id = dto.carrybee_city_id;
-    store.carrybee_zone_id = dto.carrybee_zone_id;
-    store.carrybee_area_id = dto.carrybee_area_id;
+    store.carrybee_city_id = dto.carrybee_city_id ?? null;
+    store.carrybee_zone_id = dto.carrybee_zone_id ?? null;
+    store.carrybee_area_id = dto.carrybee_area_id ?? null;
 
     await this.storeRepo.save(store);
 

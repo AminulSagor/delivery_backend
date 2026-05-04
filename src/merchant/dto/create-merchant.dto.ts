@@ -16,8 +16,8 @@ export class MerchantSignupDto {
   full_name: string;
 
   @IsString()
-  @Matches(/^\+8801[3-9]\d{8}$/, {
-    message: 'Phone must be a valid Bangladeshi number starting with +8801',
+  @Matches(/^01[0-9]{9}$/, {
+    message: 'Phone must be a valid Bangladesh number (01XXXXXXXXX)',
   })
   phone: string;
 
@@ -31,21 +31,15 @@ export class MerchantSignupDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^\+8801[3-9]\d{8}$/, {
-    message:
-      'Secondary number must be a valid Bangladeshi number starting with +8801',
+  @Matches(/^01[0-9]{9}$/, {
+    message: 'Secondary number must be a valid Bangladesh number (01XXXXXXXXX)',
   })
   secondary_number?: string;
 
   // === STORE FIELDS ===
   @IsString()
-  @IsNotEmpty()
-  @MinLength(2)
-  @MaxLength(255)
   business_name: string;
 
-  @IsString()
-  @IsNotEmpty()
   business_address: string;
 
   // === LOCATION FIELDS (Auto-filled from address suggestion) ===
@@ -66,15 +60,13 @@ export class MerchantSignupDto {
   full_address?: string;
 
   // === CARRYBEE IDS (From address suggestion API) ===
-  @IsInt()
-  @IsNotEmpty()
-  carrybee_city_id: number;
+  // Made optional to allow signup without address suggestion data
+  @IsOptional()
+  carrybee_city_id?: number;
 
-  @IsInt()
-  @IsNotEmpty()
-  carrybee_zone_id: number;
+  @IsOptional()
+  carrybee_zone_id?: number;
 
-  @IsInt()
-  @IsNotEmpty()
-  carrybee_area_id: number;
+  @IsOptional()
+  carrybee_area_id?: number;
 }

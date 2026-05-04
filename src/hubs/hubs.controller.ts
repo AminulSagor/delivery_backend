@@ -71,6 +71,7 @@ import { CollectCodDto } from './dto/collect-cod.dto';
 import { ReviewFinanceRequestDto } from './dto/review-finance-request.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { RiderPerformanceQueryDto } from './dto/rider-performance-query.dto';
+import { BulkTransferFromRidersDto } from './dto/bulk-transfer-from-riders.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -1130,6 +1131,38 @@ export class HubsController {
             ? 'Parcel assigned to rider successfully'
             : 'Failed to assign parcel'
           : `${result.success} parcel${result.success !== 1 ? 's' : ''} assigned to rider successfully${result.failed > 0 ? `, ${result.failed} failed` : ''}`,
+    };
+  }
+
+  /**
+   * Bulk transfer all assigned parcels from one or more source riders to a target rider
+   * Useful when reassigning workload between riders in the same hub
+   */
+  @Post('parcels/transfer-from-riders')
+  @Roles(UserRole.HUB_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async transferParcelsFromRiders(
+    @Body() dto: BulkTransferFromRidersDto,
+    @CurrentUser() user: any,
+  ) {
+    const isAdmin = user.role === UserRole.ADMIN;
+    const result = await this.parcelsService.bulkTransferFromRiders(
+      dto,
+      isAdmin ? undefined : user.hubId,
+      isAdmin,
+    );
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: result.total,
+          transferred: result.transferred,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message: `${result.transferred} parcels transferred, ${result.failed} failed`,
     };
   }
 

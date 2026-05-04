@@ -2976,6 +2976,161 @@ export class ParcelsService {
     };
   }
 
+  /**
+   * Transfer all assigned parcels from one or more source riders to a target rider
+   * - `dto.source_rider_ids`: array of rider UUIDs to transfer FROM
+   * - `dto.target_rider_id`: rider UUID to transfer TO
+   * - `dto.statuses` (optional): array of parcel statuses to include; defaults to activeParcelStatuses
+   */
+  async bulkTransferFromRiders(
+    dto: { target_rider_id: string; source_rider_ids: string[]; statuses?: string[]; notes?: string },
+    hubId?: string,
+    bypassHubCheck: boolean = false,
+  ): Promise<{
+    total: number;
+    transferred: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const { target_rider_id, source_rider_ids, statuses } = dto;
+
+    // Validate target rider
+    const targetRider = await this.riderRepository.findOne({
+      where: { id: target_rider_id },
+      relations: ['hub', 'user'],
+    });
+    if (!targetRider) {
+      throw new NotFoundException('Target rider not found');
+    }
+    if (!targetRider.is_active) {
+      throw new BadRequestException('Target rider is not active');
+    }
+    if (!bypassHubCheck && targetRider.hub_id !== hubId) {
+      throw new BadRequestException('Target rider must belong to your hub');
+    }
+
+    // Validate source riders
+    const sourceRiders = await this.riderRepository.find({
+      where: { id: In(source_rider_ids) },
+      relations: ['hub', 'user'],
+    });
+    const foundIds = sourceRiders.map((r) => r.id);
+    const missing = source_rider_ids.filter((id) => !foundIds.includes(id));
+    if (missing.length > 0) {
+      throw new NotFoundException(`Source rider(s) not found: ${missing.join(',')}`);
+    }
+    if (!bypassHubCheck) {
+      const wrongHub = sourceRiders.find((r) => r.hub_id !== hubId);
+      if (wrongHub) {
+        throw new BadRequestException('One or more source riders do not belong to your hub');
+      }
+    }
+
+    // Determine statuses to include
+    const statusesToUse: any[] = statuses && statuses.length > 0 ? statuses : this.activeParcelStatuses;
+
+    // Find parcels assigned to source riders with matching statuses
+    const parcels = await this.parcelRepository.find({
+      where: { assigned_rider_id: In(source_rider_ids), status: In(statusesToUse as any) },
+      relations: [
+        'merchant',
+        'merchant.user',
+        'customer',
+        'store',
+        'store.hub',
+        'store.merchant',
+        'store.merchant.user',
+        'assignedRider',
+        'assignedRider.user',
+        'assignedRider.hub',
+        'delivery_coverage_area',
+        'currentHub',
+        'originHub',
+        'destinationHub',
+        'thirdPartyProvider',
+      ],
+      order: { assigned_at: 'DESC' },
+    });
+
+    if (!parcels || parcels.length === 0) {
+      return { total: 0, transferred: 0, failed: 0, results: [] };
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const results: Array<any> = [];
+    let transferred = 0;
+    let failed = 0;
+
+    try {
+      for (const parcel of parcels) {
+        try {
+          // Ensure parcel is in hub (for hub managers)
+          if (!bypassHubCheck && parcel.current_hub_id !== hubId) {
+            results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: false, error: 'Parcel is not in your hub' });
+            failed++;
+            continue;
+          }
+
+          // Update assignment
+          await queryRunner.manager.update(Parcel, parcel.id, {
+            assigned_rider_id: targetRider.id,
+            assigned_at: new Date(),
+          });
+
+          const updatedParcel = await queryRunner.manager.findOne(Parcel, {
+            where: { id: parcel.id },
+            relations: [
+              'merchant',
+              'merchant.user',
+              'customer',
+              'store',
+              'store.hub',
+              'store.merchant',
+              'store.merchant.user',
+              'assignedRider',
+              'assignedRider.user',
+              'assignedRider.hub',
+              'delivery_coverage_area',
+              'currentHub',
+              'originHub',
+              'destinationHub',
+              'thirdPartyProvider',
+            ],
+          });
+
+          results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: true });
+          transferred++;
+
+          this.logger.log(`[BULK TRANSFER] Parcel: ${parcel.tracking_number}, From Riders: ${source_rider_ids.join(',')}, To: ${targetRider.user?.full_name || targetRider.id}`);
+
+          // Notify rider via SMS
+          await this.sendAssignForRiderSms(updatedParcel || parcel, targetRider);
+        } catch (err: any) {
+          results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: false, error: err.message || 'Unknown error' });
+          failed++;
+        }
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+
+    return { total: parcels.length, transferred, failed, results };
+  }
+
   async update(
     id: string,
     updateParcelDto: UpdateParcelDto,

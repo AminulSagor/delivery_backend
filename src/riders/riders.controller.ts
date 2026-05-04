@@ -11,6 +11,7 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { RidersService } from './riders.service';
 import { ParcelsService } from '../parcels/parcels.service';
@@ -31,6 +32,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { RiderParcelQueryDto } from './dto/rider-parcel-query.dto';
+import { ParcelStatus } from '../parcels/entities/parcel.entity';
 import {
   toRiderListItem,
   toRiderDetail,
@@ -695,6 +697,34 @@ export class RidersController {
   /**
    * Get rider by ID
    */
+  @Get(':id/parcels')
+  @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async getAssignedParcelsForRider(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('status') status: ParcelStatus,
+    @Query('filter') filter: string,
+    @CurrentUser() user: any,
+  ) {
+    // Ensure rider exists and (for hub managers) belongs to their hub
+    const rider = await this.ridersService.findOne(id);
+    if (user.role === UserRole.HUB_MANAGER && rider.hub_id !== user.hubId) {
+      throw new ForbiddenException('Rider does not belong to your hub');
+    }
+
+    const parcels = await this.parcelsService.getRiderParcels(
+      id,
+      status,
+      filter,
+    );
+
+    return {
+      success: true,
+      data: parcels.map(toParcelListItem),
+      count: parcels.length,
+      message: 'Assigned parcels retrieved successfully',
+    };
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
