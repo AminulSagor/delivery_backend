@@ -4,6 +4,7 @@
  */
 
 import { StoreStatus } from 'src/stores/entities/store.entity';
+import { ParcelStatus } from 'src/parcels/entities/parcel.entity';
 
 // ===== PARCEL RESPONSES =====
 
@@ -80,11 +81,18 @@ export interface RiderListItem {
   bike_type: string;
   is_active: boolean;
   rider_status: string;
+  // Total number of parcels currently assigned to this rider
+  assigned_parcels_count: number;
+
+  // Driving license number (if available)
+  license_no: string | null;
+
   hub?: {
     id: string;
     branch_name: string;
   } | null;
 }
+
 
 export interface RiderDetail extends RiderListItem {
   guardian_mobile_no: string;
@@ -482,10 +490,14 @@ function toFullRiderSummary(rider: any) {
     is_active: !!rider.is_active,
     created_at: rider.created_at ?? null,
     updated_at: rider.updated_at ?? null,
+    // Top-level convenience fields
+    full_name: rider.user?.full_name || rider.full_name || null,
+    phone: rider.user?.phone || rider.phone || null,
     user: toSafeUser(rider.user),
     hub: toHubSummary(rider.hub),
     approver: toSafeUser(rider.approver),
     rider_status: riderStatus,
+    assigned_parcels_count: assignedCount,
   };
 }
 
@@ -624,8 +636,62 @@ export function toParcelListItem(parcel: any): any {
 }
 
 export function toParcelDetail(parcel: any): any {
+  const base = toParcelListItem(parcel);
+
+  const milestones = [
+    { key: 'picked', label: 'Picked', is_completed: !!parcel.picked_up_at },
+    {
+      key: 'sorted',
+      label: 'Sorted',
+      is_completed:
+        parcel.status === ParcelStatus.IN_HUB ||
+        parcel.status === ParcelStatus.IN_TRANSIT ||
+        !!parcel.picked_up_at,
+    },
+    { key: 'in_transit', label: 'In Transit', is_completed: parcel.status === ParcelStatus.IN_TRANSIT },
+    {
+      key: 'received_at_lmh',
+      label: 'Received At LMH',
+      is_completed: !!(parcel.received_at || parcel.received_at_destination_hub),
+    },
+    { key: 'assigned_for_delivery', label: 'Assigned For Delivery', is_completed: !!parcel.assigned_at },
+    { key: 'delivered', label: 'Delivered', is_completed: !!parcel.delivered_at },
+  ];
+
+  const acts: any[] = [];
+  if (parcel.created_at) acts.push({ message: 'Order has been created', timestamp: parcel.created_at, location: null });
+  if (parcel.product_weight_changed_at) acts.push({ message: 'Weight Changed', timestamp: parcel.product_weight_changed_at, location: null });
+  if (parcel.picked_up_at) acts.push({ message: 'Order has been picked', timestamp: parcel.picked_up_at, location: null });
+  if (parcel.currentHub && parcel.currentHub.branch_name) {
+    acts.push({
+      message: `Order is being processed and sorted at ${parcel.currentHub.branch_name}`,
+      timestamp: parcel.updated_at ?? parcel.picked_up_at ?? parcel.created_at,
+      location: parcel.currentHub.branch_name,
+    });
+  }
+  if (parcel.assigned_at && parcel.assignedRider) {
+    const rName = parcel.assignedRider.user?.full_name || parcel.assignedRider.full_name || 'Rider';
+    const rPhone = parcel.assignedRider.user?.phone || parcel.assignedRider.phone || null;
+    acts.push({ message: `parcel is assigned for delivery to ${rName}${rPhone ? ` (${rPhone})` : ''}`, timestamp: parcel.assigned_at, location: null });
+  }
+  if (parcel.out_for_delivery_at && parcel.assignedRider) {
+    const rName = parcel.assignedRider.user?.full_name || parcel.assignedRider.full_name || 'Rider';
+    acts.push({ message: `${rName} is on the way to the recipient address`, timestamp: parcel.out_for_delivery_at, location: null });
+  }
+  if (parcel.delivered_at) acts.push({ message: 'Parcel delivered', timestamp: parcel.delivered_at, location: null });
+
+  acts.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  acts.forEach((a: any, idx: number) => (a.id = idx + 1));
+  const activities = acts.reverse();
+
   return {
-    ...toParcelListItem(parcel),
+    ...base,
+    tracking: {
+      parcel_id: base.parcel_tx_id || base.tracking_number || base.id,
+      current_status: parcel.status,
+      delivery_milestones: milestones,
+      activities,
+    },
   };
 }
 
