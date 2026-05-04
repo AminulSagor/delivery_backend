@@ -16,8 +16,8 @@ export class MerchantSignupDto {
   full_name: string;
 
   @IsString()
-  @Matches(/^01[0-9]{9}$/, {
-    message: 'Phone must be a valid Bangladesh number (01XXXXXXXXX)',
+  @Matches(/^(?:\+?88)?01[0-9]{9}$/, {
+    message: 'Phone must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
   })
   phone: string;
 
@@ -31,8 +31,9 @@ export class MerchantSignupDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^01[0-9]{9}$/, {
-    message: 'Secondary number must be a valid Bangladesh number (01XXXXXXXXX)',
+  @Matches(/^(?:\+?88)?01[0-9]{9}$/, {
+    message:
+      'Secondary number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
   })
   secondary_number?: string;
 
@@ -40,6 +41,7 @@ export class MerchantSignupDto {
   @IsString()
   business_name: string;
 
+  @IsString()
   business_address: string;
 
   // === LOCATION FIELDS (Auto-filled from address suggestion) ===
