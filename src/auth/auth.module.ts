@@ -8,6 +8,7 @@ import { MerchantProfile } from '../merchant/entities/merchant-profile.entity';
 import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { Rider } from '../riders/entities/rider.entity';
+import { Store } from '../stores/entities/store.entity';
 import { EmailService } from 'src/utils/email.service';
 import { SmsService } from 'src/utils/sms.service';
 import { ConfigModule } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { ConfigModule } from '@nestjs/config';
       HubManager,
       Hub,
       Rider,
+      Store,
     ]),
     UsersModule,
     ConfigModule,
