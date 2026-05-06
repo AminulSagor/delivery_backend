@@ -258,6 +258,28 @@ export class MerchantController {
     };
   }
 
+  @Get('settings')
+  @Roles(UserRole.MERCHANT)
+  getSettings(@Request() req) {
+    return this.merchantService.getSettings(req.user.merchantId);
+  }
+
+  @Patch('settings')
+  @Roles(UserRole.MERCHANT)
+  async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
+    const updateDto: UpdateProfileDetailsDto = {} as UpdateProfileDetailsDto;
+
+    if (dto.profile_photo_url) updateDto.profile_img_url = dto.profile_photo_url;
+    if (dto.business_name) updateDto.business_name = dto.business_name;
+    if (dto.contact_person_name) updateDto.contact_person_name = dto.contact_person_name;
+    if (dto.contact_number) updateDto.contact_number = dto.contact_number;
+    if (dto.email !== undefined) updateDto.contact_email = dto.email;
+    if (dto.optional_number !== undefined)
+      updateDto.optional_phone_number = dto.optional_number;
+
+    return this.merchantService.updateProfileDetails(req.user.merchantId, updateDto);
+  }
+
   @Roles(UserRole.ADMIN)
   @Get(':id')
   async findOne(@Param('id') id: string) {
@@ -526,27 +548,6 @@ export class MerchantController {
     };
   }
 
-  @Get('settings')
-  @Roles(UserRole.MERCHANT)
-  getSettings(@Request() req) {
-    return this.merchantService.getSettings(req.user.merchantId);
-  }
-
-  @Patch('settings')
-  @Roles(UserRole.MERCHANT)
-  async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
-    const updateDto: UpdateProfileDetailsDto = {} as UpdateProfileDetailsDto;
-
-    if (dto.profile_photo_url) updateDto.profile_img_url = dto.profile_photo_url;
-    if (dto.business_name) updateDto.business_name = dto.business_name;
-    if (dto.contact_person_name) updateDto.contact_person_name = dto.contact_person_name;
-    if (dto.contact_number) updateDto.contact_number = dto.contact_number;
-    if (dto.email !== undefined) updateDto.contact_email = dto.email;
-    if (dto.optional_number !== undefined)
-      updateDto.optional_phone_number = dto.optional_number;
-
-    return this.merchantService.updateProfileDetails(req.user.merchantId, updateDto);
-  }
 
   @Patch('profile-details')
   @Roles(UserRole.MERCHANT)

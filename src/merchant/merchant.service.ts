@@ -102,36 +102,8 @@ export class MerchantService {
     merchant.status = MerchantStatus.PENDING;
 
     await this.merchantRepository.save(merchant);
-
-    // === AUTO-CREATE DEFAULT STORE ===
-    const storeCode = await this.generateStoreCode(dto.business_name ?? dto.full_name);
-
-    // Convert phone from +8801... to 01... format for store
-    const storePhone = dto.phone.replace('+88', '');
-
-    const store = new Store();
-    store.merchant_id = merchant.id;
-    store.store_code = storeCode;
-    store.business_name = dto.business_name ?? dto.full_name;
-    store.business_address = dto.business_address ?? dto.full_address ?? dto.full_name;
-    store.district = dto.district;
-    store.thana = dto.thana;
-    store.area = dto.area || null;
-    store.phone_number = storePhone;
-    store.email = dto.email || null;
-    store.is_default = true; // First store is default
-    store.status = StoreStatus.PENDING; // Requires admin approval
-    store.carrybee_city_id = dto.carrybee_city_id ?? null;
-    store.carrybee_zone_id = dto.carrybee_zone_id ?? null;
-    store.carrybee_area_id = dto.carrybee_area_id ?? null;
-
-    await this.storeRepo.save(store);
-
     console.log(
       `[MERCHANT SIGNUP] New merchant registered: ${user.full_name} (${user.phone}) - Status: PENDING`,
-    );
-    console.log(
-      `[DEFAULT STORE CREATED] Store: ${store.business_name} (${store.store_code}) - Status: PENDING`,
     );
 
     return merchant;
@@ -185,33 +157,8 @@ export class MerchantService {
 
     await this.merchantRepository.save(merchant);
 
-    // Auto-create default store — also approved
-    const storeCode = await this.generateStoreCode(dto.business_name);
-    const storePhone = dto.phone.replace('+88', '');
-
-    const store = new Store();
-    store.merchant_id = merchant.id;
-    store.store_code = storeCode;
-    store.business_name = dto.business_name ?? dto.full_name;
-    store.business_address = dto.business_address ?? dto.full_address ?? dto.full_name;
-    store.district = dto.district;
-    store.thana = dto.thana;
-    store.area = dto.area || null;
-    store.phone_number = storePhone;
-    store.email = dto.email || null;
-    store.is_default = true;
-    store.status = StoreStatus.APPROVED; // Approved by admin at creation
-    store.carrybee_city_id = dto.carrybee_city_id ?? null;
-    store.carrybee_zone_id = dto.carrybee_zone_id ?? null;
-    store.carrybee_area_id = dto.carrybee_area_id ?? null;
-
-    await this.storeRepo.save(store);
-
     console.log(
       `[ADMIN MERCHANT CREATED] Merchant: ${user.full_name} (${user.phone}) created by admin ${adminId} — Status: APPROVED`,
-    );
-    console.log(
-      `[DEFAULT STORE CREATED] Store: ${store.business_name} (${store.store_code}) — Status: ACTIVE`,
     );
 
     // Reload with relations for the response
