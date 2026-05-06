@@ -1909,10 +1909,38 @@ export class MerchantService {
 
       // 4. Update Store (Business Name)
       if (dto.business_name) {
-        if (!defaultStore)
-          throw new BadRequestException('Default store not found');
-        defaultStore.business_name = dto.business_name;
-        await queryRunner.manager.save(defaultStore);
+        if (!defaultStore) {
+          // If merchant has no default store, create one using provided business_name
+          const storeCode = await this.generateStoreCode(
+            dto.business_name ?? merchant.user.full_name,
+          );
+
+          const storePhone = merchant.user.phone
+            ? merchant.user.phone.replace('+88', '')
+            : '';
+
+          const newStore = queryRunner.manager.create(Store, {
+            merchant_id: merchantId,
+            store_code: storeCode,
+            business_name: dto.business_name,
+            business_address: merchant.full_address ?? merchant.user.full_name,
+            district: merchant.district ?? null,
+            thana: merchant.thana ?? null,
+            area: null,
+            phone_number: storePhone,
+            email: merchant.user.email ?? null,
+            is_default: true,
+            status: StoreStatus.PENDING,
+            carrybee_city_id: null,
+            carrybee_zone_id: null,
+            carrybee_area_id: null,
+          } as any);
+
+          await queryRunner.manager.save(newStore);
+        } else {
+          defaultStore.business_name = dto.business_name;
+          await queryRunner.manager.save(defaultStore);
+        }
       }
 
       // 5. Update Profile (Image)
