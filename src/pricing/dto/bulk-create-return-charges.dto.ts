@@ -93,7 +93,9 @@ export class BulkCreateReturnChargesDto {
    */
   @IsNumber(
     { maxDecimalPlaces: 2 },
-    { message: 'Discount percentage must be a number with max 2 decimal places' },
+    {
+      message: 'Discount percentage must be a number with max 2 decimal places',
+    },
   )
   @Min(0, { message: 'Discount percentage cannot be negative' })
   @Max(100, { message: 'Discount percentage cannot exceed 100' })

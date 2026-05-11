@@ -519,7 +519,7 @@ export class MerchantInvoiceController {
     const normalizedSortOrder = (query.sort_order || 'DESC').toUpperCase();
     const sortOrder =
       normalizedSortOrder === 'ASC' || normalizedSortOrder === 'DESC'
-        ? (normalizedSortOrder as 'ASC' | 'DESC')
+        ? normalizedSortOrder
         : 'DESC';
 
     const { orders, total, summary } =
@@ -597,7 +597,7 @@ export class MerchantInvoiceController {
     const normalizedSortOrder = (query.sort_order || 'DESC').toUpperCase();
     const sortOrder =
       normalizedSortOrder === 'ASC' || normalizedSortOrder === 'DESC'
-        ? (normalizedSortOrder as 'ASC' | 'DESC')
+        ? normalizedSortOrder
         : 'DESC';
 
     if (query.invoice_id) {
@@ -688,11 +688,7 @@ export class MerchantInvoiceController {
     @Req() req: any,
   ) {
     if (this.shouldUseMerchantMockData(req)) {
-      const details = this.buildMockInvoiceDetails(
-        id,
-        query,
-        req.user.userId,
-      );
+      const details = this.buildMockInvoiceDetails(id, query, req.user.userId);
 
       return {
         success: true,
@@ -1059,9 +1055,7 @@ export class MerchantInvoiceController {
     const fromDateValue = query.from_date || query.fromDate;
     if (fromDateValue) {
       const fromDate = new Date(fromDateValue);
-      filtered = filtered.filter(
-        (row) => row.parcel.order_date >= fromDate,
-      );
+      filtered = filtered.filter((row) => row.parcel.order_date >= fromDate);
     }
 
     const toDateValue = query.to_date || query.toDate;
@@ -1080,7 +1074,10 @@ export class MerchantInvoiceController {
         (sum, row) => sum + row.financial.collected_amount,
         0,
       ),
-      total_fee: filtered.reduce((sum, row) => sum + row.financial.total_fee, 0),
+      total_fee: filtered.reduce(
+        (sum, row) => sum + row.financial.total_fee,
+        0,
+      ),
       total_return_charge: filtered.reduce(
         (sum, row) => sum + row.financial.return_charge,
         0,
@@ -1112,9 +1109,10 @@ export class MerchantInvoiceController {
 
     const invoiceMeta = {
       id: invoiceId,
-      invoice_no: invoiceId === '3e0b6f0e-4785-4bf4-98d5-cd9c6d8a3e74'
-        ? 'MI060526C3D4'
-        : 'MI060526A1B2',
+      invoice_no:
+        invoiceId === '3e0b6f0e-4785-4bf4-98d5-cd9c6d8a3e74'
+          ? 'MI060526C3D4'
+          : 'MI060526A1B2',
       transaction_id: 'TXN-5C1A2B',
       date: new Date('2026-05-05T10:00:00.000Z'),
       status: 'UNPAID',
@@ -1286,10 +1284,7 @@ export class MerchantInvoiceController {
     });
 
     const totalParcels = filteredParcels.length;
-    const pagedParcels = parcelDetails.slice(
-      (page - 1) * limit,
-      page * limit,
-    );
+    const pagedParcels = parcelDetails.slice((page - 1) * limit, page * limit);
 
     const allCollected = baseParcels.reduce(
       (sum, parcel) => sum + parcel.collected_amount,
@@ -1312,8 +1307,9 @@ export class MerchantInvoiceController {
 
     const summary = {
       total_parcels: baseParcels.length,
-      delivered_count: baseParcels.filter((p) => deliveredStatuses.has(p.status))
-        .length,
+      delivered_count: baseParcels.filter((p) =>
+        deliveredStatuses.has(p.status),
+      ).length,
       partial_delivery_count: baseParcels.filter(
         (p) => p.status === 'PARTIAL_DELIVERY',
       ).length,

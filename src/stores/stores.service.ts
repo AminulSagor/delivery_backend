@@ -170,80 +170,12 @@ export class StoresService {
       );
     }
 
-    // Save store first
+    // Save store first (without Carrybee sync)
     await this.storesRepository.save(store);
 
-    // Auto-create store in Carrybee
-    try {
-      this.logger.log(`Creating store ${store.id} in Carrybee...`);
-
-      // Load merchant with user relation if not loaded
-      const merchantWithUser = await this.merchantRepository.findOne({
-        where: { id: merchant.id },
-        relations: ['user'],
-      });
-
-      const contactPersonName =
-        merchantWithUser?.user?.full_name || 'Store Owner';
-      const contactPhone = this.carrybeeApiService.formatPhoneForCarrybee(
-        store.phone_number,
-      );
-
-      // Carrybee truncates name to 30 chars
-      const truncatedName = store.business_name.substring(0, 30).trim();
-
-      // First check if store already exists in Carrybee (by name)
-      const existingStores = await this.carrybeeApiService.getStores();
-      let carrybeeStore = existingStores.find(
-        (s: any) => s.name === store.business_name || s.name === truncatedName,
-      );
-
-      if (!carrybeeStore) {
-        // Create store in Carrybee
-        this.logger.log(`Creating new store in Carrybee: ${truncatedName}`);
-
-        await this.carrybeeApiService.createStore({
-          name: store.business_name,
-          contact_person_name: contactPersonName,
-          contact_person_number: contactPhone,
-          address: store.business_address,
-          city_id: store.carrybee_city_id,
-          zone_id: store.carrybee_zone_id,
-          area_id: store.carrybee_area_id,
-        });
-
-        // Get Carrybee store ID after creation
-        const updatedStores = await this.carrybeeApiService.getStores();
-        carrybeeStore = updatedStores.find(
-          (s: any) =>
-            s.name === store.business_name || s.name === truncatedName,
-        );
-      } else {
-        this.logger.log(
-          `Store "${store.business_name}" already exists in Carrybee, reusing ID: ${carrybeeStore.id}`,
-        );
-      }
-
-      if (carrybeeStore) {
-        store.carrybee_store_id = carrybeeStore.id;
-        store.is_carrybee_synced = true;
-        store.carrybee_synced_at = new Date();
-        await this.storesRepository.save(store);
-        this.logger.log(
-          `Store ${store.id} synced to Carrybee with ID: ${carrybeeStore.id}`,
-        );
-      } else {
-        this.logger.warn(
-          `Store created in Carrybee but could not retrieve store ID for "${store.business_name}"`,
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to create store in Carrybee: ${JSON.stringify(error.response?.data) || error.message}`,
-      );
-      // Don't fail store creation if Carrybee sync fails
-      // Store can be synced later during parcel assignment
-    }
+    this.logger.log(
+      `Store ${store.id} created locally. Carrybee sync will happen lazily during parcel assignment.`,
+    );
 
     console.log(
       `[STORE CREATED] Merchant ${merchant.id} created store: ${store.business_name} (${store.id})`,
@@ -599,11 +531,12 @@ export class StoresService {
     merchantId?: string,
     page: number = 1,
     limit: number = 10,
-    search?: string
+    search?: string,
   ): Promise<{ data: any[]; total: number }> {
     const skip = (page - 1) * limit;
 
-    const query = this.storesRepository.createQueryBuilder('store')
+    const query = this.storesRepository
+      .createQueryBuilder('store')
       .leftJoinAndSelect('store.merchant', 'merchant')
       .leftJoinAndSelect('merchant.user', 'user')
       .leftJoinAndSelect('store.hub', 'hub');
@@ -615,13 +548,16 @@ export class StoresService {
     if (search) {
       query.andWhere(
         '(store.business_name ILIKE :search OR store.store_code ILIKE :search OR user.full_name ILIKE :search OR user.phone ILIKE :search)',
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
     query.orderBy('store.created_at', 'DESC');
 
-    const [stores, total] = await query.skip(skip).take(limit).getManyAndCount();
+    const [stores, total] = await query
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     // 2. Fetch aggregated stats for the paginated stores in one query
     let stats: any[] = [];
@@ -676,7 +612,7 @@ export class StoresService {
         },
       };
     });
-    
+
     return { data, total };
   }
 

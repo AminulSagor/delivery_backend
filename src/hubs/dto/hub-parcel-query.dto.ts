@@ -9,7 +9,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { ParcelStatus, PaymentStatus } from '../../parcels/entities/parcel.entity';
+import {
+  ParcelStatus,
+  PaymentStatus,
+} from '../../parcels/entities/parcel.entity';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
 
 export class HubParcelQueryDto extends PaginationDto {

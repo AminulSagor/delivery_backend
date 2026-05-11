@@ -47,7 +47,8 @@ export class ThirdPartyProvidersController {
     else if (isActive === 'false') parsedIsActive = false;
     else parsedIsActive = undefined;
 
-    const providers = await this.providersService.findAllWithStats(parsedIsActive);
+    const providers =
+      await this.providersService.findAllWithStats(parsedIsActive);
 
     return {
       providers,

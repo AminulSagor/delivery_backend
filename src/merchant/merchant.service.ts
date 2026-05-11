@@ -173,7 +173,6 @@ export class MerchantService {
    * Format: First 3 letters + 3 digit number (e.g., TSH001)
    */
   private async generateStoreCode(businessName: string): Promise<string> {
-
     // Extract first 3 letters from business name (uppercase)
     const prefix = businessName
       .replace(/[^A-Za-z]/g, '') // Remove non-letters
@@ -693,7 +692,9 @@ export class MerchantService {
       newParcelsAmount += amount;
     }
 
-    const pickup = this.getStatusSummary(todayByStatus, [ParcelStatus.PICKED_UP]);
+    const pickup = this.getStatusSummary(todayByStatus, [
+      ParcelStatus.PICKED_UP,
+    ]);
     const inTransit = this.getStatusSummary(todayByStatus, [
       ParcelStatus.IN_TRANSIT,
     ]);
@@ -818,10 +819,14 @@ export class MerchantService {
     const lifetimeRaw = await lifetimeSummaryQb.getRawOne();
 
     const lifetimeTotalCount = this.toCount(lifetimeRaw?.total_count);
-    const returnPercentageCount = this.toCount(lifetimeRaw?.return_percentage_count);
+    const returnPercentageCount = this.toCount(
+      lifetimeRaw?.return_percentage_count,
+    );
     const returnPercentage =
       lifetimeTotalCount > 0
-        ? Number(((returnPercentageCount / lifetimeTotalCount) * 100).toFixed(2))
+        ? Number(
+            ((returnPercentageCount / lifetimeTotalCount) * 100).toFixed(2),
+          )
         : 0;
 
     return {
@@ -963,16 +968,28 @@ export class MerchantService {
   ) {
     const codRaw = await this.parcelRepo
       .createQueryBuilder('parcel')
-      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .select(
+        'COALESCE(SUM(parcel.cod_collected_amount), 0)',
+        'total_collected',
+      )
       .addSelect('COALESCE(SUM(parcel.cod_amount), 0)', 'total_cod_amount')
       .addSelect(
         'COALESCE(SUM(GREATEST(parcel.cod_amount - parcel.cod_collected_amount, 0)), 0)',
         'total_pending',
       )
-      .addSelect('COALESCE(SUM(parcel.delivery_charge), 0)', 'total_delivery_charge')
-      .addSelect('COALESCE(SUM(parcel.weight_charge), 0)', 'total_weight_charge')
+      .addSelect(
+        'COALESCE(SUM(parcel.delivery_charge), 0)',
+        'total_delivery_charge',
+      )
+      .addSelect(
+        'COALESCE(SUM(parcel.weight_charge), 0)',
+        'total_weight_charge',
+      )
       .addSelect('COALESCE(SUM(parcel.cod_charge), 0)', 'total_cod_charge')
-      .addSelect('COALESCE(SUM(parcel.return_charge), 0)', 'total_return_charge')
+      .addSelect(
+        'COALESCE(SUM(parcel.return_charge), 0)',
+        'total_return_charge',
+      )
       .addSelect(
         'COALESCE(SUM(parcel.total_charge + COALESCE(parcel.return_charge, 0)), 0)',
         'total_fee',
@@ -986,7 +1003,10 @@ export class MerchantService {
 
     const todayCollectionRaw = await this.parcelRepo
       .createQueryBuilder('parcel')
-      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'todays_collection')
+      .select(
+        'COALESCE(SUM(parcel.cod_collected_amount), 0)',
+        'todays_collection',
+      )
       .where('parcel.merchant_id = :merchantId', { merchantId })
       .andWhere('parcel.is_cod = true')
       .andWhere('parcel.cod_collected_amount > 0')
@@ -1005,7 +1025,9 @@ export class MerchantService {
     const totalCodCharge = this.toMoney(codRaw?.total_cod_charge);
     const totalReturnCharge = this.toMoney(codRaw?.total_return_charge);
     const totalFee = this.toMoney(codRaw?.total_fee);
-    const todaysCollection = this.toMoney(todayCollectionRaw?.todays_collection);
+    const todaysCollection = this.toMoney(
+      todayCollectionRaw?.todays_collection,
+    );
     const totalReceivable = this.toMoney(totalCodAmount - totalFee);
 
     return {
@@ -1058,7 +1080,9 @@ export class MerchantService {
     const performanceDays = performanceRange === 'monthly' ? 30 : 7;
 
     const performanceStart = new Date(todayStart);
-    performanceStart.setUTCDate(performanceStart.getUTCDate() - (performanceDays - 1));
+    performanceStart.setUTCDate(
+      performanceStart.getUTCDate() - (performanceDays - 1),
+    );
     return this.buildDeliveryPerformanceSummaryByWindow(
       merchantId,
       performanceRange,
@@ -1306,7 +1330,9 @@ export class MerchantService {
   private parseDateOnlyAsUtc(value: string, fieldName: string): Date {
     const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!match) {
-      throw new BadRequestException(`${fieldName} must be in YYYY-MM-DD format`);
+      throw new BadRequestException(
+        `${fieldName} must be in YYYY-MM-DD format`,
+      );
     }
 
     const year = Number(match[1]);
@@ -1320,7 +1346,9 @@ export class MerchantService {
       parsed.getUTCMonth() !== month - 1 ||
       parsed.getUTCDate() !== day
     ) {
-      throw new BadRequestException(`${fieldName} is not a valid calendar date`);
+      throw new BadRequestException(
+        `${fieldName} is not a valid calendar date`,
+      );
     }
 
     return parsed;
@@ -1360,7 +1388,7 @@ export class MerchantService {
     if (search) {
       qb.andWhere(
         '(user.full_name ILIKE :search OR user.phone ILIKE :search OR user.email ILIKE :search OR store.business_name ILIKE :search)',
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
@@ -1424,14 +1452,19 @@ export class MerchantService {
 
     // === Update basic merchant fields ===
     if (dto.fullAddress !== undefined) merchant.full_address = dto.fullAddress;
-    if (dto.secondaryNumber !== undefined) merchant.secondary_number = dto.secondaryNumber;
+    if (dto.secondaryNumber !== undefined)
+      merchant.secondary_number = dto.secondaryNumber;
     if (dto.thana !== undefined) merchant.thana = dto.thana;
     if (dto.district !== undefined) merchant.district = dto.district;
 
     await this.merchantRepository.save(merchant);
 
     // === Update document fields in merchant_profiles ===
-    if (dto.nid_number !== undefined || dto.trade_license_number !== undefined || dto.bin_number !== undefined) {
+    if (
+      dto.nid_number !== undefined ||
+      dto.trade_license_number !== undefined ||
+      dto.bin_number !== undefined
+    ) {
       const profile = await this.getOrCreateProfile(id);
 
       if (dto.nid_number !== undefined) {
@@ -1463,14 +1496,19 @@ export class MerchantService {
           );
         }
 
-        if (storeDto.business_name !== undefined) store.business_name = storeDto.business_name;
-        if (storeDto.business_address !== undefined) store.business_address = storeDto.business_address;
-        if (storeDto.phone_number !== undefined) store.phone_number = storeDto.phone_number;
+        if (storeDto.business_name !== undefined)
+          store.business_name = storeDto.business_name;
+        if (storeDto.business_address !== undefined)
+          store.business_address = storeDto.business_address;
+        if (storeDto.phone_number !== undefined)
+          store.phone_number = storeDto.phone_number;
         if (storeDto.email !== undefined) store.email = storeDto.email || null;
-        if (storeDto.district !== undefined) store.district = storeDto.district || null;
+        if (storeDto.district !== undefined)
+          store.district = storeDto.district || null;
         if (storeDto.thana !== undefined) store.thana = storeDto.thana || null;
         if (storeDto.area !== undefined) store.area = storeDto.area || null;
-        if (storeDto.facebook_page !== undefined) store.facebook_page = storeDto.facebook_page || null;
+        if (storeDto.facebook_page !== undefined)
+          store.facebook_page = storeDto.facebook_page || null;
 
         await this.storeRepo.save(store);
       }
@@ -1522,7 +1560,8 @@ export class MerchantService {
           routing_number: dto.routing_number,
         },
       });
-      if (existing) throw new ConflictException('This bank account is already added');
+      if (existing)
+        throw new ConflictException('This bank account is already added');
     } else if (dto.method_type === PayoutMethodType.BKASH) {
       const existing = await this.payoutMethodRepository.findOne({
         where: {
@@ -1531,7 +1570,8 @@ export class MerchantService {
           bkash_number: dto.bkash_number,
         },
       });
-      if (existing) throw new ConflictException('This bKash number is already added');
+      if (existing)
+        throw new ConflictException('This bKash number is already added');
     } else if (dto.method_type === PayoutMethodType.NAGAD) {
       const existing = await this.payoutMethodRepository.findOne({
         where: {
@@ -1540,7 +1580,8 @@ export class MerchantService {
           nagad_number: dto.nagad_number,
         },
       });
-      if (existing) throw new ConflictException('This Nagad number is already added');
+      if (existing)
+        throw new ConflictException('This Nagad number is already added');
     } else if (dto.method_type === PayoutMethodType.CASH) {
       const existing = await this.payoutMethodRepository.findOne({
         where: {
@@ -1548,7 +1589,8 @@ export class MerchantService {
           method_type: PayoutMethodType.CASH,
         },
       });
-      if (existing) throw new ConflictException('Cash payout method already exists');
+      if (existing)
+        throw new ConflictException('Cash payout method already exists');
     }
 
     // Create payout method
@@ -1874,10 +1916,7 @@ export class MerchantService {
         if (dto.contact_person_name)
           merchant.user.full_name = dto.contact_person_name;
 
-        if (
-          dto.contact_number &&
-          dto.contact_number !== merchant.user.phone
-        ) {
+        if (dto.contact_number && dto.contact_number !== merchant.user.phone) {
           const existingPhone = await this.userRepo.findOne({
             where: { phone: dto.contact_number },
           });

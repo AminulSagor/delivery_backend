@@ -37,7 +37,11 @@ describe('CarrybeeService (unit)', () => {
       delivery_coverage_area: { city_id: 1, zone_id: 1, area_id: 1 },
     };
 
-    const mockProvider = { id: 'prov-1', provider_code: 'CARRYBEE', is_active: true };
+    const mockProvider = {
+      id: 'prov-1',
+      provider_code: 'CARRYBEE',
+      is_active: true,
+    };
 
     const parcelRepository: any = {
       findOne: jest.fn().mockResolvedValue(mockParcel),
@@ -50,19 +54,28 @@ describe('CarrybeeService (unit)', () => {
     };
 
     const merchantRepository: any = { findOne: jest.fn() };
-    const providerRepository: any = { findOne: jest.fn().mockResolvedValue(mockProvider) };
+    const providerRepository: any = {
+      findOne: jest.fn().mockResolvedValue(mockProvider),
+    };
     const coverageAreaRepository: any = {};
 
     const mockCarrybeeApi: any = {
       formatPhoneForCarrybee: (p: string) => p,
       // first call returns empty, second call returns created store
-      getStores: jest.fn()
+      getStores: jest
+        .fn()
         .mockResolvedValueOnce([])
         .mockResolvedValue([{ id: 'cb_store_1', name: 'Parcel Store' }]),
       createStore: jest.fn().mockResolvedValue({ success: true }),
-      convertWeightToGrams: jest.fn((kg: number) => Math.round(Number(kg) * 1000)),
+      convertWeightToGrams: jest.fn((kg: number) =>
+        Math.round(Number(kg) * 1000),
+      ),
       mapDeliveryType: jest.fn((t: any) => t || 1),
-      createOrder: jest.fn().mockResolvedValue({ consignment_id: 'cons-1', delivery_fee: '50', cod_fee: 0 }),
+      createOrder: jest.fn().mockResolvedValue({
+        consignment_id: 'cons-1',
+        delivery_fee: '50',
+        cod_fee: 0,
+      }),
     };
 
     const svc = new CarrybeeService(
@@ -74,7 +87,11 @@ describe('CarrybeeService (unit)', () => {
       mockCarrybeeApi,
     );
 
-    const res = await svc.assignParcelToCarrybee(mockParcel.id, {} as any, 'hub-1');
+    const res = await svc.assignParcelToCarrybee(
+      mockParcel.id,
+      {} as any,
+      'hub-1',
+    );
 
     expect(res).toBeDefined();
     expect(res.carrybee_consignment_id).toBe('cons-1');

@@ -55,46 +55,50 @@ export class RidersService {
     private readonly dataSource: DataSource,
   ) {}
 
-    private generateRandomDigits(length: number): string {
-      const chars = '0123456789';
-      let result = '';
-      for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
+  private generateRandomDigits(length: number): string {
+    const chars = '0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  private async generateUniqueRiderCode(
+    manager: EntityManager,
+  ): Promise<string> {
+    const maxAttempts = 50;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const riderCode = `RDR${this.generateRandomDigits(5)}`;
+      const existing = await manager.findOne(Rider, {
+        where: { rider_code: riderCode },
+        select: ['id'],
+      });
+
+      if (!existing) return riderCode;
     }
 
-    private async generateUniqueRiderCode(manager: EntityManager): Promise<string> {
-      const maxAttempts = 50;
+    throw new ConflictException('Unable to generate unique rider code');
+  }
 
-      for (let i = 0; i < maxAttempts; i++) {
-        const riderCode = `RDR${this.generateRandomDigits(5)}`;
-        const existing = await manager.findOne(Rider, {
-          where: { rider_code: riderCode },
-          select: ['id'],
-        });
+  private async generateUniqueStaffCode(
+    manager: EntityManager,
+  ): Promise<string> {
+    const maxAttempts = 50;
 
-        if (!existing) return riderCode;
-      }
+    for (let i = 0; i < maxAttempts; i++) {
+      const staffCode = `EMP${this.generateRandomDigits(5)}`;
+      const existing = await manager.findOne(Staff, {
+        where: { staff_code: staffCode },
+        select: ['id'],
+      });
 
-      throw new ConflictException('Unable to generate unique rider code');
+      if (!existing) return staffCode;
     }
 
-    private async generateUniqueStaffCode(manager: EntityManager): Promise<string> {
-      const maxAttempts = 50;
-
-      for (let i = 0; i < maxAttempts; i++) {
-        const staffCode = `EMP${this.generateRandomDigits(5)}`;
-        const existing = await manager.findOne(Staff, {
-          where: { staff_code: staffCode },
-          select: ['id'],
-        });
-
-        if (!existing) return staffCode;
-      }
-
-      throw new ConflictException('Unable to generate unique staff code');
-    }
+    throw new ConflictException('Unable to generate unique staff code');
+  }
 
   /**
    * Create rider by Hub Manager (auto-assigns current hub)
@@ -533,10 +537,7 @@ export class RidersService {
   /**
    * Get system riders list with assigned parcel counts (used for system-wide views)
    */
-  async getSystemRiders(
-    hubId?: string,
-    isActive?: boolean,
-  ): Promise<Rider[]> {
+  async getSystemRiders(hubId?: string, isActive?: boolean): Promise<Rider[]> {
     const finalStatuses = [
       ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
@@ -556,7 +557,10 @@ export class RidersService {
         'rider.assigned_parcels_count',
         'rider.assignedParcels',
         'assignedParcels',
-        (qb) => qb.andWhere('assignedParcels.status NOT IN (:...final)', { final: finalStatuses }),
+        (qb) =>
+          qb.andWhere('assignedParcels.status NOT IN (:...final)', {
+            final: finalStatuses,
+          }),
       );
 
     if (hubId) {
@@ -765,11 +769,15 @@ export class RidersService {
     }
 
     if (dto.new_password !== dto.confirm_new_password) {
-      throw new BadRequestException('New password and confirm password do not match');
+      throw new BadRequestException(
+        'New password and confirm password do not match',
+      );
     }
 
     if (dto.current_password === dto.new_password) {
-      throw new BadRequestException('New password must be different from current password');
+      throw new BadRequestException(
+        'New password must be different from current password',
+      );
     }
 
     const user = rider.user;
@@ -852,8 +860,7 @@ export class RidersService {
       is_active: true,
       bank_name: dto.bank_name || null,
       branch_name: dto.branch_name || null,
-      account_holder_name:
-        dto.account_holder_name || dto.account_name || null,
+      account_holder_name: dto.account_holder_name || dto.account_name || null,
       account_number: dto.account_number || dto.account_no || null,
       routing_number: dto.routing_number || null,
       bkash_number: dto.bkash_number || null,
@@ -958,7 +965,11 @@ export class RidersService {
         dto.bkash_number !== undefined &&
         dto.bkash_number !== method.bkash_number
       ) {
-        await this.ensureUniqueBkashNumber(riderId, dto.bkash_number, method.id);
+        await this.ensureUniqueBkashNumber(
+          riderId,
+          dto.bkash_number,
+          method.id,
+        );
       }
 
       if (dto.bkash_number !== undefined) {
@@ -979,7 +990,11 @@ export class RidersService {
         dto.nagad_number !== undefined &&
         dto.nagad_number !== method.nagad_number
       ) {
-        await this.ensureUniqueNagadNumber(riderId, dto.nagad_number, method.id);
+        await this.ensureUniqueNagadNumber(
+          riderId,
+          dto.nagad_number,
+          method.id,
+        );
       }
 
       if (dto.nagad_number !== undefined) {
@@ -1068,7 +1083,9 @@ export class RidersService {
     return method;
   }
 
-  private async ensureDefaultActivePayoutMethod(riderId: string): Promise<void> {
+  private async ensureDefaultActivePayoutMethod(
+    riderId: string,
+  ): Promise<void> {
     const activeDefault = await this.riderPayoutMethodRepository.findOne({
       where: { rider_id: riderId, is_default: true, is_active: true },
     });
@@ -1165,29 +1182,32 @@ export class RidersService {
       status: method.is_active ? 'ACTIVE' : 'INACTIVE',
       is_active: method.is_active,
       is_default: method.is_default,
-      bank: method.method_type === PayoutMethodType.BANK_ACCOUNT
-        ? {
-            bank_name: method.bank_name,
-            branch_name: method.branch_name,
-            account_name: method.account_holder_name,
-            account_number: this.maskSensitiveNumber(method.account_number),
-            routing_number: method.routing_number,
-          }
-        : null,
-      bkash: method.method_type === PayoutMethodType.BKASH
-        ? {
-            number: this.maskSensitiveNumber(method.bkash_number),
-            account_holder_name: method.bkash_account_holder_name,
-            account_type: method.bkash_account_type,
-          }
-        : null,
-      nagad: method.method_type === PayoutMethodType.NAGAD
-        ? {
-            number: this.maskSensitiveNumber(method.nagad_number),
-            account_holder_name: method.nagad_account_holder_name,
-            account_type: method.nagad_account_type,
-          }
-        : null,
+      bank:
+        method.method_type === PayoutMethodType.BANK_ACCOUNT
+          ? {
+              bank_name: method.bank_name,
+              branch_name: method.branch_name,
+              account_name: method.account_holder_name,
+              account_number: this.maskSensitiveNumber(method.account_number),
+              routing_number: method.routing_number,
+            }
+          : null,
+      bkash:
+        method.method_type === PayoutMethodType.BKASH
+          ? {
+              number: this.maskSensitiveNumber(method.bkash_number),
+              account_holder_name: method.bkash_account_holder_name,
+              account_type: method.bkash_account_type,
+            }
+          : null,
+      nagad:
+        method.method_type === PayoutMethodType.NAGAD
+          ? {
+              number: this.maskSensitiveNumber(method.nagad_number),
+              account_holder_name: method.nagad_account_holder_name,
+              account_type: method.nagad_account_type,
+            }
+          : null,
       created_at: method.created_at,
       updated_at: method.updated_at,
     };

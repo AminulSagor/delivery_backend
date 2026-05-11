@@ -116,7 +116,9 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
     expect(result.success).toBe(true);
     expect(result.otp_bypass_status).toBe('PENDING');
     expect(mockDeliveryVerificationRepo.save).toHaveBeenCalledTimes(1);
-    expect(verification.otp_bypass_request_reason).toContain('OTP not received');
+    expect(verification.otp_bypass_request_reason).toContain(
+      'OTP not received',
+    );
   });
 
   it('should approve hub request and complete delivery', async () => {

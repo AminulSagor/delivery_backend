@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 
 export enum RiderFinanceSummaryMetric {
   DELIVERED = 'delivered',

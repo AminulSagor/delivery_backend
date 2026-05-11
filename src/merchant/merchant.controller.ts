@@ -214,12 +214,13 @@ export class MerchantController {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
 
-    const { data: merchants, total } = await this.merchantService.findMerchantsAssignedToHub(
-      user.hubId,
-      search,
-      pageNum,
-      limitNum
-    );
+    const { data: merchants, total } =
+      await this.merchantService.findMerchantsAssignedToHub(
+        user.hubId,
+        search,
+        pageNum,
+        limitNum,
+      );
 
     return {
       success: true,
@@ -229,7 +230,7 @@ export class MerchantController {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum),
       },
       message: 'Merchants assigned to your hub retrieved successfully',
     };
@@ -269,15 +270,20 @@ export class MerchantController {
   async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
     const updateDto: UpdateProfileDetailsDto = {} as UpdateProfileDetailsDto;
 
-    if (dto.profile_photo_url) updateDto.profile_img_url = dto.profile_photo_url;
+    if (dto.profile_photo_url)
+      updateDto.profile_img_url = dto.profile_photo_url;
     if (dto.business_name) updateDto.business_name = dto.business_name;
-    if (dto.contact_person_name) updateDto.contact_person_name = dto.contact_person_name;
+    if (dto.contact_person_name)
+      updateDto.contact_person_name = dto.contact_person_name;
     if (dto.contact_number) updateDto.contact_number = dto.contact_number;
     if (dto.email !== undefined) updateDto.contact_email = dto.email;
     if (dto.optional_number !== undefined)
       updateDto.optional_phone_number = dto.optional_number;
 
-    return this.merchantService.updateProfileDetails(req.user.merchantId, updateDto);
+    return this.merchantService.updateProfileDetails(
+      req.user.merchantId,
+      updateDto,
+    );
   }
 
   @Roles(UserRole.ADMIN)
@@ -547,7 +553,6 @@ export class MerchantController {
       message: 'Payout method verified successfully',
     };
   }
-
 
   @Patch('profile-details')
   @Roles(UserRole.MERCHANT)

@@ -122,9 +122,7 @@ export class RiderFinanceService {
     );
 
     const totalTasksToday =
-      tasksForToday.pickups +
-      tasksForToday.deliveries +
-      tasksForToday.returned;
+      tasksForToday.pickups + tasksForToday.deliveries + tasksForToday.returned;
 
     return {
       earnings: {

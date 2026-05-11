@@ -112,7 +112,9 @@ export class RiderFinanceController {
   ) {
     const metric = query.metric;
 
-    const metricByParcelStatus: Partial<Record<ParcelStatus, RiderFinanceSummaryMetric>> = {
+    const metricByParcelStatus: Partial<
+      Record<ParcelStatus, RiderFinanceSummaryMetric>
+    > = {
       [ParcelStatus.DELIVERED]: RiderFinanceSummaryMetric.DELIVERED,
       [ParcelStatus.PARTIAL_DELIVERY]:
         RiderFinanceSummaryMetric.PARTIALLY_DELIVERED,

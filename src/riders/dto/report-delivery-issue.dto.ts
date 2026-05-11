@@ -6,9 +6,7 @@ export class ReportDeliveryIssueDto {
   @IsEnum(ParcelIssueType)
   issue_type: ParcelIssueType;
 
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(300)

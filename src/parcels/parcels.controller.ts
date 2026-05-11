@@ -402,15 +402,11 @@ export class ParcelsController {
       throw new ForbiddenException('hubId missing in auth token');
     }
 
-    const parcel = await this.parcelsService.update(
-      id,
-      updateParcelDto,
-      {
-        role,
-        merchantId: merchantId || null,
-        hubId: hubId || null,
-      },
-    );
+    const parcel = await this.parcelsService.update(id, updateParcelDto, {
+      role,
+      merchantId: merchantId || null,
+      hubId: hubId || null,
+    });
 
     const detailedParcel = await this.parcelsService.findOne(
       parcel.id,

@@ -1,4 +1,10 @@
-import { IsUUID, IsArray, ArrayNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsUUID,
+  IsArray,
+  ArrayNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class TransferSelectedParcelsDto {
   /** Target rider to transfer parcels TO */

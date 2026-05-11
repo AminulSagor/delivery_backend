@@ -67,7 +67,12 @@ export class StoresController {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
 
-    const { data: stores, total } = await this.storesService.findAllStores(merchantId, pageNum, limitNum, search);
+    const { data: stores, total } = await this.storesService.findAllStores(
+      merchantId,
+      pageNum,
+      limitNum,
+      search,
+    );
     return {
       stores: stores.map(toStoreDetail),
       total,
@@ -75,7 +80,7 @@ export class StoresController {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum),
       },
       message: 'All stores retrieved successfully',
     };

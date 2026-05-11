@@ -1,4 +1,13 @@
-import { IsOptional, IsString, IsDateString, IsInt, IsEnum, IsUUID, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsInt,
+  IsEnum,
+  IsUUID,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum PerformancePeriod {

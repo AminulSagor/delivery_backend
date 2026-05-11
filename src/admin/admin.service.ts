@@ -285,7 +285,6 @@ export class AdminService {
 
   // ===== DROPDOWN DATA METHODS =====
 
-
   /**
    * Get all stores for a specific merchant (for dropdowns)
    */
@@ -296,7 +295,6 @@ export class AdminService {
       order: { business_name: 'ASC' },
     });
   }
-
 
   // ===== HUB TRANSFER RECORDS =====
 
@@ -554,7 +552,7 @@ export class AdminService {
             p.status === ParcelStatus.RETURN_TO_MERCHANT ||
             p.status === ParcelStatus.PAID_RETURN ||
             p.return_charge_applicable === true ||
-            String(p.return_charge_applicable) === 'true'
+            String(p.return_charge_applicable) === 'true',
         ).length;
 
         return {
@@ -771,8 +769,7 @@ export class AdminService {
     };
 
     const normalizedSortBy = (sortBy || '').trim().toLowerCase();
-    const safeSortBy =
-      sortFieldMap[normalizedSortBy] || 'parcel.created_at';
+    const safeSortBy = sortFieldMap[normalizedSortBy] || 'parcel.created_at';
 
     queryBuilder.orderBy(safeSortBy, order || 'DESC');
 
@@ -792,7 +789,9 @@ export class AdminService {
       const now = new Date();
       const created = parcel.created_at ? new Date(parcel.created_at) : null;
       const ageDays = created
-        ? Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
+        ? Math.floor(
+            (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24),
+          )
         : null;
 
       return {

@@ -36,7 +36,10 @@ export class CarrybeeJobsController {
   }
 
   @Post(':id/requeue')
-  async requeue(@Param('id') id: string, @Body('delayMinutes') delayMinutes = 0) {
+  async requeue(
+    @Param('id') id: string,
+    @Body('delayMinutes') delayMinutes = 0,
+  ) {
     return await this.jobsService.requeueJob(id, Number(delayMinutes || 0));
   }
 

@@ -61,7 +61,10 @@ export class CustomerController {
       };
     }
 
-    return await this.customerService.getCustomerByPhone(phone, user.merchantId);
+    return await this.customerService.getCustomerByPhone(
+      phone,
+      user.merchantId,
+    );
   }
 
   // Get customer by phone number instead of id

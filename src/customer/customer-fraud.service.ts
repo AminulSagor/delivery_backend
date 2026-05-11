@@ -8,7 +8,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
-import { CustomerFraud, CustomerFraudStatus } from './entities/customer-fraud.entity';
+import {
+  CustomerFraud,
+  CustomerFraudStatus,
+} from './entities/customer-fraud.entity';
 import { CreateCustomerFraudDto } from './dto/create-customer-fraud.dto';
 import {
   CustomerFraudReviewAction,
@@ -88,7 +91,10 @@ export class CustomerFraudService {
       customer = await this.customerRepo.findOne({ where: { id: customerId } });
     } else if (phoneNumber) {
       customer = await this.customerRepo.findOne({
-        where: [{ phone_number: phoneNumber }, { secondary_number: phoneNumber }],
+        where: [
+          { phone_number: phoneNumber },
+          { secondary_number: phoneNumber },
+        ],
       });
     }
 
@@ -272,7 +278,9 @@ export class CustomerFraudService {
       .getRawOne();
 
     const deliveredCount = Number(history?.delivered_count || 0);
-    const cancelledReturnedCount = Number(history?.cancelled_returned_count || 0);
+    const cancelledReturnedCount = Number(
+      history?.cancelled_returned_count || 0,
+    );
     const totalOrders = deliveredCount + cancelledReturnedCount;
     const successRate = this.calculateSuccessRate(
       deliveredCount,
@@ -479,7 +487,9 @@ export class CustomerFraudService {
 
     const sortField = sortFieldMap[sortBy] || 'fraud.created_at';
 
-    qb.orderBy(sortField, order).skip((page - 1) * limit).take(limit);
+    qb.orderBy(sortField, order)
+      .skip((page - 1) * limit)
+      .take(limit);
 
     const items = await qb.getMany();
 
