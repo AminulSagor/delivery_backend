@@ -115,7 +115,7 @@ export class HubsController {
   constructor(
     private readonly hubsService: HubsService,
     private readonly parcelsService: ParcelsService,
-  ) { }
+  ) {}
 
   // ===== HUB MANAGER ENDPOINTS =====
   @Roles(UserRole.HUB_MANAGER)
@@ -153,7 +153,11 @@ export class HubsController {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
 
-    const { hubs, total } = await this.hubsService.findAll(pageNum, limitNum, search);
+    const { hubs, total } = await this.hubsService.findAll(
+      pageNum,
+      limitNum,
+      search,
+    );
     return {
       hubs: hubs.map(toHubListItem),
       total,
@@ -161,7 +165,7 @@ export class HubsController {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum),
       },
       message: 'Hubs retrieved successfully',
     };
@@ -725,33 +729,40 @@ export class HubsController {
 
     const assignedRider = detail.assigned_rider
       ? {
-        ...detail.assigned_rider,
-        rider_id: detail.assigned_rider.id,
-        rider_name:
-          detail.assigned_rider.user?.full_name ??
-          detail.assigned_rider.full_name ??
-          null,
-        phone:
-          detail.assigned_rider.user?.phone ??
-          detail.assigned_rider.phone ??
-          null,
-      }
+          ...detail.assigned_rider,
+          rider_id: detail.assigned_rider.id,
+          rider_name:
+            detail.assigned_rider.user?.full_name ??
+            detail.assigned_rider.full_name ??
+            null,
+          phone:
+            detail.assigned_rider.user?.phone ??
+            detail.assigned_rider.phone ??
+            null,
+        }
       : null;
 
     const customerInfo = {
       ...(detail.customer ?? {}),
       customer_id: detail.customer?.id ?? detail.customer_id ?? null,
-      customer_name: detail.customer?.customer_name ?? detail.customer_name ?? null,
-      phone_number: detail.customer?.phone_number ?? detail.customer_phone ?? null,
+      customer_name:
+        detail.customer?.customer_name ?? detail.customer_name ?? null,
+      phone_number:
+        detail.customer?.phone_number ?? detail.customer_phone ?? null,
       secondary_number:
-        detail.customer?.secondary_number ?? detail.customer_secondary_phone ?? null,
+        detail.customer?.secondary_number ??
+        detail.customer_secondary_phone ??
+        null,
       customer_address:
         detail.customer?.customer_address ?? detail.customer_address ?? null,
       // Backward-compatible aliases for existing clients.
       phone: detail.customer?.phone_number ?? detail.customer_phone ?? null,
       secondary_phone:
-        detail.customer?.secondary_number ?? detail.customer_secondary_phone ?? null,
-      address: detail.customer?.customer_address ?? detail.customer_address ?? null,
+        detail.customer?.secondary_number ??
+        detail.customer_secondary_phone ??
+        null,
+      address:
+        detail.customer?.customer_address ?? detail.customer_address ?? null,
     };
 
     return {
@@ -764,8 +775,12 @@ export class HubsController {
           merchant_id: detail.merchant?.id ?? null,
           merchant_name: detail.merchant?.user?.full_name ?? null,
           store_name: detail.store?.business_name ?? null,
-          phone: detail.store?.phone_number ?? detail.merchant?.user?.phone ?? null,
-          address: detail.store?.business_address ?? detail.merchant?.full_address ?? null,
+          phone:
+            detail.store?.phone_number ?? detail.merchant?.user?.phone ?? null,
+          address:
+            detail.store?.business_address ??
+            detail.merchant?.full_address ??
+            null,
         },
 
         assigned_rider: assignedRider,
@@ -885,7 +900,8 @@ export class HubsController {
       data: {
         parcel: toParcelListItem(parcel),
       },
-      message: 'Parcel created successfully. Please receive it from the receive queue.',
+      message:
+        'Parcel created successfully. Please receive it from the receive queue.',
     };
   }
 
@@ -1482,7 +1498,10 @@ export class HubsController {
       );
     }
 
-    const result = await this.parcelsService.bulkResolveReports(dto, effectiveHubId);
+    const result = await this.parcelsService.bulkResolveReports(
+      dto,
+      effectiveHubId,
+    );
     return {
       success: true,
       data: result,
@@ -1574,7 +1593,10 @@ export class HubsController {
   ) {
     // Parse comma-separated exclude IDs
     const excludeRiderIds = excludeRiderIdsStr
-      ? excludeRiderIdsStr.split(',').map((id) => id.trim()).filter((id) => id.length > 0)
+      ? excludeRiderIdsStr
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
       : [];
 
     const riders = await this.hubsService.getAvailableRidersForTransfer(
@@ -1718,8 +1740,9 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: RiderPerformanceQueryDto,
   ) {
-    const effectiveHubId = user.role === UserRole.ADMIN ? query.hub_id : user.hubId;
-    
+    const effectiveHubId =
+      user.role === UserRole.ADMIN ? query.hub_id : user.hubId;
+
     const result = await this.hubsService.getRiderPerformance(effectiveHubId, {
       search: query.search,
       riderId: query.riderId,
@@ -1858,9 +1881,8 @@ export class HubsController {
       throw new BadRequestException('Hub ID is required');
     }
 
-    const result = await this.hubsService.getHubMerchantPerformance(
-      effectiveHubId,
-    );
+    const result =
+      await this.hubsService.getHubMerchantPerformance(effectiveHubId);
 
     return {
       success: true,

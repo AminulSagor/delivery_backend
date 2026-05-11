@@ -39,15 +39,23 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
       mockStores.push({ id, name: data.name });
       return { success: true };
     }),
-    convertWeightToGrams: jest.fn((kg: number) => Math.round(Number(kg) * 1000)),
+    convertWeightToGrams: jest.fn((kg: number) =>
+      Math.round(Number(kg) * 1000),
+    ),
     mapDeliveryType: jest.fn((t: any) => t || 1),
     createOrder: jest.fn().mockImplementation(async (data: any) => {
-      return { consignment_id: `cons_${Math.random().toString(36).substring(2, 8)}`, delivery_fee: '50', cod_fee: 0 };
+      return {
+        consignment_id: `cons_${Math.random().toString(36).substring(2, 8)}`,
+        delivery_fee: '50',
+        cod_fee: 0,
+      };
     }),
   } as any;
 
   beforeAll(async () => {
-    const usePostgres = process.env.USE_POSTGRES_TEST === 'true' || process.env.CARRYBEE_TEST_DB === 'postgres';
+    const usePostgres =
+      process.env.USE_POSTGRES_TEST === 'true' ||
+      process.env.CARRYBEE_TEST_DB === 'postgres';
     const entities = [
       User,
       Merchant,
@@ -88,15 +96,24 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
         StoresService,
         CarrybeeService,
         { provide: CarrybeeApiService, useValue: mockCarrybeeApi },
-        { provide: CoverageAreasService, useValue: { validateLocationIds: jest.fn().mockResolvedValue(true) } },
+        {
+          provide: CoverageAreasService,
+          useValue: { validateLocationIds: jest.fn().mockResolvedValue(true) },
+        },
       ],
     }).compile();
 
     userRepo = moduleRef.get(getRepositoryToken(User)) as Repository<User>;
-    merchantRepo = moduleRef.get(getRepositoryToken(Merchant)) as Repository<Merchant>;
+    merchantRepo = moduleRef.get(
+      getRepositoryToken(Merchant),
+    ) as Repository<Merchant>;
     storeRepo = moduleRef.get(getRepositoryToken(Store)) as Repository<Store>;
-    parcelRepo = moduleRef.get(getRepositoryToken(Parcel)) as Repository<Parcel>;
-    providerRepo = moduleRef.get(getRepositoryToken(ThirdPartyProvider)) as Repository<ThirdPartyProvider>;
+    parcelRepo = moduleRef.get(
+      getRepositoryToken(Parcel),
+    ) as Repository<Parcel>;
+    providerRepo = moduleRef.get(
+      getRepositoryToken(ThirdPartyProvider),
+    ) as Repository<ThirdPartyProvider>;
   });
 
   afterAll(async () => {
@@ -107,10 +124,21 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
     const storesService = moduleRef.get(StoresService) as StoresService;
 
     // create user + merchant
-    const user = (userRepo.create as any)({ full_name: 'Test Merchant', phone: '01700000001', email: 'm@example.com', password_hash: 'x', role: 'MERCHANT', is_active: true } as any);
+    const user = (userRepo.create as any)({
+      full_name: 'Test Merchant',
+      phone: '01700000001',
+      email: 'm@example.com',
+      password_hash: 'x',
+      role: 'MERCHANT',
+      is_active: true,
+    } as any);
     await userRepo.save(user);
 
-    const merchant = (merchantRepo.create as any)({ user_id: (user as any).id, thana: 'T1', district: 'D1' } as any);
+    const merchant = (merchantRepo.create as any)({
+      user_id: user.id,
+      thana: 'T1',
+      district: 'D1',
+    } as any);
     await merchantRepo.save(merchant);
 
     // Prepare dto -- carrybee location ids arbitrary
@@ -126,12 +154,14 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
     // Ensure mock getStores returns empty then returns created store
     mockStores.length = 0;
 
-    const created = await storesService.create(user.id, dto as any);
+    const created = await storesService.create(user.id, dto);
 
     expect(created).toBeDefined();
     // after create, CarrybeeApi.createStore should have been called and mockStores should contain an entry
     expect(mockStores.length).toBeGreaterThan(0);
-    const stored = await storeRepo.findOne({ where: { id: created.id } as any });
+    const stored = await storeRepo.findOne({
+      where: { id: created.id } as any,
+    });
     expect(stored).toBeTruthy();
     expect(stored?.is_carrybee_synced).toBeTruthy();
     expect(stored?.carrybee_store_id).toBeDefined();
@@ -141,24 +171,50 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
     const carrybeeService = moduleRef.get(CarrybeeService) as CarrybeeService;
 
     // create merchant/user
-    const user = (userRepo.create as any)({ full_name: 'Parcel Merchant', phone: '01700000003', email: 'pm@example.com', password_hash: 'x', role: 'MERCHANT', is_active: true } as any);
+    const user = (userRepo.create as any)({
+      full_name: 'Parcel Merchant',
+      phone: '01700000003',
+      email: 'pm@example.com',
+      password_hash: 'x',
+      role: 'MERCHANT',
+      is_active: true,
+    } as any);
     await userRepo.save(user);
-    const merchant = (merchantRepo.create as any)({ user_id: (user as any).id, thana: 'T2', district: 'D2' } as any);
+    const merchant = (merchantRepo.create as any)({
+      user_id: user.id,
+      thana: 'T2',
+      district: 'D2',
+    } as any);
     await merchantRepo.save(merchant);
 
     // create store (assume carrybee sync already done)
-    const store = (storeRepo.create as any)({ merchant_id: (merchant as any).id, store_code: 'TST001', business_name: 'Parcel Store', business_address: 'Addr', phone_number: '01700000004', carrybee_city_id: 1, carrybee_zone_id: 1, carrybee_area_id: 1, is_carrybee_synced: true, carrybee_store_id: 'cb_store_1' } as any);
+    const store = (storeRepo.create as any)({
+      merchant_id: merchant.id,
+      store_code: 'TST001',
+      business_name: 'Parcel Store',
+      business_address: 'Addr',
+      phone_number: '01700000004',
+      carrybee_city_id: 1,
+      carrybee_zone_id: 1,
+      carrybee_area_id: 1,
+      is_carrybee_synced: true,
+      carrybee_store_id: 'cb_store_1',
+    } as any);
     await storeRepo.save(store);
 
     // create provider
-    const provider = (providerRepo.create as any)({ provider_code: 'CARRYBEE', provider_name: 'Carrybee', is_active: true } as any);
+    const provider = (providerRepo.create as any)({
+      provider_code: 'CARRYBEE',
+      provider_name: 'Carrybee',
+      is_active: true,
+    } as any);
     await providerRepo.save(provider);
 
     // create parcel
     const tracking = `T${Date.now()}`;
     const parcel = (parcelRepo.create as any)({
-      merchant_id: (merchant as any).id,
-      store_id: (store as any).id,
+      merchant_id: merchant.id,
+      store_id: store.id,
       tracking_number: tracking,
       delivery_area: 'Area X',
       customer_name: 'Alice',
@@ -174,10 +230,16 @@ describe('Carrybee integration (store creation + parcel assignment)', () => {
     } as any);
     await parcelRepo.save(parcel);
 
-    const result = await carrybeeService.assignParcelToCarrybee(parcel.id, {} as any, 'hub-1');
+    const result = await carrybeeService.assignParcelToCarrybee(
+      parcel.id,
+      {} as any,
+      'hub-1',
+    );
 
     expect(result).toBeDefined();
-    const updated = await parcelRepo.findOne({ where: { id: (parcel as any).id } as any });
+    const updated = await parcelRepo.findOne({
+      where: { id: parcel.id } as any,
+    });
     expect(updated).toBeTruthy();
     expect(updated?.delivery_provider).toBe('CARRYBEE');
     expect(updated?.carrybee_consignment_id).toBeDefined();

@@ -35,7 +35,9 @@ export class StaffService {
     return result;
   }
 
-  private async generateUniqueStaffCode(manager: EntityManager): Promise<string> {
+  private async generateUniqueStaffCode(
+    manager: EntityManager,
+  ): Promise<string> {
     const maxAttempts = 50;
 
     for (let i = 0; i < maxAttempts; i++) {

@@ -238,13 +238,16 @@ export class HubsService {
       if (search) {
         query.andWhere(
           '(hub.branch_name ILIKE :search OR hub.hub_code ILIKE :search OR hub.manager_phone ILIKE :search OR hub.area ILIKE :search)',
-          { search: `%${search}%` }
+          { search: `%${search}%` },
         );
       }
 
       query.orderBy('hub.created_at', 'DESC');
 
-      const [hubs, total] = await query.skip(skip).take(limit).getManyAndCount();
+      const [hubs, total] = await query
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
 
       this.logger.log(`Retrieved ${hubs.length} hubs`);
       return { hubs, total };
@@ -622,15 +625,25 @@ export class HubsService {
         WHERE r.is_active = true ${activeRidersHubFilter}
       `;
 
-      const [riderStats, countResult, overallResult, activeRidersResult] = await Promise.all([
-        this.dataSource.query(statsQuery + ` LIMIT ${limit} OFFSET ${offset}`, params),
-        this.dataSource.query(countQuery, countFilterParams),
-        this.dataSource.query(overallQuery, overallParams),
-        this.dataSource.query(activeRidersCountQuery, activeRidersCountParams),
-      ]);
+      const [riderStats, countResult, overallResult, activeRidersResult] =
+        await Promise.all([
+          this.dataSource.query(
+            statsQuery + ` LIMIT ${limit} OFFSET ${offset}`,
+            params,
+          ),
+          this.dataSource.query(countQuery, countFilterParams),
+          this.dataSource.query(overallQuery, overallParams),
+          this.dataSource.query(
+            activeRidersCountQuery,
+            activeRidersCountParams,
+          ),
+        ]);
 
       const total = parseInt(countResult[0]?.total || '0', 10);
-      const totalActiveRiders = parseInt(activeRidersResult[0]?.total_active || '0', 10);
+      const totalActiveRiders = parseInt(
+        activeRidersResult[0]?.total_active || '0',
+        10,
+      );
 
       // Overall metrics (across all riders in the hub, not just paginated)
       const overall = overallResult[0] || {};
@@ -638,9 +651,10 @@ export class HubsService {
       const totalRescheduled = parseInt(overall.total_rescheduled || '0', 10);
       const totalReturned = parseInt(overall.total_returned || '0', 10);
       const totalAssigned = parseInt(overall.total_assigned || '0', 10);
-      const overallSuccessRate = totalAssigned > 0
-        ? Math.round((totalDelivered / totalAssigned) * 1000) / 10
-        : 0;
+      const overallSuccessRate =
+        totalAssigned > 0
+          ? Math.round((totalDelivered / totalAssigned) * 1000) / 10
+          : 0;
 
       // Calculate per-rider stats
       const riders = riderStats.map((row: any) => {
@@ -649,10 +663,10 @@ export class HubsService {
         const returned = parseInt(row.returned, 10);
         const assigned = parseInt(row.assigned, 10);
         const commissionPerDelivery = Number(row.commission_per_delivery) || 0;
-        const commission = Math.round(delivered * commissionPerDelivery * 100) / 100;
-        const successRate = assigned > 0
-          ? Math.round((delivered / assigned) * 1000) / 10
-          : 0;
+        const commission =
+          Math.round(delivered * commissionPerDelivery * 100) / 100;
+        const successRate =
+          assigned > 0 ? Math.round((delivered / assigned) * 1000) / 10 : 0;
 
         return {
           rider_id: row.rider_id,
@@ -671,7 +685,7 @@ export class HubsService {
 
       this.logger.log(
         `Rider performance for hub ${hubId}: ${riders.length} riders, ` +
-        `overall success rate: ${overallSuccessRate}%`,
+          `overall success rate: ${overallSuccessRate}%`,
       );
 
       return {
@@ -3122,7 +3136,13 @@ export class HubsService {
       sortBy?: string;
       order?: 'ASC' | 'DESC';
     } = {},
-  ): Promise<{ riders: any[]; total: number; page: number; limit: number; totalPages: number }> {
+  ): Promise<{
+    riders: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     try {
       const page = options.page || 1;
       const limit = Math.min(options.limit || 20, 100);
@@ -3182,11 +3202,14 @@ export class HubsService {
       const sortField = allowedSortFields[sortBy] || 'rider.created_at';
       query.orderBy(sortField, order);
 
-      const [allRiders, totalBeforeStatusFilter] = await query.getManyAndCount();
+      const [allRiders, totalBeforeStatusFilter] =
+        await query.getManyAndCount();
 
       // Derive rider_status and apply on_duty/break filter
       let ridersWithStatus = allRiders.map((rider) => {
-        const assignedCount = Number((rider as any).assigned_parcels_count ?? 0);
+        const assignedCount = Number(
+          (rider as any).assigned_parcels_count ?? 0,
+        );
         let riderStatus: string;
         if (!rider.is_active) {
           riderStatus = 'Leave';
@@ -3207,16 +3230,23 @@ export class HubsService {
           assigned_parcels_count: assignedCount,
           is_active: rider.is_active,
           hub: rider.hub
-            ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+            ? {
+                id: rider.hub.id,
+                branch_name: (rider.hub as any).branch_name ?? null,
+              }
             : null,
         };
       });
 
       // Post-filter for on_duty / break (need assigned count to determine)
       if (options.status === 'on_duty') {
-        ridersWithStatus = ridersWithStatus.filter((r) => r.rider_status === 'On Duty');
+        ridersWithStatus = ridersWithStatus.filter(
+          (r) => r.rider_status === 'On Duty',
+        );
       } else if (options.status === 'break') {
-        ridersWithStatus = ridersWithStatus.filter((r) => r.rider_status === 'Break');
+        ridersWithStatus = ridersWithStatus.filter(
+          (r) => r.rider_status === 'Break',
+        );
       }
 
       const total = ridersWithStatus.length;
@@ -3300,7 +3330,9 @@ export class HubsService {
       const riders = await query.getMany();
 
       const result = riders.map((rider) => {
-        const assignedCount = Number((rider as any).assigned_parcels_count ?? 0);
+        const assignedCount = Number(
+          (rider as any).assigned_parcels_count ?? 0,
+        );
         const riderStatus = assignedCount > 0 ? 'On Duty' : 'Break';
 
         return {
@@ -3314,7 +3346,10 @@ export class HubsService {
           license_no: rider.license_no ?? null,
           assigned_parcels_count: assignedCount,
           hub: rider.hub
-            ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+            ? {
+                id: rider.hub.id,
+                branch_name: (rider.hub as any).branch_name ?? null,
+              }
             : null,
         };
       });

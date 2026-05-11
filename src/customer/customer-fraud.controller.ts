@@ -59,7 +59,8 @@ export class CustomerFraudController {
   @Roles(UserRole.MERCHANT)
   @HttpCode(HttpStatus.OK)
   async getFraudDetailsByCustomerId(@Param('customerId') customerId: string) {
-    const data = await this.fraudService.getCustomerFraudDetailsById(customerId);
+    const data =
+      await this.fraudService.getCustomerFraudDetailsById(customerId);
     return {
       success: true,
       data,

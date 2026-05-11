@@ -43,7 +43,9 @@ export class BanksService {
     const bank = this.bankRepository.create(createBankDto);
     const savedBank = await this.bankRepository.save(bank);
 
-    this.logger.log(`[BANK CREATED] ${savedBank.name} (${savedBank.short_name}) - ${savedBank.branch_name || 'no branch'}`);
+    this.logger.log(
+      `[BANK CREATED] ${savedBank.name} (${savedBank.short_name}) - ${savedBank.branch_name || 'no branch'}`,
+    );
     return savedBank;
   }
 
@@ -85,8 +87,14 @@ export class BanksService {
 
     // Check for duplicate composite key if relevant fields are being updated
     const newName = updateBankDto.name || bank.name;
-    const newDistrict = updateBankDto.district !== undefined ? updateBankDto.district : bank.district;
-    const newBranch = updateBankDto.branch_name !== undefined ? updateBankDto.branch_name : bank.branch_name;
+    const newDistrict =
+      updateBankDto.district !== undefined
+        ? updateBankDto.district
+        : bank.district;
+    const newBranch =
+      updateBankDto.branch_name !== undefined
+        ? updateBankDto.branch_name
+        : bank.branch_name;
 
     if (newDistrict && newBranch) {
       const existing = await this.bankRepository
@@ -157,7 +165,9 @@ export class BanksService {
    * Get distinct districts for a given bank name
    * Step 2 of cascading selection: User selected a bank name, now sees available districts
    */
-  async getDistrictsByBankName(bankName: string): Promise<{ districts: string[] }> {
+  async getDistrictsByBankName(
+    bankName: string,
+  ): Promise<{ districts: string[] }> {
     const result = await this.bankRepository
       .createQueryBuilder('bank')
       .select('DISTINCT bank.district', 'district')
@@ -226,11 +236,19 @@ export class BanksService {
    */
   async seedDefaultBanks(): Promise<{ message: string; created: number }> {
     const defaultBanks = [
-      { name: 'Dutch Bangla Bank Limited', short_name: 'DBBL', display_order: 1 },
+      {
+        name: 'Dutch Bangla Bank Limited',
+        short_name: 'DBBL',
+        display_order: 1,
+      },
       { name: 'BRAC Bank Limited', short_name: 'BRAC', display_order: 2 },
       { name: 'City Bank Limited', short_name: 'CBL', display_order: 3 },
       { name: 'Eastern Bank Limited', short_name: 'EBL', display_order: 4 },
-      { name: 'Islami Bank Bangladesh Limited', short_name: 'IBBL', display_order: 5 },
+      {
+        name: 'Islami Bank Bangladesh Limited',
+        short_name: 'IBBL',
+        display_order: 5,
+      },
       { name: 'Prime Bank Limited', short_name: 'PBL', display_order: 6 },
       { name: 'Pubali Bank Limited', short_name: 'PUBALI', display_order: 7 },
       { name: 'Sonali Bank Limited', short_name: 'SBL', display_order: 8 },
@@ -240,12 +258,28 @@ export class BanksService {
       { name: 'Bangladesh Krishi Bank', short_name: 'BKB', display_order: 12 },
       { name: 'Standard Chartered Bank', short_name: 'SCB', display_order: 13 },
       { name: 'HSBC Bangladesh', short_name: 'HSBC', display_order: 14 },
-      { name: 'Mutual Trust Bank Limited', short_name: 'MTB', display_order: 15 },
-      { name: 'United Commercial Bank Limited', short_name: 'UCB', display_order: 16 },
+      {
+        name: 'Mutual Trust Bank Limited',
+        short_name: 'MTB',
+        display_order: 15,
+      },
+      {
+        name: 'United Commercial Bank Limited',
+        short_name: 'UCB',
+        display_order: 16,
+      },
       { name: 'Uttara Bank Limited', short_name: 'UBL', display_order: 17 },
       { name: 'Bank Asia Limited', short_name: 'BAL', display_order: 18 },
-      { name: 'Social Islami Bank Limited', short_name: 'SIBL', display_order: 19 },
-      { name: 'Al-Arafah Islami Bank Limited', short_name: 'AIBL', display_order: 20 },
+      {
+        name: 'Social Islami Bank Limited',
+        short_name: 'SIBL',
+        display_order: 19,
+      },
+      {
+        name: 'Al-Arafah Islami Bank Limited',
+        short_name: 'AIBL',
+        display_order: 20,
+      },
       { name: 'Exim Bank Limited', short_name: 'EXIM', display_order: 21 },
       { name: 'Jamuna Bank Limited', short_name: 'JAMUNA', display_order: 22 },
       { name: 'Southeast Bank Limited', short_name: 'SEBL', display_order: 23 },

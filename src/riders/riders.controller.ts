@@ -869,8 +869,7 @@ export class RidersController {
     return {
       success: true,
       data: toParcelActionResponse(parcel),
-      message:
-        'Delivery issue submitted to hub manager and admin successfully',
+      message: 'Delivery issue submitted to hub manager and admin successfully',
     };
   }
 

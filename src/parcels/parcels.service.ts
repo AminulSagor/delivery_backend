@@ -154,14 +154,17 @@ export class ParcelsService {
     private carrybeeService: CarrybeeService,
     private smsService: SmsService,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   private formatSmsAmount(amount: number): string {
     const value = Number(amount || 0);
     if (Number.isInteger(value)) {
       return `${value}`;
     }
-    return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+    return value
+      .toFixed(2)
+      .replace(/\.00$/, '')
+      .replace(/(\.\d)0$/, '$1');
   }
 
   private async sendAssignForRiderSms(parcel: Parcel, rider: Rider) {
@@ -740,7 +743,9 @@ export class ParcelsService {
   private parseDateOnlyAsUtc(value: string, fieldName: string): Date {
     const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!match) {
-      throw new BadRequestException(`${fieldName} must be in YYYY-MM-DD format`);
+      throw new BadRequestException(
+        `${fieldName} must be in YYYY-MM-DD format`,
+      );
     }
 
     const year = Number(match[1]);
@@ -753,7 +758,9 @@ export class ParcelsService {
       parsed.getUTCMonth() !== month - 1 ||
       parsed.getUTCDate() !== day
     ) {
-      throw new BadRequestException(`${fieldName} is not a valid calendar date`);
+      throw new BadRequestException(
+        `${fieldName} is not a valid calendar date`,
+      );
     }
 
     return parsed;
@@ -1195,8 +1202,8 @@ export class ParcelsService {
 
     this.logger.log(
       `[CHARGES CALCULATED] Zone: ${pricingZone}, Delivery: ${baseDeliveryCharge}, ` +
-      `Weight: ${weightCharge} (${weight}kg), COD: ${codCharge}, Discount: ${discount}, ` +
-      `Total: ${totalCharge}, Receivable: ${receivableAmount} BDT`,
+        `Weight: ${weightCharge} (${weight}kg), COD: ${codCharge}, Discount: ${discount}, ` +
+        `Total: ${totalCharge}, Receivable: ${receivableAmount} BDT`,
     );
 
     return {
@@ -1267,8 +1274,8 @@ export class ParcelsService {
 
       const deliveryArea = createParcelDto.delivery_coverage_area_id
         ? await this.coverageAreaRepository.findOne({
-          where: { id: createParcelDto.delivery_coverage_area_id },
-        })
+            where: { id: createParcelDto.delivery_coverage_area_id },
+          })
         : null;
       if (createParcelDto.delivery_coverage_area_id && !deliveryArea)
         throw new NotFoundException(
@@ -1577,8 +1584,8 @@ export class ParcelsService {
       // 6. Carrybee Mapping (Optional/Existing logic)
       const deliveryArea = createParcelDto.delivery_coverage_area_id
         ? await this.coverageAreaRepository.findOne({
-          where: { id: createParcelDto.delivery_coverage_area_id },
-        })
+            where: { id: createParcelDto.delivery_coverage_area_id },
+          })
         : null;
 
       // 7. Create Parcel Entity
@@ -1906,10 +1913,13 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
-          startDate,
-          endDate,
-        });
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate,
+            endDate,
+          },
+        );
       }
 
       this.applyParcelListFilters(queryBuilder, {
@@ -2295,7 +2305,7 @@ export class ParcelsService {
 
       this.logger.log(
         `[TOTAL PRICING] Zone: ${pricingZone}, Delivery: ৳${deliveryFee}, ` +
-        `COD: ৳${codFee}, Weight: ৳${weightCharge}, Discount: -৳${discount}, Total: ৳${totalFee}`,
+          `COD: ৳${codFee}, Weight: ৳${weightCharge}, Discount: -৳${discount}, Total: ৳${totalFee}`,
       );
 
       return {
@@ -2390,10 +2400,13 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
-          startDate,
-          endDate,
-        });
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate,
+            endDate,
+          },
+        );
       }
 
       if (hubId) {
@@ -2446,7 +2459,7 @@ export class ParcelsService {
 
   /**
    * Get all parcels received by a hub (for hub managers)
-    * Returns full non-sensitive parcel payloads for hub manager views
+   * Returns full non-sensitive parcel payloads for hub manager views
    */
   async findAllForHub(
     hubId: string,
@@ -2531,10 +2544,13 @@ export class ParcelsService {
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
         startDate.setHours(0, 0, 0, 0);
-        queryBuilder.andWhere('parcel.created_at BETWEEN :startDate AND :endDate', {
-          startDate,
-          endDate,
-        });
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate,
+            endDate,
+          },
+        );
       }
 
       this.applyParcelListFilters(queryBuilder, {
@@ -2747,7 +2763,11 @@ export class ParcelsService {
           }
         } else {
           try {
-            await this.carrybeeService.assignParcelToCarrybee(parcel.id, {} as any, hubId);
+            await this.carrybeeService.assignParcelToCarrybee(
+              parcel.id,
+              {} as any,
+              hubId,
+            );
             this.logger.log(
               `[AUTO ASSIGN SUCCESS] Parcel ${parcel.tracking_number} assigned to Carrybee`,
             );
@@ -2912,13 +2932,15 @@ export class ParcelsService {
             }
           } else {
             try {
-              const assignResult = await this.carrybeeService.assignParcelToCarrybee(
-                parcel.id,
-                {} as any,
-                hubId,
-              );
+              const assignResult =
+                await this.carrybeeService.assignParcelToCarrybee(
+                  parcel.id,
+                  {} as any,
+                  hubId,
+                );
               carrybeeAssigned = true;
-              carrybeeConsignmentId = assignResult.carrybee_consignment_id || null;
+              carrybeeConsignmentId =
+                assignResult.carrybee_consignment_id || null;
               carrybeeDeliveryFee = assignResult.delivery_fee
                 ? Number(assignResult.delivery_fee)
                 : null;
@@ -2983,7 +3005,12 @@ export class ParcelsService {
    * - `dto.statuses` (optional): array of parcel statuses to include; defaults to activeParcelStatuses
    */
   async bulkTransferFromRiders(
-    dto: { target_rider_id: string; source_rider_ids: string[]; statuses?: string[]; notes?: string },
+    dto: {
+      target_rider_id: string;
+      source_rider_ids: string[];
+      statuses?: string[];
+      notes?: string;
+    },
     hubId?: string,
     bypassHubCheck: boolean = false,
   ): Promise<{
@@ -3023,21 +3050,29 @@ export class ParcelsService {
     const foundIds = sourceRiders.map((r) => r.id);
     const missing = source_rider_ids.filter((id) => !foundIds.includes(id));
     if (missing.length > 0) {
-      throw new NotFoundException(`Source rider(s) not found: ${missing.join(',')}`);
+      throw new NotFoundException(
+        `Source rider(s) not found: ${missing.join(',')}`,
+      );
     }
     if (!bypassHubCheck) {
       const wrongHub = sourceRiders.find((r) => r.hub_id !== hubId);
       if (wrongHub) {
-        throw new BadRequestException('One or more source riders do not belong to your hub');
+        throw new BadRequestException(
+          'One or more source riders do not belong to your hub',
+        );
       }
     }
 
     // Determine statuses to include
-    const statusesToUse: any[] = statuses && statuses.length > 0 ? statuses : this.activeParcelStatuses;
+    const statusesToUse: any[] =
+      statuses && statuses.length > 0 ? statuses : this.activeParcelStatuses;
 
     // Find parcels assigned to source riders with matching statuses
     const parcels = await this.parcelRepository.find({
-      where: { assigned_rider_id: In(source_rider_ids), status: In(statusesToUse as any) },
+      where: {
+        assigned_rider_id: In(source_rider_ids),
+        status: In(statusesToUse as any),
+      },
       relations: [
         'merchant',
         'merchant.user',
@@ -3075,7 +3110,13 @@ export class ParcelsService {
         try {
           // Ensure parcel is in hub (for hub managers)
           if (!bypassHubCheck && parcel.current_hub_id !== hubId) {
-            results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: false, error: 'Parcel is not in your hub' });
+            results.push({
+              parcel_id: parcel.id,
+              parcel_tx_id: parcel.parcel_tx_id,
+              tracking_number: parcel.tracking_number,
+              success: false,
+              error: 'Parcel is not in your hub',
+            });
             failed++;
             continue;
           }
@@ -3107,15 +3148,31 @@ export class ParcelsService {
             ],
           });
 
-          results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: true });
+          results.push({
+            parcel_id: parcel.id,
+            parcel_tx_id: parcel.parcel_tx_id,
+            tracking_number: parcel.tracking_number,
+            success: true,
+          });
           transferred++;
 
-          this.logger.log(`[BULK TRANSFER] Parcel: ${parcel.tracking_number}, From Riders: ${source_rider_ids.join(',')}, To: ${targetRider.user?.full_name || targetRider.id}`);
+          this.logger.log(
+            `[BULK TRANSFER] Parcel: ${parcel.tracking_number}, From Riders: ${source_rider_ids.join(',')}, To: ${targetRider.user?.full_name || targetRider.id}`,
+          );
 
           // Notify rider via SMS
-          await this.sendAssignForRiderSms(updatedParcel || parcel, targetRider);
+          await this.sendAssignForRiderSms(
+            updatedParcel || parcel,
+            targetRider,
+          );
         } catch (err: any) {
-          results.push({ parcel_id: parcel.id, parcel_tx_id: parcel.parcel_tx_id, tracking_number: parcel.tracking_number, success: false, error: err.message || 'Unknown error' });
+          results.push({
+            parcel_id: parcel.id,
+            parcel_tx_id: parcel.parcel_tx_id,
+            tracking_number: parcel.tracking_number,
+            success: false,
+            error: err.message || 'Unknown error',
+          });
           failed++;
         }
       }
@@ -3200,11 +3257,14 @@ export class ParcelsService {
           throw new NotFoundException(`Parcel with ID ${id} not found`);
         }
 
-        const isPhysicallyAtHub = parcelWithStore.current_hub_id === actor.hubId;
+        const isPhysicallyAtHub =
+          parcelWithStore.current_hub_id === actor.hubId;
         const belongsToHubStore = parcelWithStore.store?.hub_id === actor.hubId;
 
         if (!isPhysicallyAtHub && !belongsToHubStore) {
-          throw new ForbiddenException('This parcel does not belong to your hub');
+          throw new ForbiddenException(
+            'This parcel does not belong to your hub',
+          );
         }
 
         if (!hubAdminEditableStatuses.includes(parcelWithStore.status)) {
@@ -3231,7 +3291,11 @@ export class ParcelsService {
           );
         }
 
-        if (!hubManagerPostReceiveEditableStatuses.includes(parcelWithStore.status)) {
+        if (
+          !hubManagerPostReceiveEditableStatuses.includes(
+            parcelWithStore.status,
+          )
+        ) {
           throw new BadRequestException(
             `Hub manager can update phone/address/amount only after parcel is received (IN_HUB). Current status: ${parcelWithStore.status}`,
           );
@@ -3243,7 +3307,9 @@ export class ParcelsService {
           );
         }
       } else {
-        throw new ForbiddenException('You do not have permission to update this parcel');
+        throw new ForbiddenException(
+          'You do not have permission to update this parcel',
+        );
       }
 
       if (updateParcelDto.customer_phone) {
@@ -3263,14 +3329,21 @@ export class ParcelsService {
         const targetMerchantId = actor.merchantId || parcel.merchant_id;
         // merchantId is the merchant entity ID, use it directly for store lookup
         const store = await this.storeRepository.findOne({
-          where: { id: updateParcelDto.store_id, merchant_id: targetMerchantId },
+          where: {
+            id: updateParcelDto.store_id,
+            merchant_id: targetMerchantId,
+          },
         });
         if (!store)
           throw new NotFoundException(
             'Store not found or does not belong to this merchant.',
           );
 
-        if (actor.role === UserRole.HUB_MANAGER && actor.hubId && store.hub_id !== actor.hubId) {
+        if (
+          actor.role === UserRole.HUB_MANAGER &&
+          actor.hubId &&
+          store.hub_id !== actor.hubId
+        ) {
           throw new ForbiddenException('Store does not belong to your hub');
         }
       }
@@ -3291,7 +3364,8 @@ export class ParcelsService {
         parcel.is_cod = updateParcelDto.product_price > 0;
         parcel.receivable_amount =
           Math.round(
-            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) * 100,
+            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) *
+              100,
           ) / 100;
       }
 
@@ -3431,7 +3505,7 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .where('parcel.status = :status', { status: ParcelStatus.IN_HUB })
-      .andWhere('parcel.assigned_rider_id IS NULL')
+      .andWhere('parcel.assigned_rider_id IS NULL');
     // If hubId is provided, restrict to parcels located at that hub. Otherwise return system-wide parcels.
     if (hubId) {
       queryBuilder.andWhere(
@@ -3504,7 +3578,9 @@ export class ParcelsService {
     // Verify parcel is in the hub manager's hub (check current_hub_id)
     if (!bypassHubCheck) {
       if (!parcel.current_hub_id || parcel.current_hub_id !== hubId) {
-        throw new ForbiddenException('You can only assign parcels from your hub');
+        throw new ForbiddenException(
+          'You can only assign parcels from your hub',
+        );
       }
     }
 
@@ -3693,7 +3769,10 @@ export class ParcelsService {
         }
 
         // Verify parcel is in the hub manager's hub (check current_hub_id)
-        if (!bypassHubCheck && (!parcel.current_hub_id || parcel.current_hub_id !== hubId)) {
+        if (
+          !bypassHubCheck &&
+          (!parcel.current_hub_id || parcel.current_hub_id !== hubId)
+        ) {
           results.push({
             parcel_id: parcelId,
             parcel_tx_id: parcel.parcel_tx_id,
@@ -4327,7 +4406,7 @@ export class ParcelsService {
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
         `Cannot return parcel with status: ${parcel.status}. ` +
-        `Use delivery verification to mark as RETURNED or PAID_RETURN first.`,
+          `Use delivery verification to mark as RETURNED or PAID_RETURN first.`,
       );
     }
 
@@ -4677,7 +4756,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.transferred_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.transferred_at',
+    );
     queryBuilder.skip(skip).take(limit);
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
@@ -4900,7 +4984,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.transferred_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.transferred_at',
+    );
     queryBuilder.skip(skip).take(limit);
 
     const [parcels, total] = await queryBuilder.getManyAndCount();
@@ -5025,7 +5114,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.updated_at',
+    );
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -5128,11 +5222,15 @@ export class ParcelsService {
     const skip = (page - 1) * limit;
 
     // If status is provided, use it; otherwise use default successful statuses
-    const statuses = status 
-      ? (status === 'ACTIVE' 
-          ? [ParcelStatus.DELIVERED, ParcelStatus.PARTIAL_DELIVERY, ParcelStatus.EXCHANGE, ParcelStatus.PAID_RETURN]
-          : [status]
-        )
+    const statuses = status
+      ? status === 'ACTIVE'
+        ? [
+            ParcelStatus.DELIVERED,
+            ParcelStatus.PARTIAL_DELIVERY,
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
+          ]
+        : [status]
       : [
           ParcelStatus.DELIVERED,
           ParcelStatus.PARTIAL_DELIVERY,
@@ -5178,7 +5276,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.delivered_at',
+    );
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -5315,7 +5418,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.delivered_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.delivered_at',
+    );
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
@@ -5429,7 +5537,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.updated_at',
+    );
 
     const total = await queryBuilder.getCount();
     queryBuilder.skip(skip).take(limit);
@@ -5512,7 +5625,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.updated_at',
+    );
 
     const total = await queryBuilder.getCount();
     queryBuilder.skip(skip).take(limit);
@@ -5523,18 +5641,18 @@ export class ParcelsService {
     const returnParcels =
       parcelIds.length > 0
         ? await this.parcelRepository.find({
-          where: {
-            original_parcel_id: In(parcelIds),
-            is_return_parcel: true,
-          },
-          select: [
-            'id',
-            'parcel_tx_id',
-            'tracking_number',
-            'status',
-            'original_parcel_id',
-          ],
-        })
+            where: {
+              original_parcel_id: In(parcelIds),
+              is_return_parcel: true,
+            },
+            select: [
+              'id',
+              'parcel_tx_id',
+              'tracking_number',
+              'status',
+              'original_parcel_id',
+            ],
+          })
         : [];
 
     // Create a map for quick lookup
@@ -5551,11 +5669,11 @@ export class ParcelsService {
         ...baseItem,
         return_parcel: returnParcel
           ? {
-            id: returnParcel.id,
-            parcel_tx_id: returnParcel.parcel_tx_id,
-            tracking_number: returnParcel.tracking_number,
-            status: returnParcel.status,
-          }
+              id: returnParcel.id,
+              parcel_tx_id: returnParcel.parcel_tx_id,
+              tracking_number: returnParcel.tracking_number,
+              status: returnParcel.status,
+            }
           : null,
       };
     });
@@ -5612,7 +5730,7 @@ export class ParcelsService {
     if (hubId) {
       queryBuilder.where(
         '(parcel.current_hub_id = :hubId OR store.hub_id = :hubId)',
-        { hubId }
+        { hubId },
       );
     } else {
       queryBuilder.where('1=1');
@@ -5635,7 +5753,12 @@ export class ParcelsService {
       deliveryType,
     });
 
-    this.applyParcelListSorting(queryBuilder, sortBy, order, 'parcel.updated_at');
+    this.applyParcelListSorting(
+      queryBuilder,
+      sortBy,
+      order,
+      'parcel.updated_at',
+    );
 
     const total = await queryBuilder.getCount();
     queryBuilder.skip(skip).take(limit);
@@ -5655,7 +5778,11 @@ export class ParcelsService {
    *
    * Used for: RETURNED, PAID_RETURN, PARTIAL_DELIVERY, EXCHANGE outcomes
    */
-  async markReturnToMerchant(parcelId: string, hubId: string | null, notes?: string) {
+  async markReturnToMerchant(
+    parcelId: string,
+    hubId: string | null,
+    notes?: string,
+  ) {
     const whereCondition: any = { id: parcelId };
     if (hubId) {
       whereCondition.current_hub_id = hubId;
@@ -5667,7 +5794,9 @@ export class ParcelsService {
     });
 
     if (!originalParcel) {
-      throw new NotFoundException(hubId ? 'Parcel not found in your hub' : 'Parcel not found');
+      throw new NotFoundException(
+        hubId ? 'Parcel not found in your hub' : 'Parcel not found',
+      );
     }
 
     const allowedStatuses = [
@@ -5699,8 +5828,8 @@ export class ParcelsService {
     if (!merchantId) {
       this.logger.error(
         `[RETURN TO MERCHANT] No merchant found for parcel ${parcelId}. ` +
-        `parcel.merchant_id: ${originalParcel.merchant_id}, ` +
-        `store.merchant_id: ${originalParcel.store?.merchant_id}`,
+          `parcel.merchant_id: ${originalParcel.merchant_id}, ` +
+          `store.merchant_id: ${originalParcel.store?.merchant_id}`,
       );
       throw new BadRequestException(
         'Cannot create return parcel: No merchant found for this parcel',
@@ -5803,7 +5932,7 @@ export class ParcelsService {
 
     this.logger.log(
       `[RETURN TO MERCHANT] Original: ${originalParcel.tracking_number}, ` +
-      `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`,
+        `Return Parcel: ${returnParcel.tracking_number}, Hub: ${hubId}`,
     );
 
     return {
@@ -5904,7 +6033,9 @@ export class ParcelsService {
     });
 
     if (!parcel) {
-      throw new NotFoundException(hubId ? 'Parcel not found in your hub' : 'Parcel not found');
+      throw new NotFoundException(
+        hubId ? 'Parcel not found in your hub' : 'Parcel not found',
+      );
     }
 
     const allowedStatuses = [
@@ -6618,7 +6749,9 @@ export class ParcelsService {
     }
 
     // Finalize report resolution
-    const updatedParcel = await this.parcelRepository.findOne({ where: { id: parcelId } });
+    const updatedParcel = await this.parcelRepository.findOne({
+      where: { id: parcelId },
+    });
     if (updatedParcel) {
       updatedParcel.is_issue_resolved = true;
       return await this.parcelRepository.save(updatedParcel);
@@ -6650,15 +6783,23 @@ export class ParcelsService {
     });
 
     for (const id of dto.parcel_ids) {
-      const parcel = parcels.find(p => p.id === id);
+      const parcel = parcels.find((p) => p.id === id);
 
       if (!parcel) {
-        results.push({ parcel_id: id, success: false, message: 'Parcel not found in your hub' });
+        results.push({
+          parcel_id: id,
+          success: false,
+          message: 'Parcel not found in your hub',
+        });
         continue;
       }
 
       if (parcel.is_issue_resolved) {
-        results.push({ parcel_id: id, success: false, message: 'Report is already resolved' });
+        results.push({
+          parcel_id: id,
+          success: false,
+          message: 'Report is already resolved',
+        });
         continue;
       }
 
@@ -6680,13 +6821,21 @@ export class ParcelsService {
         parcel.is_issue_resolved = true;
         await this.parcelRepository.save(parcel);
 
-        results.push({ parcel_id: id, success: true, message: 'Resolved successfully' });
+        results.push({
+          parcel_id: id,
+          success: true,
+          message: 'Resolved successfully',
+        });
       } catch (e: any) {
-        results.push({ parcel_id: id, success: false, message: e.message || 'Unknown error' });
+        results.push({
+          parcel_id: id,
+          success: false,
+          message: e.message || 'Unknown error',
+        });
       }
     }
 
-    const successCount = results.filter(r => r.success).length;
+    const successCount = results.filter((r) => r.success).length;
     return {
       results,
       success_count: successCount,
@@ -6709,7 +6858,9 @@ export class ParcelsService {
     }
 
     if (!parcel.is_issue_resolved) {
-      throw new BadRequestException('Cannot delete an unresolved report. Please resolve it first.');
+      throw new BadRequestException(
+        'Cannot delete an unresolved report. Please resolve it first.',
+      );
     }
 
     // Clear the issue fields to effectively 'delete' the report from the parcel
@@ -6779,7 +6930,9 @@ export class ParcelsService {
     ];
 
     const allowedStatuses =
-      role === UserRole.ADMIN ? adminAllowedStatuses : hubManagerAllowedStatuses;
+      role === UserRole.ADMIN
+        ? adminAllowedStatuses
+        : hubManagerAllowedStatuses;
 
     if (!allowedStatuses.includes(parcel.status)) {
       throw new BadRequestException(
@@ -6807,7 +6960,7 @@ export class ParcelsService {
         (Number(parcel.delivery_charge) +
           Number(parcel.weight_charge) +
           Number(parcel.cod_charge)) *
-        100,
+          100,
       ) / 100;
 
     // receivable_amount = cod_amount - total_charge
@@ -6821,8 +6974,8 @@ export class ParcelsService {
 
     this.logger.log(
       `[HUB CHARGE OVERRIDE] Parcel: ${parcelId}, ` +
-      `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
-      `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
+        `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
+        `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
     );
 
     return updated;
@@ -6908,9 +7061,13 @@ export class ParcelsService {
 
     // Status filter
     if (options.status) {
-      queryBuilder.andWhere('parcel.status = :status', { status: options.status });
+      queryBuilder.andWhere('parcel.status = :status', {
+        status: options.status,
+      });
     } else {
-      queryBuilder.andWhere('parcel.status IN (:...statuses)', { statuses: activeAssignedStatuses });
+      queryBuilder.andWhere('parcel.status IN (:...statuses)', {
+        statuses: activeAssignedStatuses,
+      });
     }
 
     // Search filter
@@ -6932,7 +7089,9 @@ export class ParcelsService {
 
     // Merchant filters
     if (options.merchantId) {
-      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId: options.merchantId });
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', {
+        merchantId: options.merchantId,
+      });
     }
     if (options.merchantName && options.merchantName.trim()) {
       queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
@@ -6942,15 +7101,21 @@ export class ParcelsService {
 
     // Delivery type filter
     if (options.deliveryType !== undefined) {
-      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', { deliveryType: options.deliveryType });
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', {
+        deliveryType: options.deliveryType,
+      });
     }
 
     // Amount range filters
     if (options.minAmount !== undefined) {
-      queryBuilder.andWhere('parcel.cod_amount >= :minAmount', { minAmount: options.minAmount });
+      queryBuilder.andWhere('parcel.cod_amount >= :minAmount', {
+        minAmount: options.minAmount,
+      });
     }
     if (options.maxAmount !== undefined) {
-      queryBuilder.andWhere('parcel.cod_amount <= :maxAmount', { maxAmount: options.maxAmount });
+      queryBuilder.andWhere('parcel.cod_amount <= :maxAmount', {
+        maxAmount: options.maxAmount,
+      });
     }
 
     // Sorting
@@ -6979,15 +7144,20 @@ export class ParcelsService {
       const totalCharge = Number(parcel.total_charge ?? 0);
       const discount = Math.max(
         0,
-        Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) / 100,
+        Math.round(
+          (deliveryCharge + weightCharge + codCharge - totalCharge) * 100,
+        ) / 100,
       );
 
       // Parcel age in days
       const createdAt = parcel.created_at ? new Date(parcel.created_at) : null;
       const ageDays = createdAt
-        ? Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        ? Math.floor(
+            (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24),
+          )
         : null;
-      const parcelAge = ageDays !== null ? `${ageDays} Day${ageDays !== 1 ? 's' : ''}` : null;
+      const parcelAge =
+        ageDays !== null ? `${ageDays} Day${ageDays !== 1 ? 's' : ''}` : null;
 
       // Merchant info
       const merchantUser = parcel.merchant?.user;
@@ -7059,7 +7229,10 @@ export class ParcelsService {
       phone: rider.user?.phone || 'N/A',
       photo: rider.photo ?? null,
       hub: rider.hub
-        ? { id: rider.hub.id, branch_name: (rider.hub as any).branch_name ?? null }
+        ? {
+            id: rider.hub.id,
+            branch_name: (rider.hub as any).branch_name ?? null,
+          }
         : null,
     };
 
@@ -7155,7 +7328,11 @@ export class ParcelsService {
           });
 
           if (!parcel) {
-            results.push({ parcel_id: parcelId, success: false, error: 'Parcel not found' });
+            results.push({
+              parcel_id: parcelId,
+              success: false,
+              error: 'Parcel not found',
+            });
             failed++;
             continue;
           }
@@ -7246,7 +7423,10 @@ export class ParcelsService {
           );
 
           // Notify new rider via SMS
-          await this.sendAssignForRiderSms(updatedParcel || parcel, targetRider);
+          await this.sendAssignForRiderSms(
+            updatedParcel || parcel,
+            targetRider,
+          );
         } catch (err: any) {
           results.push({
             parcel_id: parcelId,
@@ -7272,4 +7452,3 @@ export class ParcelsService {
     return { total: parcel_ids.length, transferred, failed, results };
   }
 }
-

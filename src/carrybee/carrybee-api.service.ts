@@ -35,17 +35,17 @@ export class CarrybeeApiService {
         this.configService.get<string>(
           'CARRYBEE_SANDBOX_CLIENT_ID',
           '1a89c1a6-fc68-4395-9c09-628e0d3eaafc',
-          ) || '1a89c1a6-fc68-4395-9c09-628e0d3eaafc';
+        ) || '1a89c1a6-fc68-4395-9c09-628e0d3eaafc';
       this.clientSecret =
         this.configService.get<string>(
           'CARRYBEE_SANDBOX_CLIENT_SECRET',
           '1d7152c9-5b2d-4e4e-9c20-652b93333704',
-          ) || '1d7152c9-5b2d-4e4e-9c20-652b93333704';
+        ) || '1d7152c9-5b2d-4e4e-9c20-652b93333704';
       this.clientContext =
         this.configService.get<string>(
           'CARRYBEE_SANDBOX_CLIENT_CONTEXT',
           'DzJwPsx31WaTbS745XZoBjmQLcNqwK',
-          ) || 'DzJwPsx31WaTbS745XZoBjmQLcNqwK';
+        ) || 'DzJwPsx31WaTbS745XZoBjmQLcNqwK';
     }
 
     this.axiosInstance = axios.create({

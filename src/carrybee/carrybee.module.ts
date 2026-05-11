@@ -32,8 +32,18 @@ import {
       CarrybeeJob,
     ]),
   ],
-  controllers: [CarrybeeController, CarrybeeWebhookController, CarrybeeJobsController],
-  providers: [CarrybeeApiService, CarrybeeService, CarrybeeWebhookService, CarrybeeAssignmentWorker, CarrybeeJobsService],
+  controllers: [
+    CarrybeeController,
+    CarrybeeWebhookController,
+    CarrybeeJobsController,
+  ],
+  providers: [
+    CarrybeeApiService,
+    CarrybeeService,
+    CarrybeeWebhookService,
+    CarrybeeAssignmentWorker,
+    CarrybeeJobsService,
+  ],
   exports: [CarrybeeApiService, CarrybeeService],
 })
 export class CarrybeeModule {}

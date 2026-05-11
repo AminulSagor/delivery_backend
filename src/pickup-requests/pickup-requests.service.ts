@@ -1152,9 +1152,7 @@ export class PickupRequestsService {
     tab: 'pending' | 'completed' | 'all' = 'all',
   ): Promise<PickupRequest> {
     const normalizedTab =
-      tab === 'pending' || tab === 'completed' || tab === 'all'
-        ? tab
-        : 'all';
+      tab === 'pending' || tab === 'completed' || tab === 'all' ? tab : 'all';
 
     const pickup = await this.pickupRequestRepository.findOne({
       where: { id: pickupId },
@@ -1189,7 +1187,9 @@ export class PickupRequestsService {
       pickup.completed_by_rider_id === riderId;
 
     if (normalizedTab === 'pending' && !isPendingForRider) {
-      throw new ForbiddenException('This pending pickup is not assigned to you');
+      throw new ForbiddenException(
+        'This pending pickup is not assigned to you',
+      );
     }
 
     if (normalizedTab === 'completed' && !isCompletedForRider) {
@@ -1198,11 +1198,7 @@ export class PickupRequestsService {
       );
     }
 
-    if (
-      normalizedTab === 'all' &&
-      !isPendingForRider &&
-      !isCompletedForRider
-    ) {
+    if (normalizedTab === 'all' && !isPendingForRider && !isCompletedForRider) {
       throw new ForbiddenException(
         'You do not have permission to view this pickup request',
       );

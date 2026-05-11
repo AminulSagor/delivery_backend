@@ -675,7 +675,10 @@ export class MerchantInvoiceService {
 
     const summaryRaw = await queryBuilder
       .clone()
-      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .select(
+        'COALESCE(SUM(parcel.cod_collected_amount), 0)',
+        'total_collected',
+      )
       .addSelect('COALESCE(SUM(parcel.total_charge), 0)', 'total_fee')
       .addSelect(
         'COALESCE(SUM(CASE WHEN parcel.return_charge_applicable = true THEN parcel.return_charge ELSE 0 END), 0)',
@@ -886,7 +889,10 @@ export class MerchantInvoiceService {
     const summaryRaw = await queryBuilder
       .clone()
       .select('COUNT(DISTINCT invoice.id)', 'total_invoices')
-      .addSelect('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total_collected')
+      .addSelect(
+        'COALESCE(SUM(parcel.cod_collected_amount), 0)',
+        'total_collected',
+      )
       .addSelect('COALESCE(SUM(parcel.total_charge), 0)', 'total_fee')
       .addSelect(
         'COALESCE(SUM(CASE WHEN parcel.return_charge_applicable = true THEN parcel.return_charge ELSE 0 END), 0)',

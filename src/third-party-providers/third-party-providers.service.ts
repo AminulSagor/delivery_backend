@@ -83,7 +83,7 @@ export class ThirdPartyProvidersService {
       ])
       .addSelect('COUNT(parcel.id)', 'delivered_count')
       .addSelect(
-        "SUM(CASE WHEN parcel.delivery_provider = :carrybee THEN 1 ELSE 0 END)",
+        'SUM(CASE WHEN parcel.delivery_provider = :carrybee THEN 1 ELSE 0 END)',
         'carrybee_count',
       )
       .groupBy('provider.id')
@@ -107,7 +107,10 @@ export class ThirdPartyProvidersService {
       delivered_count: Number(row.delivered_count || 0),
       unique_id: row.provider_provider_code,
       // if any parcel for this provider has delivery_provider=CARRYBEE, mark type as CARRYBEE
-      type: Number(row.carrybee_count || 0) > 0 ? DeliveryProvider.CARRYBEE : 'THIRD_PARTY',
+      type:
+        Number(row.carrybee_count || 0) > 0
+          ? DeliveryProvider.CARRYBEE
+          : 'THIRD_PARTY',
     }));
   }
 

@@ -116,9 +116,12 @@ export class CarrybeeService {
     }
 
     // Use provided DTO carrybee ids if present, otherwise fall back to stored values
-    const cityId = (dto && (dto.carrybee_city_id as any)) || store.carrybee_city_id;
-    const zoneId = (dto && (dto.carrybee_zone_id as any)) || store.carrybee_zone_id;
-    const areaId = (dto && (dto.carrybee_area_id as any)) || store.carrybee_area_id;
+    const cityId =
+      (dto && (dto.carrybee_city_id as any)) || store.carrybee_city_id;
+    const zoneId =
+      (dto && (dto.carrybee_zone_id as any)) || store.carrybee_zone_id;
+    const areaId =
+      (dto && (dto.carrybee_area_id as any)) || store.carrybee_area_id;
 
     if (!cityId || !zoneId || !areaId) {
       throw new BadRequestException(

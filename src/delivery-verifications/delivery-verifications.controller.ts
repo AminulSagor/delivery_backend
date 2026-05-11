@@ -239,7 +239,12 @@ export class DeliveryVerificationsController {
    */
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.RIDER, UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
+  @Roles(
+    UserRole.RIDER,
+    UserRole.MERCHANT,
+    UserRole.ADMIN,
+    UserRole.HUB_MANAGER,
+  )
   async getVerification(
     @Param('id', ParseUUIDPipe) verificationId: string,
     @CurrentUser() user: any,

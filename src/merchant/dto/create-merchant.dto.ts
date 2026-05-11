@@ -17,7 +17,8 @@ export class MerchantSignupDto {
 
   @IsString()
   @Matches(/^(?:\+?88)?01[0-9]{9}$/, {
-    message: 'Phone must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
+    message:
+      'Phone must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
   })
   phone: string;
 

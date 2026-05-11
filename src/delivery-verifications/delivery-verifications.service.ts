@@ -53,11 +53,10 @@ export class DeliveryVerificationsService {
     private readonly configService: ConfigService,
   ) {}
 
-  private isVerificationFinalized(
-    verification: DeliveryVerification,
-  ): boolean {
+  private isVerificationFinalized(verification: DeliveryVerification): boolean {
     return (
-      verification.verification_status === DeliveryVerificationStatus.OTP_VERIFIED ||
+      verification.verification_status ===
+        DeliveryVerificationStatus.OTP_VERIFIED ||
       verification.verification_status === DeliveryVerificationStatus.COMPLETED
     );
   }
@@ -151,11 +150,11 @@ export class DeliveryVerificationsService {
    * 3. System determines if reason is required:
    *    - Amount differs from expected → reason required
    *    - Status is DELIVERY_RESCHEDULED, PAID_RETURN, or RETURNED → reason always required
-  * 4. System determines if OTP can be skipped:
-  *    - If DELIVERED and collected amount matches expected amount → no OTP required
-  * 5. If OTP required, determine recipient:
-  *    - If DELIVERED and expected amount = 0 (already paid) → OTP to Customer
-  *    - All other cases → OTP to Merchant
+   * 4. System determines if OTP can be skipped:
+   *    - If DELIVERED and collected amount matches expected amount → no OTP required
+   * 5. If OTP required, determine recipient:
+   *    - If DELIVERED and expected amount = 0 (already paid) → OTP to Customer
+   *    - All other cases → OTP to Merchant
    */
   async initiateDelivery(
     parcelId: string,
@@ -1168,7 +1167,9 @@ export class DeliveryVerificationsService {
     // Uses original parcel create date in DDMMYY format.
     const txPrefix = this.getParcelTxPrefixForCompletedStatus(selectedStatus);
     if (txPrefix) {
-      const idDate = parcel.created_at ? new Date(parcel.created_at) : new Date();
+      const idDate = parcel.created_at
+        ? new Date(parcel.created_at)
+        : new Date();
       parcel.parcel_tx_id = await this.generateParcelTxIdForCompletion(
         txPrefix,
         idDate,
@@ -1397,7 +1398,10 @@ export class DeliveryVerificationsService {
     if (Number.isInteger(value)) {
       return `${value}`;
     }
-    return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+    return value
+      .toFixed(2)
+      .replace(/\.00$/, '')
+      .replace(/(\.\d)0$/, '$1');
   }
 
   /**

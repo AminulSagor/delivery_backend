@@ -1,4 +1,10 @@
-import { IsUUID, IsArray, ArrayNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsUUID,
+  IsArray,
+  ArrayNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class BulkTransferFromRidersDto {
   @IsUUID('4')

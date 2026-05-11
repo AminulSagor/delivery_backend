@@ -81,16 +81,16 @@ export class StaffController {
 
     const isActiveBoolean =
       isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-      
+
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    
+
     const { data: staff, total } = await this.staffService.findAll(
       effectiveHubId || undefined,
       isActiveBoolean,
       search,
       pageNum,
-      limitNum
+      limitNum,
     );
 
     return {
@@ -123,7 +123,7 @@ export class StaffController {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum),
       },
       message: 'Staff retrieved successfully',
     };
@@ -320,7 +320,10 @@ export class StaffController {
       );
     }
 
-    const staff = await this.staffService.deactivate(id, scopeHubId || undefined);
+    const staff = await this.staffService.deactivate(
+      id,
+      scopeHubId || undefined,
+    );
 
     return {
       success: true,

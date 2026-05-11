@@ -186,10 +186,7 @@ export class AdminController {
    *       (+ optional: email, secondary_number, area, full_address)
    */
   @Post('merchants')
-  async createMerchant(
-    @Body() dto: AdminCreateMerchantDto,
-    @Req() req: any,
-  ) {
+  async createMerchant(@Body() dto: AdminCreateMerchantDto, @Req() req: any) {
     const adminId = req.user.userId;
     const merchant = await this.adminService.adminCreateMerchant(dto, adminId);
 
@@ -210,7 +207,6 @@ export class AdminController {
 
   // ===== DROPDOWN DATA ENDPOINTS =====
 
-
   /**
    * Get all stores for a specific merchant
    * GET /admin/merchants/:id/stores
@@ -224,7 +220,6 @@ export class AdminController {
       message: 'Merchant stores retrieved successfully',
     };
   }
-
 
   // ===== MERCHANT PAYOUT METHODS =====
 
