@@ -60,6 +60,21 @@ export class CarrybeeService {
     return storeId;
   }
 
+  private formatSpecialInstructionsWithStoreName(
+    instructions: string | null | undefined,
+    storeName: string,
+  ): string | undefined {
+    const storeInfo = `[ Store : ${storeName} ]`;
+    
+    if (!instructions || instructions.trim() === '') {
+      return storeInfo;
+    }
+    
+    const combined = `${instructions} ${storeInfo}`;
+    // Carrybee limit is 256 characters - truncate if necessary
+    return combined.length > 256 ? combined.substring(0, 256) : combined;
+  }
+
   // ===== LOCATION METHODS =====
 
   async getCities() {
@@ -586,8 +601,10 @@ export class CarrybeeService {
       city_id: recipientCityId,
       zone_id: recipientZoneId,
       area_id: recipientAreaId || undefined,
-      special_instruction:
-        parcel.special_instructions?.substring(0, 256) || undefined,
+      special_instruction: this.formatSpecialInstructionsWithStoreName(
+        parcel.special_instructions,
+        store.business_name,
+      ),
       product_description:
         parcel.product_description?.substring(0, 256) || undefined,
       item_weight: itemWeight,
@@ -781,7 +798,10 @@ export class CarrybeeService {
       city_id: cityId,
       zone_id: zoneId,
       area_id: areaId || undefined,
-      special_instruction: parcel.special_instructions?.substring(0, 256),
+      special_instruction: this.formatSpecialInstructionsWithStoreName(
+        parcel.special_instructions,
+        store.business_name,
+      ),
       product_description: parcel.product_description?.substring(0, 256),
       item_weight: itemWeight,
       collectable_amount: parcel.is_cod ? Math.round(parcel.cod_amount) : 0,
