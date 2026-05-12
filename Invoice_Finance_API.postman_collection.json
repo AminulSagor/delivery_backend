@@ -1,0 +1,597 @@
+{
+  "info": {
+    "name": "Invoice & Finance API",
+    "description": "Comprehensive collection for Admin and Hub Manager invoice and financial endpoints with mock response data",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    },
+    {
+      "key": "merchant_id",
+      "value": "123e4567-e89b-12d3-a456-426614174000",
+      "type": "string"
+    },
+    {
+      "key": "invoice_id",
+      "value": "2f1c7c2e-6d1d-4f63-9aa5-4b32f1b6a0a1",
+      "type": "string"
+    },
+    {
+      "key": "parcel_id",
+      "value": "861cdeaa-1bd9-4855-a196-d876545666e9",
+      "type": "string"
+    },
+    {
+      "key": "advance_payment_id",
+      "value": "3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Merchant Invoices",
+      "item": [
+        {
+          "name": "Get Merchant Invoice Eligibility List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/merchant-eligibility-list?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "merchant-eligibility-list"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get merchants with unpaid parcels - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"}
+              ],
+              "body": "{\"success\":true,\"data\":{\"merchants\":[{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"merchant_phone\":\"01700000000\",\"total_parcels\":45,\"delivered_parcels\":40,\"returned_parcels\":5,\"total_transactions\":\"125000.00\",\"merchant_address\":\"Dhaka, Bangladesh\",\"unpaid_amount\":\"85000.00\"},{\"merchant_id\":\"223e4567-e89b-12d3-a456-426614174001\",\"merchant_name\":\"Fashion Hub\",\"merchant_phone\":\"01711111111\",\"total_parcels\":65,\"delivered_parcels\":60,\"returned_parcels\":5,\"total_transactions\":\"250000.00\",\"merchant_address\":\"Gulshan, Dhaka\",\"unpaid_amount\":\"150000.00\"}],\"pagination\":{\"total\":50,\"page\":1,\"limit\":10,\"totalPages\":5},\"summary\":{\"total_merchants\":50,\"total_unpaid_amount\":\"4250000.00\"}},\"message\":\"Merchant invoice eligibility list retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Payment Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/payment-dashboard?merchant_id={{merchant_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "payment-dashboard"],
+              "query": [
+                {"key": "merchant_id", "value": "{{merchant_id}}"}
+              ]
+            },
+            "description": "Get merchant earning and balance overview - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"total_earning\":\"500000.00\",\"last_paid_at\":\"2026-05-01T15:45:00Z\",\"available_balance\":\"150000.00\",\"pending_balance\":\"350000.00\",\"total_invoices\":12,\"paid_invoices\":8,\"unpaid_invoices\":4},\"message\":\"Merchant payment dashboard retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Invoice Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/summary?merchant_id={{merchant_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "summary"],
+              "query": [
+                {"key": "merchant_id", "value": "{{merchant_id}}"}
+              ]
+            },
+            "description": "Get comprehensive merchant invoice summary - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"merchant_phone\":\"01700000000\",\"merchant_email\":\"contact@demostore.com\",\"parcel_stats\":{\"total_parcels\":200,\"delivered\":180,\"returned\":20,\"ongoing\":0},\"transaction_stats\":{\"total_transactions\":\"1000000.00\",\"collected_cod\":\"950000.00\",\"pending_cod\":\"50000.00\"},\"financial_summary\":{\"total_earning\":\"500000.00\",\"paid\":\"350000.00\",\"pending\":\"150000.00\",\"hold\":\"0.00\"},\"invoice_summary\":{\"total_invoices\":12,\"paid_invoices\":8,\"unpaid_invoices\":4,\"last_invoice_date\":\"2026-05-10T10:00:00Z\"}},\"message\":\"Merchant invoice summary retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Eligible Parcels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/eligible-parcels?merchant_id={{merchant_id}}&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "eligible-parcels"],
+              "query": [
+                {"key": "merchant_id", "value": "{{merchant_id}}"},
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get parcels ready for invoicing - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"eligible_parcels\":[{\"parcel_id\":\"550e8400-e29b-41d4-a716-446655440000\",\"tracking_number\":\"DL123456\",\"customer_name\":\"Ahmed Khan\",\"customer_phone\":\"01911223344\",\"customer_address\":\"House 15, Road 5, Gulshan, Dhaka\",\"status\":\"DELIVERED\",\"delivered_at\":\"2026-05-10T14:30:00Z\",\"cod_collected\":\"5000.00\",\"cod_charge\":\"50.00\",\"delivery_charge\":\"200.00\",\"delivery_charge_applicable\":true,\"return_charge\":\"0.00\",\"return_charge_applicable\":false,\"net_payable\":\"5250.00\",\"delivery_charge_breakdown\":{\"delivery_charge\":\"200.00\",\"return_charge\":\"0.00\",\"cod_charge\":\"50.00\",\"total_charges\":\"250.00\"}}],\"total_count\":50,\"summary\":{\"total_cod_collected\":\"250000.00\",\"total_delivery_charges\":\"10000.00\",\"total_return_charges\":\"2000.00\",\"estimated_payable\":\"262000.00\"}},\"message\":\"Eligible parcels retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Generate Invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"merchant_id\":\"{{merchant_id}}\",\"parcel_ids\":[\"550e8400-e29b-41d4-a716-446655440000\",\"550e8400-e29b-41d4-a716-446655440001\"]}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices"]
+            },
+            "description": "Generate invoice from parcel IDs - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "Created",
+              "code": 201,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"invoice\":{\"invoice_id\":\"2f1c7c2e-6d1d-4f63-9aa5-4b32f1b6a0a1\",\"invoice_no\":\"MI060526A1B2\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"total_parcels\":3,\"invoice_status\":\"UNPAID\",\"created_at\":\"2026-05-12T10:00:00Z\"},\"breakdown\":{\"total_cod_collected\":\"15000.00\",\"total_charges\":\"750.00\",\"total_payable\":\"15750.00\"}},\"message\":\"Invoice generated successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Invoice List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices?merchant_id={{merchant_id}}&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices"],
+              "query": [
+                {"key": "merchant_id", "value": "{{merchant_id}}"},
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get invoice list with pagination - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"invoices\":[{\"invoice_id\":\"2f1c7c2e-6d1d-4f63-9aa5-4b32f1b6a0a1\",\"invoice_no\":\"MI060526A1B2\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"total_parcels\":8,\"payable_amount\":\"11000.00\",\"invoice_status\":\"UNPAID\",\"created_at\":\"2026-05-05T10:00:00Z\"}],\"pagination\":{\"total\":25,\"page\":1,\"limit\":10,\"totalPages\":3}},\"message\":\"Invoice list retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Invoice Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/{{invoice_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "{{invoice_id}}"]
+            },
+            "description": "Get invoice with parcel details - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"invoice\":{\"invoice_id\":\"2f1c7c2e-6d1d-4f63-9aa5-4b32f1b6a0a1\",\"invoice_no\":\"MI060526A1B2\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"total_parcels\":8,\"invoice_status\":\"UNPAID\",\"created_at\":\"2026-05-05T10:00:00Z\"},\"parcels\":[{\"parcel_id\":\"550e8400-e29b-41d4-a716-446655440000\",\"tracking_number\":\"DL123456\",\"customer_name\":\"Ahmed Khan\",\"status\":\"DELIVERED\",\"cod_collected\":\"5000.00\",\"total_charge\":\"250.00\"}],\"pagination\":{\"total\":8,\"page\":1,\"limit\":10,\"totalPages\":1}},\"message\":\"Invoice details retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Invoice Parcel Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/{{invoice_id}}/{{parcel_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "{{invoice_id}}", "{{parcel_id}}"]
+            },
+            "description": "Get a single parcel with full invoice financial breakdown - ADMIN & MERCHANT"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"parcel_info\":{\"parcel_id\":\"861cdeaa-1bd9-4855-a196-d876545666e9\",\"parcel_tx_id\":\"#100047\",\"tracking_number\":\"TRK-20260308-00007\",\"order_id\":\"ORD-001\",\"order_date\":\"2026-03-08T18:05:11.509Z\"},\"customer_info\":{\"customer_id\":\"b35fb610-1ce5-42ae-b54f-34b3cf897409\",\"customer_name\":\"John Customer\",\"customer_phone\":\"01813445678\",\"customer_address\":\"House 20, Road 5, Dhanmondi, Dhaka\"},\"store_info\":{\"store_id\":\"8d6e2cf0-57ff-4162-afb6-fc283c0f7dcf\",\"store_name\":\"Ben10\",\"store_phone\":\"01756523893\"},\"financial_info\":{\"receivable_amount\":-120,\"currency\":\"BDT\",\"breakdown\":{\"collectable_amount\":1000,\"collected_amount\":0,\"delivery_fee\":80,\"cod_fee\":20,\"weight_charge\":20,\"discount\":0,\"total_fee\":120,\"return_charge\":0}},\"status_info\":{\"order_status\":\"EXCHANGE\",\"invoice_type\":\"DELIVERY\",\"invoice_status\":\"PAID\"}},\"message\":\"Invoice parcel details retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Update Invoice Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"invoice_status\":\"PAID\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/merchant-invoices/{{invoice_id}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-invoices", "{{invoice_id}}", "status"]
+            },
+            "description": "Update invoice status (PAID/UNPAID) - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"invoice\":{\"invoice_id\":\"2f1c7c2e-6d1d-4f63-9aa5-4b32f1b6a0a1\",\"invoice_no\":\"MI060526A1B2\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"invoice_status\":\"PAID\",\"updated_at\":\"2026-05-12T10:30:00Z\"}},\"message\":\"Invoice status updated successfully\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Advance Payments",
+      "item": [
+        {
+          "name": "Create Advance Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"merchant_id\":\"{{merchant_id}}\",\"amount\":\"50000.00\",\"reason\":\"Business expansion\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/create/invoice",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "admin", "create", "invoice"]
+            },
+            "description": "Create advance payment request - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "Created",
+              "code": 201,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"amount\":\"50000.00\",\"status\":\"PENDING\",\"created_at\":\"2026-05-12T10:00:00Z\"},\"message\":\"Advance payment created successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Advance Payments List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/list?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "admin", "invoice", "list"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get all advance payments - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":[{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"amount\":\"50000.00\",\"status\":\"PENDING_MERCHANT_APPROVAL\",\"created_at\":\"2026-05-12T10:00:00Z\"}],\"pagination\":{\"total\":15,\"page\":1,\"limit\":10,\"totalPages\":2},\"message\":\"Advance payments list retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Advance Payment Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advance_payment_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "admin", "invoice", "{{advance_payment_id}}"]
+            },
+            "description": "Get single advance payment details - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"amount\":\"50000.00\",\"status\":\"PENDING_MERCHANT_APPROVAL\",\"reason\":\"Business expansion\",\"created_at\":\"2026-05-12T10:00:00Z\"},\"message\":\"Advance payment details retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Update Advance Payment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"merchant_id\":\"{{merchant_id}}\",\"amount\":\"75000.00\",\"reason\":\"Expanded business needs\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advance_payment_id}}/update",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "admin", "invoice", "{{advance_payment_id}}", "update"]
+            },
+            "description": "Update advance payment details - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"amount\":\"75000.00\",\"status\":\"PENDING_MERCHANT_APPROVAL\",\"updated_at\":\"2026-05-12T10:30:00Z\"},\"message\":\"Advance payment updated successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Pay Advance Payment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advance_payment_id}}/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "admin", "invoice", "{{advance_payment_id}}", "pay"]
+            },
+            "description": "Mark advance payment as paid - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"amount\":\"75000.00\",\"status\":\"PAID\",\"paid_at\":\"2026-05-12T10:45:00Z\"},\"message\":\"Advance payment paid successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Merchant Action on Advance Payment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"action\":\"APPROVE\",\"review_note\":\"Approved for business expansion\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/merchant/invoice/{{advance_payment_id}}/action",
+              "host": ["{{baseUrl}}"],
+              "path": ["advance-payments", "merchant", "invoice", "{{advance_payment_id}}", "action"]
+            },
+            "description": "Merchant action (APPROVE/REQUEST_REVIEW) on advance payment - MERCHANT ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"advance_payment_id\":\"3a2b1c0d-e1f2-4g5h-6i7j-8k9l0m1n2o3p\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"action\":\"APPROVE\",\"status\":\"APPROVED\",\"review_note\":\"Approved for business expansion\",\"updated_at\":\"2026-05-12T10:50:00Z\"},\"message\":\"Merchant action completed successfully\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Merchant Finance",
+      "item": [
+        {
+          "name": "Get All Merchants Finance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-finance/admin/all?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-finance", "admin", "all"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get all merchants finance summary - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchants\":[{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"current_balance\":\"150000.00\",\"available_balance\":\"100000.00\",\"total_earned\":\"500000.00\",\"total_paid\":\"350000.00\",\"pending_amount\":\"150000.00\"},{\"merchant_id\":\"223e4567-e89b-12d3-a456-426614174001\",\"merchant_name\":\"Fashion Hub\",\"current_balance\":\"280000.00\",\"available_balance\":\"280000.00\",\"total_earned\":\"1000000.00\",\"total_paid\":\"720000.00\",\"pending_amount\":\"280000.00\"}],\"pagination\":{\"total\":200,\"page\":1,\"limit\":10,\"totalPages\":20}},\"message\":\"All merchants finance retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Merchant Finance Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-finance/admin/{{merchant_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-finance", "admin", "{{merchant_id}}"]
+            },
+            "description": "Get specific merchant finance overview - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"current_balance\":\"150000.00\",\"hold_amount\":\"50000.00\",\"available_balance\":\"100000.00\",\"total_earned\":\"500000.00\",\"total_paid\":\"350000.00\",\"pending_amount\":\"150000.00\"},\"message\":\"Merchant finance overview retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get Merchant Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-finance/admin/{{merchant_id}}/transactions?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-finance", "admin", "{{merchant_id}}", "transactions"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Get merchant transaction history - ADMIN ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"transactions\":[{\"transaction_id\":\"txn_12345678\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"transaction_type\":\"CREDIT\",\"amount\":\"5000.00\",\"description\":\"Invoice payment\",\"balance_before\":\"145000.00\",\"balance_after\":\"150000.00\",\"created_at\":\"2026-05-12T10:00:00Z\"},{\"transaction_id\":\"txn_87654321\",\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"transaction_type\":\"DEBIT\",\"amount\":\"10000.00\",\"description\":\"Withdrawal\",\"balance_before\":\"160000.00\",\"balance_after\":\"150000.00\",\"created_at\":\"2026-05-11T15:30:00Z\"}],\"pagination\":{\"total\":85,\"page\":1,\"limit\":10,\"totalPages\":9}},\"message\":\"Merchant transactions retrieved successfully\"}"
+            }
+          ]
+        },
+        {
+          "name": "Get My Finance Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/merchant-finance/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant-finance", "my"]
+            },
+            "description": "Get current merchant's finance overview - MERCHANT ONLY"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\"success\":true,\"data\":{\"merchant_id\":\"123e4567-e89b-12d3-a456-426614174000\",\"merchant_name\":\"Demo Store Ltd\",\"current_balance\":\"150000.00\",\"hold_amount\":\"50000.00\",\"available_balance\":\"100000.00\",\"total_earned\":\"500000.00\",\"total_paid\":\"350000.00\",\"pending_amount\":\"150000.00\"},\"message\":\"Merchant finance overview retrieved successfully\"}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -124,6 +124,64 @@ export class MerchantInvoiceController {
   }
 
   /**
+   * Get a single parcel from an invoice with detailed financial breakdown.
+   * GET /merchant-invoices/:id/:parcelId
+   */
+  @Get(':id/:parcelId')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getInvoiceParcelDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('parcelId', ParseUUIDPipe) parcelId: string,
+    @Req() req: any,
+  ) {
+    if (this.shouldUseMerchantMockData(req)) {
+      const details = this.buildMockInvoiceDetails(id, {}, req.user.userId);
+      const parcel = details.parcels.find(
+        (item: any) => item.parcel_info.parcel_id === parcelId,
+      );
+
+      if (!parcel) {
+        return {
+          success: false,
+          message: 'Parcel not found in this invoice',
+        };
+      }
+
+      return {
+        success: true,
+        data: parcel,
+        message: 'Invoice parcel details retrieved successfully',
+      };
+    }
+
+    const parcel = await this.merchantInvoiceService.getInvoiceParcelDetails(
+      id,
+      parcelId,
+    );
+
+    const invoice = await this.merchantInvoiceService.getInvoiceDetails(id, {
+      page: 1,
+      limit: 1,
+    });
+
+    if (req.user.role === UserRole.MERCHANT) {
+      if (invoice.invoice.merchant_id !== req.user.userId) {
+        return {
+          success: false,
+          message: 'Unauthorized access to this invoice',
+        };
+      }
+    }
+
+    return {
+      success: true,
+      data: parcel,
+      message: 'Invoice parcel details retrieved successfully',
+    };
+  }
+
+  /**
    * Get pending invoices list
    * Shows all unpaid/processing invoices with full details
    * Includes: Transaction ID, Date, Total Parcel, Total Amount, Status, Invoice ID,

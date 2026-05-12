@@ -1304,6 +1304,98 @@ export class MerchantInvoiceService {
   }
 
   /**
+   * Get a single parcel from an invoice with the same detailed structure used in the invoice response.
+   */
+  async getInvoiceParcelDetails(
+    invoiceId: string,
+    parcelId: string,
+  ): Promise<any> {
+    const invoice = await this.merchantInvoiceRepository.findOne({
+      where: { id: invoiceId },
+      relations: ['merchant', 'merchantProfile', 'merchantProfile.user'],
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    const parcel = await this.parcelRepository.findOne({
+      where: { id: parcelId, invoice_id: invoiceId },
+      relations: ['store', 'customer'],
+    });
+
+    if (!parcel) {
+      throw new NotFoundException('Parcel not found in this invoice');
+    }
+
+    const collectableAmount = Number(parcel.cod_amount) || 0;
+    const collectedAmount = Number(parcel.cod_collected_amount) || 0;
+    const deliveryFee = Number(parcel.delivery_charge) || 0;
+    const codFee = Number(parcel.cod_charge) || 0;
+    const weightCharge = Number(parcel.weight_charge) || 0;
+    const totalCharge = Number(parcel.total_charge) || 0;
+    const returnCharge = parcel.return_charge_applicable
+      ? Number(parcel.return_charge) || 0
+      : 0;
+    const calculatedTotal = deliveryFee + codFee + weightCharge;
+    const discount =
+      calculatedTotal > totalCharge ? calculatedTotal - totalCharge : 0;
+    const receivableAmount = collectedAmount - totalCharge - returnCharge;
+    const returnedStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+
+    const customer = parcel.customer;
+    const store = parcel.store;
+
+    return {
+      parcel_info: {
+        parcel_id: parcel.id,
+        parcel_tx_id: parcel.parcel_tx_id,
+        tracking_number: parcel.tracking_number,
+        order_id: parcel.merchant_order_id,
+        order_date: parcel.created_at,
+      },
+      customer_info: {
+        customer_id: parcel.customer_id || customer?.id || null,
+        customer_name: parcel.customer_name || customer?.full_name || 'N/A',
+        customer_phone: parcel.customer_phone || customer?.phone || 'N/A',
+        customer_address:
+          parcel.customer_address || customer?.address || 'N/A',
+      },
+      store_info: {
+        store_id: parcel.store_id || store?.id || null,
+        store_name: store?.business_name || 'N/A',
+        store_phone: store?.phone_number || 'N/A',
+      },
+      financial_info: {
+        receivable_amount: receivableAmount,
+        currency: 'BDT',
+        breakdown: {
+          collectable_amount: collectableAmount,
+          collected_amount: collectedAmount,
+          delivery_fee: deliveryFee,
+          cod_fee: codFee,
+          weight_charge: weightCharge,
+          discount: discount > 0 ? -discount : 0,
+          total_fee: totalCharge,
+          return_charge: returnCharge,
+        },
+      },
+      status_info: {
+        order_status: parcel.status,
+        invoice_type: returnedStatuses.includes(parcel.status)
+          ? 'RETURN'
+          : 'DELIVERY',
+        invoice_status: invoice.invoice_status,
+      },
+    };
+  }
+
+  /**
    * Mark invoice as paid
    */
   async markInvoiceAsPaid(
