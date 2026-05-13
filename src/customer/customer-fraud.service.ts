@@ -105,7 +105,10 @@ export class CustomerFraudService {
     return customer;
   }
 
-  async getRegisteredCustomers(query: CustomerFraudCustomerListQueryDto) {
+  async getRegisteredCustomers(
+    query: CustomerFraudCustomerListQueryDto,
+    merchantId: string,
+  ) {
     const {
       page = 1,
       limit = 20,
@@ -114,7 +117,17 @@ export class CustomerFraudService {
       order = 'ASC',
     } = query;
 
-    const baseQb = this.customerRepo.createQueryBuilder('customer');
+    const baseQb = this.customerRepo
+      .createQueryBuilder('customer')
+      .innerJoin(
+        CustomerFraud,
+        'fraud',
+        'fraud.customer_id = customer.id AND fraud.merchant_id = :merchantId AND fraud.status = :approvedStatus AND fraud.is_active = true',
+        {
+          merchantId,
+          approvedStatus: CustomerFraudStatus.APPROVED,
+        },
+      );
 
     if (search) {
       baseQb.andWhere(
@@ -123,11 +136,28 @@ export class CustomerFraudService {
       );
     }
 
-    const total = await baseQb.getCount();
+    const totalResult = await baseQb
+      .clone()
+      .select('COUNT(DISTINCT customer.id)', 'count')
+      .getRawOne();
+    const total = Number(totalResult?.count || 0);
 
     const qb = this.customerRepo
       .createQueryBuilder('customer')
-      .leftJoin(Parcel, 'parcel', 'parcel.customer_id = customer.id')
+      .innerJoin(
+        CustomerFraud,
+        'fraud',
+        'fraud.customer_id = customer.id AND fraud.merchant_id = :merchantId AND fraud.status = :approvedStatus AND fraud.is_active = true',
+        {
+          merchantId,
+          approvedStatus: CustomerFraudStatus.APPROVED,
+        },
+      )
+      .leftJoin(
+        Parcel,
+        'parcel',
+        'parcel.customer_id = customer.id AND parcel.merchant_id = :merchantId',
+      )
       .select('customer.id', 'id')
       .addSelect('customer.customer_name', 'customer_name')
       .addSelect('customer.phone_number', 'phone_number')
@@ -168,7 +198,9 @@ export class CustomerFraudService {
       qb.orderBy('customer.customer_name', order);
     }
 
-    qb.skip((page - 1) * limit).take(limit);
+    qb.setParameter('merchantId', merchantId)
+      .skip((page - 1) * limit)
+      .take(limit);
 
     const rows = await qb.getRawMany();
 

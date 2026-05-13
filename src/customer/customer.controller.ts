@@ -6,12 +6,15 @@ import {
   Delete,
   Param,
   Body,
+  Query,
+  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CheckCustomerPhoneDto } from './dto/check-customer-phone.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -48,8 +51,21 @@ export class CustomerController {
   }
 
   @Get()
-  async findAll(@CurrentUser() user: any) {
-    return await this.customerService.findAll();
+  async findAll(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query() query: PaginationDto,
+  ) {
+    if (!merchantId) {
+      throw new BadRequestException('Merchant ID not found in user context');
+    }
+
+    const result = await this.customerService.findAll(merchantId, query);
+    return {
+      success: true,
+      data: result.items,
+      pagination: result.pagination,
+      message: 'Customers retrieved successfully',
+    };
   }
 
   @Get('get/:phone')

@@ -14,6 +14,8 @@ import {
   CustomerResponseDto,
   DeliveryAddressDto,
 } from './dto/check-customer-phone.dto';
+import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
+import { CustomerFraud, CustomerFraudStatus } from './entities/customer-fraud.entity';
 import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
 import { CoverageArea } from 'src/coverage-areas/entities/coverage-area.entity';
 
@@ -224,10 +226,65 @@ export class CustomerService {
     }
   }
 
-  async findAll(): Promise<Customer[]> {
-    return this.customersRepository.find({
-      order: { customer_name: 'ASC' },
-    });
+  async findAll(
+    merchantId: string,
+    query: PaginationDto,
+  ): Promise<PaginatedResponse<Customer>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const search = query.search?.trim();
+
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .innerJoin(
+        Parcel,
+        'parcel',
+        'parcel.customer_id = customer.id AND parcel.merchant_id = :merchantId',
+        { merchantId },
+      )
+      .leftJoin(
+        CustomerFraud,
+        'fraud',
+        'fraud.customer_id = customer.id AND fraud.merchant_id = :merchantId AND fraud.status = :approvedStatus AND fraud.is_active = true',
+        {
+          merchantId,
+          approvedStatus: CustomerFraudStatus.APPROVED,
+        },
+      )
+      .andWhere('fraud.id IS NULL')
+      .distinct(true);
+
+    if (search) {
+      qb.andWhere(
+        '(customer.customer_name ILIKE :search OR customer.phone_number ILIKE :search OR customer.secondary_number ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+
+    const items =
+      total === 0
+        ? []
+        : await qb
+            .orderBy('customer.customer_name', 'ASC')
+            .skip((page - 1) * limit)
+            .take(limit)
+            .getMany();
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async findOneByPhone(phone: string): Promise<Customer> {

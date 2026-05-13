@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -33,8 +34,16 @@ export class CustomerFraudController {
   @HttpCode(HttpStatus.OK)
   async getRegisteredCustomers(
     @Query() query: CustomerFraudCustomerListQueryDto,
+    @CurrentUser('merchantId') merchantId: string,
   ) {
-    const result = await this.fraudService.getRegisteredCustomers(query);
+    if (!merchantId) {
+      throw new BadRequestException('Merchant ID not found in user context');
+    }
+
+    const result = await this.fraudService.getRegisteredCustomers(
+      query,
+      merchantId,
+    );
     return {
       success: true,
       data: result.items,
