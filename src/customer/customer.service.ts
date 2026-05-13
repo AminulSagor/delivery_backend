@@ -245,10 +245,13 @@ export class CustomerService {
       .leftJoin(
         CustomerFraud,
         'fraud',
-        'fraud.customer_id = customer.id AND fraud.merchant_id = :merchantId AND fraud.status = :approvedStatus AND fraud.is_active = true',
+        'fraud.customer_id = customer.id AND fraud.merchant_id = :merchantId AND fraud.status IN (:...fraudStatuses) AND fraud.is_active = true',
         {
           merchantId,
-          approvedStatus: CustomerFraudStatus.APPROVED,
+          fraudStatuses: [
+            CustomerFraudStatus.APPROVED,
+            CustomerFraudStatus.PENDING,
+          ],
         },
       )
       .andWhere('fraud.id IS NULL')
