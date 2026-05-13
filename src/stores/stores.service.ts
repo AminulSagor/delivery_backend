@@ -184,7 +184,7 @@ export class StoresService {
     return store;
   }
 
-  async findAllByMerchant(userId: string): Promise<any[]> {
+  async findAllByMerchant(userId: string, status?: string): Promise<any[]> {
     const merchant = await this.merchantRepository.findOne({
       where: { user_id: userId },
     });
@@ -193,8 +193,13 @@ export class StoresService {
       throw new NotFoundException('Merchant profile not found');
     }
 
+    const whereClause: any = { merchant_id: merchant.id };
+    if (status !== undefined && status !== null && status !== '') {
+      whereClause.status = status;
+    }
+
     const stores = await this.storesRepository.find({
-      where: { merchant_id: merchant.id },
+      where: whereClause,
       relations: ['hub', 'merchant', 'merchant.user'],
       order: {
         is_default: 'DESC', // Default first
