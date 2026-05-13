@@ -127,8 +127,14 @@ export class StoresController {
   @Roles(UserRole.MERCHANT)
   @HttpCode(HttpStatus.OK)
   @Get()
-  async findAll(@CurrentUser() user: any) {
-    const stores = await this.storesService.findAllByMerchant(user.userId);
+  async findAll(
+    @CurrentUser() user: any,
+    @Query('status') status?: string,
+  ) {
+    const stores = await this.storesService.findAllByMerchant(
+      user.userId,
+      status,
+    );
     return {
       stores: stores.map(toStoreDetail),
       message: 'Stores retrieved successfully',
