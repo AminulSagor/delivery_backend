@@ -12,6 +12,7 @@ import { Hub } from '../hubs/entities/hub.entity';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UserRole } from '../common/enums/user-role.enum';
+import { StaffPosition } from '../common/enums/staff-position.enum';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -208,6 +209,76 @@ export class StaffService {
 
     const [data, total] = await query.skip(skip).take(limit).getManyAndCount();
     return { data, total };
+  }
+
+  /**
+   * Get staff summary metrics for list endpoint
+   */
+  async getSummary(
+    hubId?: string,
+    search?: string,
+  ): Promise<{
+    totalStaff: number;
+    active: number;
+    inactive: number;
+    riders: number;
+    couriers: number;
+    totalSalary: number;
+  }> {
+    const query = this.staffRepository
+      .createQueryBuilder('staff')
+      .leftJoin('staff.user', 'user')
+      .select('COUNT(staff.id)', 'totalStaff')
+      .addSelect(
+        'SUM(CASE WHEN staff.is_active = true THEN 1 ELSE 0 END)',
+        'active',
+      )
+      .addSelect(
+        'SUM(CASE WHEN staff.is_active = false THEN 1 ELSE 0 END)',
+        'inactive',
+      )
+      .addSelect(
+        'SUM(CASE WHEN staff.position = :riderPosition THEN 1 ELSE 0 END)',
+        'riders',
+      )
+      .addSelect(
+        'SUM(CASE WHEN staff.position = :courierPosition THEN 1 ELSE 0 END)',
+        'couriers',
+      )
+      .addSelect('COALESCE(SUM(staff.fixed_salary), 0)', 'totalSalary')
+      .setParameters({
+        riderPosition: StaffPosition.RIDER,
+        courierPosition: StaffPosition.COURIER,
+      });
+
+    if (hubId) {
+      query.andWhere('staff.hub_id = :hubId', { hubId });
+    }
+
+    if (search) {
+      query.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR staff.staff_code ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const summary = await query.getRawOne<{
+      totalStaff: string;
+      active: string;
+      inactive: string;
+      riders: string;
+      couriers: string;
+      totalSalary: string;
+    }>();
+
+    return {
+      totalStaff: parseInt(summary?.totalStaff || '0', 10),
+      active: parseInt(summary?.active || '0', 10),
+      inactive: parseInt(summary?.inactive || '0', 10),
+      riders: parseInt(summary?.riders || '0', 10),
+      couriers: parseInt(summary?.couriers || '0', 10),
+      totalSalary: Number(summary?.totalSalary || 0),
+    };
   }
 
   /**
