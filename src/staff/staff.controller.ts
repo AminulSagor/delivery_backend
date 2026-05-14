@@ -93,6 +93,11 @@ export class StaffController {
       limitNum,
     );
 
+    const summary = await this.staffService.getSummary(
+      effectiveHubId || undefined,
+      search,
+    );
+
     return {
       success: true,
       data: staff.map((s) => ({
@@ -125,6 +130,7 @@ export class StaffController {
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
       },
+      summary,
       message: 'Staff retrieved successfully',
     };
   }
