@@ -5733,7 +5733,19 @@ export class ParcelsService {
         { hubId },
       );
     } else {
-      queryBuilder.where('1=1');
+      // For admin: filter to delivery-completed statuses
+      queryBuilder.where(
+        'parcel.status IN (:...deliveredStatuses)',
+        {
+          deliveredStatuses: [
+            ParcelStatus.DELIVERED,
+            ParcelStatus.PARTIAL_DELIVERY,
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
+            ParcelStatus.RETURNED,
+          ],
+        },
+      );
     }
 
     if (status) {
