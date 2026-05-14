@@ -2742,13 +2742,18 @@ export class HubsService {
   }
 
   // 3. All Expenses (Paginated)
-  async getAllExpensesForAdmin(query: PaginationDto) {
+  async getAllExpensesForAdmin(query: PaginationDto & { hubId?: string; category?: string; status?: string; startDate?: string; endDate?: string }) {
     const {
       page = 1,
       limit = 20,
       search,
       sortBy = 'created_at',
       order = 'DESC',
+      hubId,
+      category,
+      status: statusFilter,
+      startDate,
+      endDate,
     } = query;
     const skip = (page - 1) * limit;
 
@@ -2771,6 +2776,7 @@ export class HubsService {
       .skip(skip)
       .take(limit);
 
+    // Apply filters
     if (search?.trim()) {
       qb.andWhere(
         `(
@@ -2780,6 +2786,28 @@ export class HubsService {
         )`,
         { search: `%${search.trim()}%` },
       );
+    }
+
+    if (hubId?.trim()) {
+      qb.andWhere('expense.hub_id = :hubId', { hubId: hubId.trim() });
+    }
+
+    if (category?.trim()) {
+      qb.andWhere('expense.category::text = :category', { category: category.trim() });
+    }
+
+    if (statusFilter?.trim()) {
+      qb.andWhere('expense.status::text = :status', { status: statusFilter.trim() });
+    }
+
+    if (startDate?.trim()) {
+      qb.andWhere('expense.created_at >= :startDate', { startDate: new Date(startDate.trim()) });
+    }
+
+    if (endDate?.trim()) {
+      const endDateTime = new Date(endDate.trim());
+      endDateTime.setHours(23, 59, 59, 999);
+      qb.andWhere('expense.created_at <= :endDate', { endDate: endDateTime });
     }
 
     const [items, total] = await qb.getManyAndCount();
