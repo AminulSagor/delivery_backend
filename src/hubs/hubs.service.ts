@@ -2789,6 +2789,7 @@ export class HubsService {
       id: expense.id,
       date: expense.created_at,
       hub: expense.hub ? expense.hub.branch_name : null,
+      hub_address: expense.hub ? expense.hub.address : null,
       category: expense.category,
       amount: parseFloat(expense.amount?.toString() || '0'),
       proof: expense.proof_file_url || null,
