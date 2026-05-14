@@ -2795,6 +2795,8 @@ export class HubsService {
       proof: expense.proof_file_url || null,
       reason: expense.reason,
       status: expense.status,
+      created_at: expense.created_at,
+      updated_at: expense.updated_at,
     }));
 
     return {
