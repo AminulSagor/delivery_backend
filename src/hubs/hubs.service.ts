@@ -2708,8 +2708,20 @@ export class HubsService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    // Map to minimal admin-facing transfer list columns
+    const mapped = items.map((transfer) => ({
+      id: transfer.id,
+      date: transfer.transfer_date || transfer.created_at,
+      hub: transfer.hub ? transfer.hub.branch_name : null,
+      amount: parseFloat(transfer.transferred_amount?.toString() || '0'),
+      proof: transfer.proof_file_url || null,
+      reference: transfer.transaction_reference_id || null,
+      notes: transfer.notes || null,
+      status: transfer.status,
+    }));
+
     return {
-      data: items,
+      data: mapped,
       meta: {
         total,
         page: Number(page),
@@ -2772,8 +2784,20 @@ export class HubsService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    // Map to minimal admin-facing expense list columns
+    const mapped = items.map((expense) => ({
+      id: expense.id,
+      date: expense.created_at,
+      hub: expense.hub ? expense.hub.branch_name : null,
+      category: expense.category,
+      amount: parseFloat(expense.amount?.toString() || '0'),
+      proof: expense.proof_file_url || null,
+      reason: expense.reason,
+      status: expense.status,
+    }));
+
     return {
-      data: items,
+      data: mapped,
       meta: {
         total,
         page: Number(page),
