@@ -29,6 +29,7 @@ import { MerchantService } from '../merchant/merchant.service';
 import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
 import { ParcelsService } from '../parcels/parcels.service';
 import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
+import { PaginatedResponse } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class AdminService {
@@ -166,6 +167,252 @@ export class AdminService {
    */
   async createAndReceiveParcel(dto: AdminCreateParcelDto, adminId: string) {
     return this.parcelsService.createByAdmin(dto, adminId);
+  }
+
+  /**
+   * Admin: Get parcels eligible for receive across all hubs.
+   * Eligible statuses: PENDING, PICKED_UP
+   */
+  async getParcelsForReceipt(
+    query: AdminParcelQueryDto,
+  ): Promise<PaginatedResponse<Parcel>> {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      sortBy = 'created_at',
+      order = 'DESC',
+      hubId,
+      merchantId,
+      storeId,
+      customerName,
+      customerPhone,
+      merchantName,
+      minAmount,
+      maxAmount,
+      deliveryType,
+    } = query;
+
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('store.merchant', 'storeMerchant')
+      .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+      .leftJoinAndSelect('assignedRider.hub', 'assignedRiderHub')
+      .leftJoinAndSelect('parcel.currentHub', 'currentHub')
+      .leftJoinAndSelect('parcel.originHub', 'originHub')
+      .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+      .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
+      .where('parcel.status IN (:...eligibleStatuses)', {
+        eligibleStatuses: [ParcelStatus.PENDING, ParcelStatus.PICKED_UP],
+      });
+
+    if (hubId) {
+      queryBuilder.andWhere('store.hub_id = :hubId', { hubId });
+    }
+
+    if (merchantId) {
+      queryBuilder.andWhere('parcel.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (storeId) {
+      queryBuilder.andWhere('parcel.store_id = :storeId', { storeId });
+    }
+
+    if (customerName?.trim()) {
+      queryBuilder.andWhere('parcel.customer_name ILIKE :customerName', {
+        customerName: `%${customerName.trim()}%`,
+      });
+    }
+
+    if (customerPhone?.trim()) {
+      queryBuilder.andWhere('parcel.customer_phone ILIKE :customerPhone', {
+        customerPhone: `%${customerPhone.trim()}%`,
+      });
+    }
+
+    if (merchantName?.trim()) {
+      queryBuilder.andWhere('merchantUser.full_name ILIKE :merchantName', {
+        merchantName: `%${merchantName.trim()}%`,
+      });
+    }
+
+    if (minAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) >= :minAmount',
+        { minAmount },
+      );
+    }
+
+    if (maxAmount !== undefined) {
+      queryBuilder.andWhere(
+        'COALESCE(parcel.cod_amount, parcel.product_price, parcel.total_charge, 0) <= :maxAmount',
+        { maxAmount },
+      );
+    }
+
+    if (deliveryType !== undefined) {
+      queryBuilder.andWhere('parcel.delivery_type = :deliveryType', {
+        deliveryType,
+      });
+    }
+
+    if (search?.trim()) {
+      const keyword = `%${search.trim()}%`;
+      queryBuilder.andWhere(
+        `(
+          CAST(parcel.id AS TEXT) ILIKE :keyword OR
+          parcel.tracking_number ILIKE :keyword OR
+          parcel.parcel_tx_id ILIKE :keyword OR
+          parcel.merchant_order_id ILIKE :keyword OR
+          parcel.customer_name ILIKE :keyword OR
+          parcel.customer_phone ILIKE :keyword OR
+          merchantUser.full_name ILIKE :keyword OR
+          store.business_name ILIKE :keyword OR
+          coverageArea.area ILIKE :keyword OR
+          coverageArea.zone ILIKE :keyword OR
+          coverageArea.city ILIKE :keyword OR
+          parcel.delivery_area ILIKE :keyword
+        )`,
+        { keyword },
+      );
+    }
+
+    const sortFieldMap: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      updated_at: 'parcel.updated_at',
+      customer_name: 'parcel.customer_name',
+      customer_phone: 'parcel.customer_phone',
+      cod_amount: 'parcel.cod_amount',
+      product_price: 'parcel.product_price',
+      total_charge: 'parcel.total_charge',
+      status: 'parcel.status',
+      delivery_type: 'parcel.delivery_type',
+      merchant_name: 'merchantUser.full_name',
+      store_name: 'store.business_name',
+      tracking_number: 'parcel.tracking_number',
+      parcel_tx_id: 'parcel.parcel_tx_id',
+    };
+
+    const sortField = sortFieldMap[sortBy] || 'parcel.created_at';
+    queryBuilder.orderBy(sortField, order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
+
+    queryBuilder.skip(skip).take(limit);
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Admin: Bulk receive parcels on behalf of the parcel's assigned store hub.
+   */
+  async bulkReceiveParcels(parcelIds: string[]): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+      assignment_attempted?: boolean;
+      carrybee_assigned?: boolean;
+      carrybee_consignment_id?: string | null;
+      carrybee_delivery_fee?: number | null;
+      carrybee_cod_fee?: number | null;
+      carrybee_error?: string | null;
+    }>;
+  }> {
+    const results: Array<{
+      parcel_id: string;
+      parcel_tx_id?: string | null;
+      tracking_number?: string;
+      success: boolean;
+      error?: string;
+      assignment_attempted?: boolean;
+      carrybee_assigned?: boolean;
+      carrybee_consignment_id?: string | null;
+      carrybee_delivery_fee?: number | null;
+      carrybee_cod_fee?: number | null;
+      carrybee_error?: string | null;
+    }> = [];
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    const hubToParcelIds = new Map<string, string[]>();
+
+    for (const parcelId of parcelIds) {
+      const parcel = await this.parcelRepository.findOne({
+        where: { id: parcelId },
+        relations: ['store'],
+      });
+
+      if (!parcel) {
+        results.push({
+          parcel_id: parcelId,
+          success: false,
+          error: 'Parcel not found',
+        });
+        failedCount++;
+        continue;
+      }
+
+      if (!parcel.store?.hub_id) {
+        results.push({
+          parcel_id: parcelId,
+          parcel_tx_id: parcel.parcel_tx_id,
+          tracking_number: parcel.tracking_number,
+          success: false,
+          error: 'Parcel store is not assigned to any hub',
+        });
+        failedCount++;
+        continue;
+      }
+
+      const hubParcelIds = hubToParcelIds.get(parcel.store.hub_id) || [];
+      hubParcelIds.push(parcelId);
+      hubToParcelIds.set(parcel.store.hub_id, hubParcelIds);
+    }
+
+    for (const [hubId, ids] of hubToParcelIds.entries()) {
+      const hubResult = await this.parcelsService.bulkMarkAsReceived(ids, hubId);
+
+      for (const item of hubResult.results) {
+        if (item.success) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+        results.push(item);
+      }
+    }
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results,
+    };
   }
 
   /**
