@@ -46,6 +46,9 @@ Request example:
   "cod_charge": 400,
   "previous_weight_charge": 600,
   "return_amount": 0,
+  "update_amount": 0,
+  "hold_amount": 0,
+  "hold_pay": 0,
   "admin_note": "Advance for May shipments"
 }
 ```
@@ -189,6 +192,16 @@ Errors:
 - `previous_weight_charge` (number, required)
 - `return_amount` (number, required)
 - `admin_note` (string, optional)
+ - `update_amount` (number, optional)
+ - `hold_amount` (number, optional)
+ - `hold_pay` (number, optional)
+
+Aliases accepted by the API (the DTO accepts these alternative names):
+- `collectable_amount` or `collectableAmount` → `total_collectable_amount`
+- `delivery_charge` or `deliveryFee` → `delivery_fee`
+- `return_charge` or `returnAmount` → `return_amount`
+- `prev_weight_charge` or `previousWeightCharge` → `previous_weight_charge`
+- `codCharge` → `cod_charge`
 
 See DTO: [src/advance-payments/dto/create-advance.dto.ts](src/advance-payments/dto/create-advance.dto.ts#L1)
 
@@ -483,7 +496,7 @@ This is the mapped object returned by `GET /.../invoice/:id` (admin) and by merc
   "breakdown": {
     "total_parcels": 24,
     "total_collectable": 15000,
-    "deductions": { "delivery_fee": 1000, "cod_charge": 400, "weight_charge": 600, "return_charge": 500 },
+    "deductions": { "delivery_fee": 1000, "cod_charge": 400, "weight_charge": 600, "return_charge": 500, "update_amount": 0, "hold_amount": 0, "hold_pay": 0 },
     "net_payable": 12500
   },
   "payment_method": "BANK_ACCOUNT",
@@ -510,6 +523,9 @@ CreateAdvancePaymentDto (JSON Schema simplified):
     "cod_charge": { "type": "number" },
     "previous_weight_charge": { "type": "number" },
     "return_amount": { "type": "number" },
+    "update_amount": { "type": "number" },
+    "hold_amount": { "type": "number" },
+    "hold_pay": { "type": "number" },
     "admin_note": { "type": "string" }
   }
 }

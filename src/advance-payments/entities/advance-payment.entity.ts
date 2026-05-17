@@ -62,6 +62,15 @@ export class AdvancePayment {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   return_amount: number; // Manual Entry
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  update_amount: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  hold_amount: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  hold_pay: number;
+
   // ===== CALCULATED FIELD =====
   // Net = Collectable - (Delivery + COD + Weight + Return)
   @Column({ type: 'decimal', precision: 12, scale: 2 })
