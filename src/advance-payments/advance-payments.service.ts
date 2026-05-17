@@ -60,10 +60,13 @@ export class AdvancePaymentsService {
 
     // Manual Calculation logic
     const deductions =
-      Number(dto.delivery_fee) +
-      Number(dto.cod_charge) +
-      Number(dto.previous_weight_charge) +
-      Number(dto.return_amount);
+      Number(dto.delivery_fee || 0) +
+      Number(dto.cod_charge || 0) +
+      Number(dto.previous_weight_charge || 0) +
+      Number(dto.return_amount || 0) +
+      Number(dto.update_amount || 0) +
+      Number(dto.hold_amount || 0) +
+      Number(dto.hold_pay || 0);
 
     const netAmount = Number(dto.total_collectable_amount) - deductions;
 
@@ -143,10 +146,13 @@ export class AdvancePaymentsService {
     await this.assertAdvancePaymentsEnabled(dto.merchant_id);
 
     const deductions =
-      Number(dto.delivery_fee) +
-      Number(dto.cod_charge) +
-      Number(dto.previous_weight_charge) +
-      Number(dto.return_amount);
+      Number(dto.delivery_fee || 0) +
+      Number(dto.cod_charge || 0) +
+      Number(dto.previous_weight_charge || 0) +
+      Number(dto.return_amount || 0) +
+      Number(dto.update_amount || 0) +
+      Number(dto.hold_amount || 0) +
+      Number(dto.hold_pay || 0);
     const netAmount = Number(dto.total_collectable_amount) - deductions;
 
     Object.assign(advance, dto);
@@ -354,6 +360,9 @@ export class AdvancePaymentsService {
           cod_charge: Number(advance.cod_charge),
           weight_charge: Number(advance.previous_weight_charge),
           return_charge: Number(advance.return_amount),
+          update_amount: Number(advance.update_amount || 0),
+          hold_amount: Number(advance.hold_amount || 0),
+          hold_pay: Number(advance.hold_pay || 0),
         },
         net_payable: Number(advance.net_amount_paid),
       },
