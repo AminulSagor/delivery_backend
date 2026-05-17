@@ -32,6 +32,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { Public } from '../common/decorators/public.decorator';
 import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
+import { BulkReceiveParcelsDto } from '../hubs/dto/bulk-receive-parcels.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -100,6 +101,51 @@ export class AdminController {
         parcel: toParcelListItem(parcel),
       },
       message: 'Parcel created and received successfully at the specified hub.',
+    };
+  }
+
+  /**
+   * Get parcels eligible for receive across all hubs (Admin)
+   * Eligible statuses: PENDING, PICKED_UP
+   */
+  @Get('parcels/received')
+  @HttpCode(HttpStatus.OK)
+  async getParcelsForReceipt(@Query() query: AdminParcelQueryDto) {
+    const result = await this.adminService.getParcelsForReceipt(query);
+
+    return {
+      success: true,
+      data: {
+        parcels: result.items.map(toParcelListItem),
+        pagination: result.pagination,
+      },
+      message: 'Parcels awaiting receipt retrieved successfully',
+    };
+  }
+
+  /**
+   * Bulk mark parcels as received (Admin)
+   * Each parcel is received at its own assigned store hub.
+   */
+  @Post('parcels/receive')
+  @HttpCode(HttpStatus.OK)
+  async bulkReceiveParcels(@Body() dto: BulkReceiveParcelsDto) {
+    const result = await this.adminService.bulkReceiveParcels(dto.parcel_ids);
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          total: dto.parcel_ids.length,
+          success: result.success,
+          failed: result.failed,
+        },
+        results: result.results,
+      },
+      message:
+        result.failed === 0
+          ? `${result.success} parcel${result.success !== 1 ? 's' : ''} marked as received successfully`
+          : `${result.success} parcel${result.success !== 1 ? 's' : ''} received, ${result.failed} failed`,
     };
   }
 
