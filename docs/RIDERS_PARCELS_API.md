@@ -182,7 +182,7 @@ Example response (200):
       "parcel_id": "#139679",
       "current_status": "ASSIGNED_TO_RIDER",
       "delivery_milestones": [
-        { "key": "picked", "label": "Picked", "is_completed": false },
+        { "key": "picked", "label": "Picked", "is_completed": true },
         { "key": "sorted", "label": "Sorted", "is_completed": true },
         { "key": "in_transit", "label": "In Transit", "is_completed": false },
         { "key": "received_at_lmh", "label": "Received At LMH", "is_completed": true },

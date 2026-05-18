@@ -496,6 +496,14 @@ export class AuthService {
             address: hubManager.hub.address,
           }
         : null,
+      hub_manager: {
+        id: hubManager.id,
+        fixed_salary: hubManager.fixed_salary,
+        bank_name: hubManager.bank_name,
+        bank_account_number: hubManager.bank_account_number,
+        bank_branch: hubManager.bank_branch,
+        is_active: (hubManager as any).is_active ?? true,
+      },
     };
   }
 

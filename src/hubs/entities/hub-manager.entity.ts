@@ -33,6 +33,19 @@ export class HubManager {
   @JoinColumn({ name: 'hub_id' })
   hub: Hub;
 
+  // Financial
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  fixed_salary: number;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_name: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  bank_account_number: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_branch: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 

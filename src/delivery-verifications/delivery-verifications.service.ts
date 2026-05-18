@@ -270,6 +270,9 @@ export class DeliveryVerificationsService {
       existingVerification.delivery_attempted_at = new Date();
       this.resetOtpBypassRequestState(existingVerification);
 
+      parcel.admin_notes = reason || null;
+      await this.parcelRepo.save(parcel);
+
       if (skipOtpVerification) {
         existingVerification.otp_code = null;
         existingVerification.otp_sent_at = null;
@@ -372,6 +375,9 @@ export class DeliveryVerificationsService {
     });
 
     await this.deliveryVerificationRepo.save(verification);
+
+    parcel.admin_notes = reason || null;
+    await this.parcelRepo.save(parcel);
 
     if (skipOtpVerification) {
       await this.completeDelivery(verification.id);
