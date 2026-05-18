@@ -9,6 +9,8 @@ import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Staff } from './entities/staff.entity';
 import { User } from '../users/entities/user.entity';
 import { Hub } from '../hubs/entities/hub.entity';
+import { Rider } from '../riders/entities/rider.entity';
+import { HubManager } from '../hubs/entities/hub-manager.entity';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -24,6 +26,10 @@ export class StaffService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Hub)
     private readonly hubRepository: Repository<Hub>,
+    @InjectRepository(Rider)
+    private readonly riderRepository: Repository<Rider>,
+    @InjectRepository(HubManager)
+    private readonly hubManagerRepository: Repository<HubManager>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -271,13 +277,34 @@ export class StaffService {
       totalSalary: string;
     }>();
 
+    // Also include riders and hub managers in total salary calculation
+    const riderQuery = this.riderRepository
+      .createQueryBuilder('rider')
+      .select('COALESCE(SUM(rider.fixed_salary), 0)', 'sum');
+
+    const hubManagerQuery = this.hubManagerRepository
+      .createQueryBuilder('hubManager')
+      .select('COALESCE(SUM(hubManager.fixed_salary), 0)', 'sum');
+
+    if (hubId) {
+      riderQuery.where('rider.hub_id = :hubId', { hubId });
+      hubManagerQuery.where('hubManager.hub_id = :hubId', { hubId });
+    }
+
+    const riderSumRes = await riderQuery.getRawOne<{ sum: string }>();
+    const hubManagerSumRes = await hubManagerQuery.getRawOne<{ sum: string }>();
+
+    const staffSum = Number(summary?.totalSalary || 0);
+    const riderSum = Number(riderSumRes?.sum || 0);
+    const hubManagerSum = Number(hubManagerSumRes?.sum || 0);
+
     return {
       totalStaff: parseInt(summary?.totalStaff || '0', 10),
       active: parseInt(summary?.active || '0', 10),
       inactive: parseInt(summary?.inactive || '0', 10),
       riders: parseInt(summary?.riders || '0', 10),
       couriers: parseInt(summary?.couriers || '0', 10),
-      totalSalary: Number(summary?.totalSalary || 0),
+      totalSalary: staffSum + riderSum + hubManagerSum,
     };
   }
 
