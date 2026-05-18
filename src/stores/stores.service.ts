@@ -153,28 +153,12 @@ export class StoresService {
       dto.facebook_page !== undefined ? dto.facebook_page : dto.fb;
     store.facebook_page = this.normalizeOptionalText(facebookPage);
     store.is_default = dto.is_default || false;
-    store.carrybee_city_id = dto.carrybee_city_id;
-    store.carrybee_zone_id = dto.carrybee_zone_id;
-    store.carrybee_area_id = dto.carrybee_area_id;
 
-    // Validate location IDs against coverage_areas table
-    const isValidLocation = await this.coverageAreasService.validateLocationIds(
-      dto.carrybee_city_id,
-      dto.carrybee_zone_id,
-      dto.carrybee_area_id,
-    );
-
-    if (!isValidLocation) {
-      throw new BadRequestException(
-        'Invalid location IDs. Please select valid city, zone, and area from coverage areas.',
-      );
-    }
-
-    // Save store first (without Carrybee sync)
+    // Save store with plain address
     await this.storesRepository.save(store);
 
     this.logger.log(
-      `Store ${store.id} created locally. Carrybee sync will happen lazily during parcel assignment.`,
+      `Store ${store.id} created with plain address.`,
     );
 
     console.log(
