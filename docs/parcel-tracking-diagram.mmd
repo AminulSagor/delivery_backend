@@ -1,0 +1,16 @@
+flowchart TD
+  ParcelEntity[Parcel entity fields]
+  ParcelEntity -->|mapper: toParcelDetail()| TrackingObj[tracking object]
+  TrackingObj --> CurrentStatus[current_status]
+  TrackingObj --> Milestones[delivery_milestones]
+  TrackingObj --> Activities[activities]
+
+  CurrentStatus --> Badge[UI: Status Badge]
+  Milestones --> Stepper[UI: Stepper / Progress]
+  Activities --> Timeline[UI: Activity Timeline]
+
+  style ParcelEntity fill:#f9f,stroke:#333,stroke-width:1px
+  style TrackingObj fill:#ff9,stroke:#333,stroke-width:1px
+  style Badge fill:#9f9,stroke:#333
+  style Stepper fill:#9ff,stroke:#333
+  style Timeline fill:#f99,stroke:#333

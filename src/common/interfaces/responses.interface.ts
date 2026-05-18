@@ -642,15 +642,27 @@ export function toParcelListItem(parcel: any): any {
 export function toParcelDetail(parcel: any): any {
   const base = toParcelListItem(parcel);
 
+  const pickedEvidence = !!(
+    parcel.picked_up_at ||
+    parcel.currentHub ||
+    parcel.received_at ||
+    parcel.received_at_destination_hub ||
+    parcel.assigned_at ||
+    parcel.out_for_delivery_at ||
+    parcel.delivered_at ||
+    parcel.status === ParcelStatus.IN_HUB ||
+    parcel.status === ParcelStatus.IN_TRANSIT
+  );
+
   const milestones = [
-    { key: 'picked', label: 'Picked', is_completed: !!parcel.picked_up_at },
+    { key: 'picked', label: 'Picked', is_completed: pickedEvidence },
     {
       key: 'sorted',
       label: 'Sorted',
       is_completed:
         parcel.status === ParcelStatus.IN_HUB ||
         parcel.status === ParcelStatus.IN_TRANSIT ||
-        !!parcel.picked_up_at,
+        pickedEvidence,
     },
     {
       key: 'in_transit',
@@ -675,6 +687,33 @@ export function toParcelDetail(parcel: any): any {
       is_completed: !!parcel.delivered_at,
     },
   ];
+
+  // Enforce sequential milestone completion: if a later milestone is completed,
+  // ensure all earlier milestones are also marked completed. This keeps the
+  // presentation model consistent for all clients.
+  try {
+    const completedFlags = milestones.map((m) => !!m.is_completed);
+    const lastCompleted = completedFlags.lastIndexOf(true);
+    if (lastCompleted > -1) {
+      for (let i = 0; i <= lastCompleted; i++) {
+        milestones[i].is_completed = true;
+      }
+    }
+  } catch (err) {
+    // Defensive: if anything unexpected happens, leave milestones as-is.
+  }
+
+  // Human-friendly status labels used in activity messages
+  const STATUS_LABELS: Record<string, string> = {
+    ASSIGNED_TO_THIRD_PARTY: 'Assigned to Third Party',
+    PICKED_UP: 'Picked Up',
+    IN_TRANSIT: 'In Transit',
+    IN_HUB: 'In Hub',
+    OUT_FOR_DELIVERY: 'Out For Delivery',
+    DELIVERED: 'Delivered',
+    RETURNED: 'Returned',
+    FAILED_DELIVERY: 'Failed Delivery',
+  };
 
   const acts: any[] = [];
   if (parcel.created_at)
@@ -709,9 +748,18 @@ export function toParcelDetail(parcel: any): any {
       'Rider';
     const rPhone =
       parcel.assignedRider.user?.phone || parcel.assignedRider.phone || null;
+    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Assigned';
     acts.push({
-      message: `parcel is assigned for delivery to ${rName}${rPhone ? ` (${rPhone})` : ''}`,
+      message: `Parcel assigned for delivery to ${rName}${rPhone ? ` (${rPhone})` : ''} (${statusLabel})`,
       timestamp: parcel.assigned_at,
+      location: null,
+    });
+  }
+  if (parcel.admin_notes) {
+    acts.push({
+      message: `Rider note: ${parcel.admin_notes}`,
+      timestamp:
+        parcel.updated_at ?? parcel.out_for_delivery_at ?? parcel.assigned_at ?? parcel.created_at,
       location: null,
     });
   }
@@ -720,18 +768,21 @@ export function toParcelDetail(parcel: any): any {
       parcel.assignedRider.user?.full_name ||
       parcel.assignedRider.full_name ||
       'Rider';
+    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Out For Delivery';
     acts.push({
-      message: `${rName} is on the way to the recipient address`,
+      message: `${rName} is on the way to the recipient address (${statusLabel})`,
       timestamp: parcel.out_for_delivery_at,
       location: null,
     });
   }
-  if (parcel.delivered_at)
+  if (parcel.delivered_at) {
+    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Delivered';
     acts.push({
-      message: 'Parcel delivered',
+      message: `Parcel delivered (${statusLabel})`,
       timestamp: parcel.delivered_at,
       location: null,
     });
+  }
 
   acts.sort(
     (a: any, b: any) =>
