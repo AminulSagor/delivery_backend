@@ -645,6 +645,162 @@ export class AdminService {
     return { hub_id: hub.id, notified_at: notifiedAt, message: message || null };
   }
 
+  /**
+   * Admin: Get hub detail with financial summary and related parcels
+   */
+  async getHubDetail(
+    hubId: string,
+    query: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+      merchantId?: string;
+      riderId?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+    } = {},
+  ) {
+    const hub = await this.hubRepository.findOne({
+      where: { id: hubId },
+      relations: ['manager_user'],
+    });
+    if (!hub) throw new NotFoundException('Hub not found');
+
+    const manager = await this.hubManagerRepository.findOne({
+      where: { hub_id: hubId },
+      relations: ['user'],
+    });
+
+    const finance = await this.hubManagerFinanceRepository.findOne({
+      where: { hub_id: hubId },
+    });
+
+    // Expenses
+    const expenseResult = await this.hubExpenseRepository
+      .createQueryBuilder('e')
+      .select('COALESCE(SUM(e.amount), 0)', 'total')
+      .where('e.hub_id = :hubId', { hubId })
+      .andWhere('e.status = :status', { status: TransferRecordStatus.APPROVED })
+      .getRawOne();
+
+    // Receivable = Total collected - Expenses
+    const totalCollected = Number(finance?.total_collected_from_riders || 0);
+    const expenses = Number(expenseResult?.total || 0);
+    const receivable = totalCollected - expenses;
+
+    const hubDetail = {
+      id: hub.id,
+      hub_code: hub.hub_code,
+      branch_name: hub.branch_name,
+      area: hub.area,
+      address: hub.address,
+      manager: manager?.user
+        ? { id: manager.id, name: manager.user.full_name, phone: manager.user.phone }
+        : { name: hub.manager_name, phone: hub.manager_phone },
+      total_collected_amount: totalCollected,
+      expenses_clearance: expenses,
+      total_receivable_amount: receivable,
+      last_received_at: finance?.last_collection_at || null,
+    };
+
+    // Get parcels
+    const { page = 1, limit = 20, search, status, merchantId, riderId, sortBy = 'created_at', order = 'DESC' } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.parcelRepository
+      .createQueryBuilder('parcel')
+      .leftJoinAndSelect('parcel.merchant', 'merchant')
+      .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('parcel.store', 'store')
+      .leftJoinAndSelect('store.hub', 'storeHub')
+      .leftJoinAndSelect('parcel.customer', 'customer')
+      .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
+      .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+      .leftJoinAndSelect('assignedRider.user', 'riderUser')
+      .where('(parcel.current_hub_id = :hubId OR store.hub_id = :hubId)', { hubId });
+
+    if (status) {
+      qb.andWhere('parcel.status = :status', { status });
+    }
+
+    if (merchantId) {
+      qb.andWhere('parcel.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (riderId) {
+      qb.andWhere('parcel.assigned_rider_id = :riderId', { riderId });
+    }
+
+    if (search?.trim()) {
+      const kw = `%${search.trim()}%`;
+      qb.andWhere(
+        `(
+          parcel.customer_name ILIKE :kw OR
+          parcel.customer_phone ILIKE :kw OR
+          parcel.parcel_tx_id ILIKE :kw OR
+          CAST(parcel.id AS TEXT) ILIKE :kw OR
+          merchantUser.full_name ILIKE :kw OR
+          coverageArea.area ILIKE :kw
+        )`,
+        { kw },
+      );
+    }
+
+    // Only include parcels that have been cleared with the hub (hub collected from rider)
+    qb.andWhere('parcel.cod_cleared_at IS NOT NULL');
+
+    const sortFieldMap: Record<string, string> = {
+      created_at: 'parcel.created_at',
+      updated_at: 'parcel.updated_at',
+      customer_name: 'parcel.customer_name',
+      amount: 'parcel.total_charge',
+      status: 'parcel.status',
+    };
+
+    const sortField = sortFieldMap[sortBy] || 'parcel.created_at';
+    qb.orderBy(sortField, order === 'ASC' ? 'ASC' : 'DESC');
+    qb.skip(skip).take(limit);
+
+    const [parcels, total] = await qb.getManyAndCount();
+
+    const mappedParcels = parcels.map((p) => ({
+      id: p.id,
+      parcel_id: p.parcel_tx_id || p.id,
+      tracking_number: p.tracking_number,
+      customer_name: p.customer_name,
+      customer_phone: p.customer_phone,
+      customer_address: p.customer_address,
+      merchant_name: p.merchant?.user?.full_name || 'N/A',
+      area: p.delivery_area || p.delivery_coverage_area?.area || 'N/A',
+      rider_name: p.assignedRider?.user?.full_name || 'N/A',
+      rider_phone: p.assignedRider?.user?.phone || null,
+      status: p.status,
+      amount: Number(p.total_charge),
+      delivery_charge: Number(p.delivery_charge || 0),
+      cod_charge: Number(p.cod_charge || 0),
+      weight_charge: Number(p.weight_charge || 0),
+      age_days: Math.floor((new Date().getTime() - p.created_at.getTime()) / (1000 * 60 * 60 * 24)),
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+    }));
+
+    return {
+      hub: hubDetail,
+      parcels: {
+        items: mappedParcels,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      },
+    };
+  }
+
   // ===== DROPDOWN DATA METHODS =====
 
   /**

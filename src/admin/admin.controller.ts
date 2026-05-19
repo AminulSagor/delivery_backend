@@ -229,6 +229,22 @@ export class AdminController {
   }
 
   /**
+   * Admin: Get hub detail with financial summary and related parcels
+   */
+  @Get('hub-collections/:id')
+  async getHubDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: PaginationDto & { search?: string; status?: string; merchantId?: string; riderId?: string; sortBy?: string; order?: 'ASC' | 'DESC' },
+  ) {
+    const data = await this.adminService.getHubDetail(id, query);
+    return {
+      success: true,
+      data,
+      message: 'Hub details with parcels retrieved successfully',
+    };
+  }
+
+  /**
    * Approve transfer record
    */
   @Patch('hub-transfer-records/:id/approve')
