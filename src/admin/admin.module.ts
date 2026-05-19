@@ -10,6 +10,9 @@ import { Parcel } from '../parcels/entities/parcel.entity';
 import { HubTransferRecord } from '../hubs/entities/hub-transfer-record.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Hub } from '../hubs/entities/hub.entity';
+import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { HubManagerFinance } from '../hubs/entities/hub-manager-finance.entity';
+import { HubExpense } from '../hubs/entities/hub-expense.entity';
 import { AdminFinance } from './entities/admin-finance.entity';
 import { UsersModule } from '../users/users.module';
 import { EmailService } from '../utils/email.service';
@@ -30,6 +33,9 @@ import { ParcelsModule } from '../parcels/parcels.module';
       Parcel,
       Store,
       Hub,
+      HubManager,
+      HubManagerFinance,
+      HubExpense,
       AdminFinance,
       AdminAccount,
       AdminAccountStatement,

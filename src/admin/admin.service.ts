@@ -13,6 +13,9 @@ import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
 import { HubTransferRecord } from '../hubs/entities/hub-transfer-record.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Hub } from '../hubs/entities/hub.entity';
+import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { HubManagerFinance } from '../hubs/entities/hub-manager-finance.entity';
+import { HubExpense } from '../hubs/entities/hub-expense.entity';
 import { Rider } from '../riders/entities/rider.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -46,6 +49,12 @@ export class AdminService {
     private storeRepository: Repository<Store>,
     @InjectRepository(Hub)
     private hubRepository: Repository<Hub>,
+    @InjectRepository(HubManager)
+    private hubManagerRepository: Repository<HubManager>,
+    @InjectRepository(HubManagerFinance)
+    private hubManagerFinanceRepository: Repository<HubManagerFinance>,
+    @InjectRepository(HubExpense)
+    private hubExpenseRepository: Repository<HubExpense>,
     private usersService: UsersService,
     private merchantService: MerchantService,
     private parcelsService: ParcelsService,
@@ -528,6 +537,112 @@ export class AdminService {
     );
 
     return admin;
+  }
+
+
+  /**
+   * Admin: List hubs with finance summary for hub cash collection UI
+   */
+  async getHubCollections(query: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    area?: string;
+    sortBy?: string;
+    order?: 'ASC' | 'DESC';
+  }) {
+    const { page = 1, limit = 20, search, area, sortBy = 'branch_name', order = 'DESC' } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.hubRepository.createQueryBuilder('hub').leftJoinAndSelect('hub.manager_user', 'managerUser');
+
+    if (area?.trim()) {
+      qb.andWhere('hub.area ILIKE :area', { area: `%${area.trim()}%` });
+    }
+
+    if (search?.trim()) {
+      const kw = `%${search.trim()}%`;
+      qb.andWhere('(hub.branch_name ILIKE :kw OR hub.hub_code ILIKE :kw OR managerUser.full_name ILIKE :kw OR managerUser.phone ILIKE :kw)', { kw });
+    }
+
+    const sortFieldMap: Record<string, string> = {
+      branch_name: 'hub.branch_name',
+      hub_code: 'hub.hub_code',
+      area: 'hub.area',
+      created_at: 'hub.created_at',
+    };
+
+    const sortField = sortFieldMap[sortBy] || 'hub.branch_name';
+    qb.orderBy(sortField, order === 'ASC' ? 'ASC' : 'DESC');
+
+    qb.skip(skip).take(limit);
+
+    const [hubs, total] = await qb.getManyAndCount();
+
+    const mapped = [] as any[];
+
+    for (const hub of hubs) {
+      // Find hub manager record
+      const manager = await this.hubManagerRepository.findOne({ where: { hub_id: hub.id }, relations: ['user'] });
+
+      // Finance snapshot
+      const finance = await this.hubManagerFinanceRepository.findOne({ where: { hub_id: hub.id } });
+
+      // Lifetime expenses (APPROVED)
+      const expenseResult = await this.hubExpenseRepository
+        .createQueryBuilder('e')
+        .select('COALESCE(SUM(e.amount), 0)', 'total')
+        .where('e.hub_id = :hubId', { hubId: hub.id })
+        .andWhere('e.status = :status', { status: TransferRecordStatus.APPROVED })
+        .getRawOne();
+
+      // Pending transfers
+      const pendingResult = await this.hubTransferRecordRepository
+        .createQueryBuilder('t')
+        .select('COALESCE(SUM(t.transferred_amount), 0)', 'total')
+        .where('t.hub_id = :hubId', { hubId: hub.id })
+        .andWhere('t.status IN (:...statuses)', { statuses: [TransferRecordStatus.PENDING, TransferRecordStatus.IN_REVIEW] })
+        .getRawOne();
+
+      mapped.push({
+        id: hub.id,
+        hub_code: hub.hub_code,
+        branch_name: hub.branch_name,
+        area: hub.area,
+        address: hub.address,
+        manager: manager?.user ? { id: manager.id, name: manager.user.full_name, phone: manager.user.phone } : { name: hub.manager_name, phone: hub.manager_phone },
+        lifetime_collection: Number(finance?.total_collected_from_riders || 0),
+        hub_expenses: Number(expenseResult?.total || 0),
+        pending_amount: Number(pendingResult?.total || 0),
+        last_received_at: finance?.last_collection_at || null,
+      });
+    }
+
+    return {
+      items: mapped,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Admin: Notify a hub (placeholder - may integrate SMS/email later)
+   */
+  async notifyHub(hubId: string, message?: string) {
+    const hub = await this.hubRepository.findOne({ where: { id: hubId } });
+    if (!hub) throw new NotFoundException('Hub not found');
+
+    // For now, just log and return timestamp. Integrate notification provider later.
+    const notifiedAt = new Date();
+    console.log(`[ADMIN NOTIFY HUB] Hub ${hub.branch_name} (${hub.id}) notified. Message: ${message || 'n/a'}`);
+
+    return { hub_id: hub.id, notified_at: notifiedAt, message: message || null };
   }
 
   // ===== DROPDOWN DATA METHODS =====

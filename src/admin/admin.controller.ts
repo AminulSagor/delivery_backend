@@ -21,6 +21,7 @@ import { AdminParcelQueryDto } from './dto/admin-parcel-query.dto';
 import { AddPayoutMethodDto } from '../merchant/dto/add-payout-method.dto';
 import { UpdatePayoutMethodDto } from '../merchant/dto/update-payout-method.dto';
 import { TransferRecordQueryDto } from '../hubs/dto/transfer-record-query.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import {
   ApproveTransferRecordDto,
   RejectTransferRecordDto,
@@ -172,6 +173,59 @@ export class AdminController {
       },
       message: 'Hub transfer records retrieved successfully',
     };
+  }
+
+  /**
+   * Admin: Hub Collections list (for HUB Cash Collection UI)
+   */
+  @Get('hub-collections')
+  async getHubCollections(@Query() query: PaginationDto & { search?: string; area?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) {
+    const result = await this.adminService.getHubCollections(query);
+    return {
+      success: true,
+      data: {
+        items: result.items,
+        pagination: result.pagination,
+      },
+      message: 'Hub collections retrieved successfully',
+    };
+  }
+
+  /**
+   * Admin: Export hub collections to CSV
+   */
+  @Get('hub-collections/export')
+  async exportHubCollections(@Query() query: PaginationDto & { search?: string; area?: string }) {
+    // Get all hubs (no pagination) by setting a large limit
+    const result = await this.adminService.getHubCollections({ ...(query as any), page: 1, limit: 10000 });
+
+    // Build CSV
+    const rows = result.items.map((h) => ({
+      id: h.id,
+      hub_code: h.hub_code,
+      branch_name: h.branch_name,
+      area: h.area,
+      manager_name: h.manager?.name || null,
+      manager_phone: h.manager?.phone || null,
+      lifetime_collection: h.lifetime_collection,
+      hub_expenses: h.hub_expenses,
+      pending_amount: h.pending_amount,
+      last_received_at: h.last_received_at ? new Date(h.last_received_at).toISOString() : '',
+    }));
+
+    const header = Object.keys(rows[0] || {}).join(',') + '\n';
+    const csv = header + rows.map((r) => Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    return { success: true, data: { csv }, message: 'CSV exported' };
+  }
+
+  /**
+   * Admin: Send notification to hub (placeholder)
+   */
+  @Post('hub-collections/:id/notify')
+  async notifyHub(@Param('id') id: string, @Body() body: { message?: string }) {
+    const result = await this.adminService.notifyHub(id, body?.message);
+    return { success: true, data: result, message: 'Hub notified' };
   }
 
   /**
