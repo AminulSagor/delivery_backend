@@ -122,8 +122,12 @@ export class AdvancePaymentsService {
       );
     }
 
+    const isMerchantOwner =
+      advance.merchant_id === merchantUserId ||
+      advance.merchant?.user_id === merchantUserId;
+
     // Security check: ensure the logged-in merchant owns this invoice
-    if (advance.merchant_id !== merchantUserId) {
+    if (!isMerchantOwner) {
       throw new BadRequestException('Unauthorized access to this invoice');
     }
 
@@ -410,10 +414,11 @@ export class AdvancePaymentsService {
     }
 
     // Security Check: If a merchant is calling, they must own this invoice
-    if (
-      currentUserMerchantId &&
-      advance.merchant_id !== currentUserMerchantId
-    ) {
+    const isMerchantOwner =
+      advance.merchant_id === currentUserMerchantId ||
+      advance.merchant?.user_id === currentUserMerchantId;
+
+    if (currentUserMerchantId && !isMerchantOwner) {
       throw new ForbiddenException(
         'You do not have permission to view this invoice',
       );
