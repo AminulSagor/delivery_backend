@@ -88,7 +88,7 @@ export class AdvancePayment {
   merchant_review_note: string;
 
   @Column({ type: 'text', nullable: true })
-  admin_note: string;
+  admin_note: string | null;
 
   @Column({ type: 'boolean', default: false })
   is_paid: boolean;
