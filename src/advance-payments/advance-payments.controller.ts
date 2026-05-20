@@ -13,6 +13,8 @@ import {
 import { AdvancePaymentsService } from './advance-payments.service';
 import { CreateAdvancePaymentDto } from './dto/create-advance.dto';
 import { MerchantActionDto } from './dto/merchant-action.dto';
+import { ReviewAdvancePaymentDto } from './dto/review-advance.dto';
+import { UpdateAdvancePaymentDto } from './dto/update-advance.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -61,8 +63,19 @@ export class AdvancePaymentsController {
   @Patch('admin/invoice/:id/update')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  update(@Param('id') id: string, @Body() dto: CreateAdvancePaymentDto) {
+  update(@Param('id') id: string, @Body() dto: UpdateAdvancePaymentDto) {
     return this.service.update(id, dto);
+  }
+
+  @Patch('admin/invoice/:id/review')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  review(
+    @Param('id') id: string,
+    @Body() dto: ReviewAdvancePaymentDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.review(id, dto, user);
   }
 
   @Patch('admin/invoice/:id/pay')

@@ -1,0 +1,718 @@
+{
+  "info": {
+    "name": "Advance Payments System",
+    "description": "Full advance payment workflow collection covering admin creation, merchant approval, merchant review requests, admin review handling, legacy admin pay, and the merchant advance-payment toggle.\n\nProper flow:\n1. Admin creates an advance invoice.\n2. Merchant reviews the invoice.\n3. If the invoice is correct, the merchant approves it.\n4. Merchant approval automatically deducts the balance and marks the invoice as paid.\n5. If the merchant sees a mismatch, they request review with a note.\n6. Admin reviews the request, adjusts the invoice or rejects it.\n7. The updated invoice returns to merchant approval.\n8. When the merchant approves the updated invoice, the balance is deducted automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "merchant_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "merchantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "advancePaymentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Admin Advance Payments",
+      "item": [
+        {
+          "name": "Create Advance Invoice",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant_id\": \"{{merchantId}}\",\n  \"total_parcels\": 24,\n  \"payment_method\": \"BANK_ACCOUNT\",\n  \"total_collectable_amount\": 15000,\n  \"delivery_fee\": 1000,\n  \"cod_charge\": 400,\n  \"previous_weight_charge\": 600,\n  \"return_amount\": 0,\n  \"update_amount\": 0,\n  \"hold_amount\": 0,\n  \"hold_pay\": 0,\n  \"admin_note\": \"Advance for May shipments\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/create/invoice",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "create",
+                "invoice"
+              ]
+            },
+            "description": "Creates a new advance invoice for a merchant. The invoice starts in PENDING_MERCHANT_APPROVAL."
+          },
+          "response": [
+            {
+              "name": "201 - Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"merchant_id\": \"{{merchantId}}\",\n  \"total_parcels\": 24,\n  \"payment_method\": \"BANK_ACCOUNT\",\n  \"total_collectable_amount\": \"15000.00\",\n  \"delivery_fee\": \"1000.00\",\n  \"cod_charge\": \"400.00\",\n  \"previous_weight_charge\": \"600.00\",\n  \"return_amount\": \"0.00\",\n  \"update_amount\": \"0.00\",\n  \"hold_amount\": \"0.00\",\n  \"hold_pay\": \"0.00\",\n  \"net_amount_paid\": \"12500.00\",\n  \"status\": \"PENDING_MERCHANT_APPROVAL\",\n  \"merchant_review_note\": null,\n  \"admin_note\": \"Advance for May shipments\",\n  \"is_paid\": false,\n  \"paid_at\": null,\n  \"created_at\": \"2026-05-03T09:15:00.000Z\",\n  \"updated_at\": \"2026-05-03T09:15:00.000Z\"\n}"
+            },
+            {
+              "name": "403 - Merchant Disabled",
+              "status": "Forbidden",
+              "code": 403,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 403,\n  \"message\": \"Advance payment feature is disabled for this merchant\",\n  \"error\": \"Forbidden\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Advance Invoices",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/list?page=1&limit=10&status=PENDING_MERCHANT_APPROVAL&merchant_id={{merchantId}}&search=ADV&sortBy=created_at&order=DESC",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "list"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING_MERCHANT_APPROVAL"
+                },
+                {
+                  "key": "merchant_id",
+                  "value": "{{merchantId}}"
+                },
+                {
+                  "key": "search",
+                  "value": "ADV"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "created_at"
+                },
+                {
+                  "key": "order",
+                  "value": "DESC"
+                }
+              ]
+            },
+            "description": "Lists advance invoices for admin with pagination and filters."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n      \"invoice_id\": \"ADV-260506-001\",\n      \"created_at\": \"2026-05-03T09:15:00.000Z\",\n      \"merchant_name\": \"Demo Merchant\",\n      \"merchant_phone\": \"01700000000\",\n      \"total_parcels\": 24,\n      \"net_amount\": 12500,\n      \"status\": \"PENDING_MERCHANT_APPROVAL\",\n      \"is_paid\": false,\n      \"paid_at\": null\n    }\n  ],\n  \"pagination\": {\n    \"total\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"totalPages\": 1,\n    \"hasNext\": false,\n    \"hasPrev\": false\n  },\n  \"message\": \"Advance payments retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Advance Invoice Details",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advancePaymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "{{advancePaymentId}}"
+              ]
+            },
+            "description": "Returns the full mapped invoice detail for admin review."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n    \"invoice_id\": \"ADV-260506-001\",\n    \"status\": \"PENDING_MERCHANT_APPROVAL\",\n    \"created_at\": \"2026-05-03T09:15:00.000Z\",\n    \"paid_at\": null,\n    \"is_paid\": false,\n    \"merchant\": {\n      \"id\": \"{{merchantId}}\",\n      \"name\": \"Merchant Name\",\n      \"phone\": \"01700000000\"\n    },\n    \"breakdown\": {\n      \"total_parcels\": 24,\n      \"total_collectable\": 15000,\n      \"deductions\": {\n        \"delivery_fee\": 1000,\n        \"cod_charge\": 400,\n        \"weight_charge\": 600,\n        \"return_charge\": 0,\n        \"update_amount\": 0,\n        \"hold_amount\": 0,\n        \"hold_pay\": 0\n      },\n      \"net_payable\": 12500\n    },\n    \"payment_method\": \"BANK_ACCOUNT\",\n    \"admin_note\": \"Advance for May shipments\",\n    \"merchant_review_note\": null,\n    \"created_by\": \"Admin Name\"\n  },\n  \"message\": \"Advance payment details retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Advance Invoice",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant_id\": \"{{merchantId}}\",\n  \"total_parcels\": 24,\n  \"payment_method\": \"BANK_ACCOUNT\",\n  \"total_collectable_amount\": 15200,\n  \"delivery_fee\": 900,\n  \"cod_charge\": 400,\n  \"previous_weight_charge\": 600,\n  \"return_amount\": 0,\n  \"update_amount\": 0,\n  \"hold_amount\": 0,\n  \"hold_pay\": 0,\n  \"admin_note\": \"Recalculated after admin review\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advancePaymentId}}/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "{{advancePaymentId}}",
+                "update"
+              ]
+            },
+            "description": "Updates an advance invoice and resets it to PENDING_MERCHANT_APPROVAL."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"PENDING_MERCHANT_APPROVAL\",\n  \"net_amount_paid\": \"12900.00\",\n  \"admin_note\": \"Recalculated after admin review\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Review Merchant Request - Approve Adjustment",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"APPROVE\",\n  \"total_collectable_amount\": 15200,\n  \"delivery_fee\": 900,\n  \"admin_note\": \"Adjusted after verifying the mismatch\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advancePaymentId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "{{advancePaymentId}}",
+                "review"
+              ]
+            },
+            "description": "Approves a merchant review request with adjustments, then returns the invoice to PENDING_MERCHANT_APPROVAL."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"PENDING_MERCHANT_APPROVAL\",\n  \"net_amount_paid\": \"12900.00\",\n  \"admin_note\": \"Adjusted after verifying the mismatch\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Review Merchant Request - Reject",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"REJECT\",\n  \"admin_note\": \"No adjustment needed after checking the source data\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advancePaymentId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "{{advancePaymentId}}",
+                "review"
+              ]
+            },
+            "description": "Rejects the merchant review request and returns the invoice to PENDING_MERCHANT_APPROVAL."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"PENDING_MERCHANT_APPROVAL\",\n  \"admin_note\": \"No adjustment needed after checking the source data\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Legacy Admin Pay Invoice",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/admin/invoice/{{advancePaymentId}}/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "admin",
+                "invoice",
+                "{{advancePaymentId}}",
+                "pay"
+              ]
+            },
+            "description": "Legacy compatibility route. The normal flow should use merchant approval, which auto-deducts the balance."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"PAID\",\n  \"is_paid\": true,\n  \"paid_at\": \"2026-05-03T10:00:00.000Z\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02. Merchant Advance Payments",
+      "item": [
+        {
+          "name": "List My Advance Invoices",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{merchant_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/merchant/invoice/list?page=1&limit=10&status=PENDING_MERCHANT_APPROVAL&search=ADV",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "merchant",
+                "invoice",
+                "list"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING_MERCHANT_APPROVAL"
+                },
+                {
+                  "key": "search",
+                  "value": "ADV"
+                }
+              ]
+            },
+            "description": "Returns only the logged-in merchant's invoices."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n      \"invoice_id\": \"ADV-260506-001\",\n      \"created_at\": \"2026-05-03T09:15:00.000Z\",\n      \"merchant_name\": \"Demo Merchant\",\n      \"merchant_phone\": \"01700000000\",\n      \"total_parcels\": 24,\n      \"net_amount\": 12500,\n      \"status\": \"PENDING_MERCHANT_APPROVAL\",\n      \"is_paid\": false,\n      \"paid_at\": null\n    }\n  ],\n  \"pagination\": {\n    \"total\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"totalPages\": 1,\n    \"hasNext\": false,\n    \"hasPrev\": false\n  },\n  \"message\": \"My advance payments retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get My Advance Invoice",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{merchant_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/merchant/invoice/{{advancePaymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "merchant",
+                "invoice",
+                "{{advancePaymentId}}"
+              ]
+            },
+            "description": "Returns the full invoice detail for the logged-in merchant if they own the record."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n    \"invoice_id\": \"ADV-260506-001\",\n    \"status\": \"PENDING_MERCHANT_APPROVAL\",\n    \"created_at\": \"2026-05-03T09:15:00.000Z\",\n    \"paid_at\": null,\n    \"is_paid\": false,\n    \"merchant\": {\n      \"id\": \"{{merchantId}}\",\n      \"name\": \"Merchant Name\",\n      \"phone\": \"01700000000\"\n    },\n    \"breakdown\": {\n      \"total_parcels\": 24,\n      \"total_collectable\": 15000,\n      \"deductions\": {\n        \"delivery_fee\": 1000,\n        \"cod_charge\": 400,\n        \"weight_charge\": 600,\n        \"return_charge\": 0,\n        \"update_amount\": 0,\n        \"hold_amount\": 0,\n        \"hold_pay\": 0\n      },\n      \"net_payable\": 12500\n    },\n    \"payment_method\": \"BANK_ACCOUNT\",\n    \"admin_note\": \"Advance for May shipments\",\n    \"merchant_review_note\": null,\n    \"created_by\": \"Admin Name\"\n  },\n  \"message\": \"Advance payment details retrieved successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Approve Advance Invoice",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{merchant_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"APPROVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/merchant/invoice/{{advancePaymentId}}/action",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "merchant",
+                "invoice",
+                "{{advancePaymentId}}",
+                "action"
+              ]
+            },
+            "description": "Merchant approves the invoice. This automatically creates the finance transaction, deducts the balance, and marks the invoice as paid."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"PAID\",\n  \"merchant_review_note\": null,\n  \"is_paid\": true,\n  \"paid_at\": \"2026-05-03T10:00:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Request Review",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{merchant_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"REQUEST_REVIEW\",\n  \"review_note\": \"The return charge looks higher than expected\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/advance-payments/merchant/invoice/{{advancePaymentId}}/action",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "advance-payments",
+                "merchant",
+                "invoice",
+                "{{advancePaymentId}}",
+                "action"
+              ]
+            },
+            "description": "Merchant requests a review and sends a note describing the mismatch."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"b7f6d71c-1d46-4f60-a63b-2a9ed5d4b8d1\",\n  \"invoice_id\": \"ADV-260506-001\",\n  \"status\": \"MERCHANT_REVIEW_REQUESTED\",\n  \"merchant_review_note\": \"The return charge looks higher than expected\",\n  \"is_paid\": false\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. Merchant Advance Toggle",
+      "item": [
+        {
+          "name": "Toggle Merchant Advance Payment",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_advance_payment_disabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/merchants/{{merchantId}}/advance-payments/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "merchants",
+                "{{merchantId}}",
+                "advance-payments",
+                "toggle"
+              ]
+            },
+            "description": "Admin or hub manager toggles the merchant advance-payment feature flag. When disabled, advance-payment actions are blocked for that merchant."
+          },
+          "response": [
+            {
+              "name": "200 - OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"merchant_id\": \"{{merchantId}}\",\n  \"is_advance_payment_disabled\": true,\n  \"message\": \"Advance payment toggle updated successfully\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -13,10 +13,15 @@ import {
 } from './entities/advance-payment.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { CreateAdvancePaymentDto } from './dto/create-advance.dto';
+import { UpdateAdvancePaymentDto } from './dto/update-advance.dto';
 import {
   MerchantActionDto,
   MerchantActionType,
 } from './dto/merchant-action.dto';
+import {
+  AdvancePaymentReviewAction,
+  ReviewAdvancePaymentDto,
+} from './dto/review-advance.dto';
 import { MerchantFinanceService } from '../merchant-finance/merchant-finance.service';
 import { User } from '../users/entities/user.entity';
 import {
@@ -54,11 +59,19 @@ export class AdvancePaymentsService {
     return merchant;
   }
 
-  // --- 1. Admin Creates Manual Invoice ---
-  async create(dto: CreateAdvancePaymentDto, admin: User) {
-    await this.assertAdvancePaymentsEnabled(dto.merchant_id);
-
-    // Manual Calculation logic
+  private calculateNetAmount(
+    dto: Pick<
+      CreateAdvancePaymentDto | UpdateAdvancePaymentDto,
+      | 'total_collectable_amount'
+      | 'delivery_fee'
+      | 'cod_charge'
+      | 'previous_weight_charge'
+      | 'return_amount'
+      | 'update_amount'
+      | 'hold_amount'
+      | 'hold_pay'
+    >,
+  ) {
     const deductions =
       Number(dto.delivery_fee || 0) +
       Number(dto.cod_charge || 0) +
@@ -68,7 +81,13 @@ export class AdvancePaymentsService {
       Number(dto.hold_amount || 0) +
       Number(dto.hold_pay || 0);
 
-    const netAmount = Number(dto.total_collectable_amount) - deductions;
+    return Number(dto.total_collectable_amount || 0) - deductions;
+  }
+
+  // --- 1. Admin Creates Manual Invoice ---
+  async create(dto: CreateAdvancePaymentDto, admin: User) {
+    await this.assertAdvancePaymentsEnabled(dto.merchant_id);
+    const netAmount = this.calculateNetAmount(dto);
 
     const invoiceId = `ADV-${Date.now().toString().slice(-6)}`;
 
@@ -115,6 +134,12 @@ export class AdvancePaymentsService {
     if (dto.action === MerchantActionType.APPROVE) {
       advance.status = AdvancePaymentStatus.APPROVED_BY_MERCHANT;
       advance.merchant_review_note = '';
+
+      return await this.finalizeAdvancePayment(
+        advance,
+        merchantUserId,
+        'merchant approval',
+      );
     } else {
       if (!dto.review_note)
         throw new BadRequestException('Review note is required');
@@ -125,8 +150,44 @@ export class AdvancePaymentsService {
     return await this.advanceRepo.save(advance);
   }
 
+  private async finalizeAdvancePayment(
+    advance: AdvancePayment,
+    actorId: string,
+    actorLabel: string,
+  ) {
+    if (advance.status !== AdvancePaymentStatus.APPROVED_BY_MERCHANT) {
+      throw new BadRequestException(
+        'Merchant must approve the invoice before payment',
+      );
+    }
+
+    if (advance.is_paid) throw new BadRequestException('Already paid');
+
+    await this.merchantFinanceService.createTransaction({
+      merchant_id: advance.merchant.user_id,
+      amount: -Math.abs(advance.net_amount_paid),
+      transaction_type: FinanceTransactionType.ADVANCE_PAYMENT,
+      description: `Advance Payment - Invoice ${advance.invoice_id}`,
+      reference_id: advance.id,
+      reference_type: FinanceReferenceType.ADVANCE_PAYMENT,
+      created_by: actorId,
+    });
+
+    advance.status = AdvancePaymentStatus.PAID;
+    advance.is_paid = true;
+    advance.paid_at = new Date();
+
+    const saved = await this.advanceRepo.save(advance);
+
+    this.logger.log(
+      `Advance payment completed via ${actorLabel}. Invoice: ${advance.id}, Actor: ${actorId}`,
+    );
+
+    return saved;
+  }
+
   // --- 3. Admin Updates (If Merchant Requested Review) ---
-  async update(id: string, dto: CreateAdvancePaymentDto) {
+  async update(id: string, dto: UpdateAdvancePaymentDto) {
     const advance = await this.advanceRepo.findOne({
       where: { id },
       relations: ['merchant'],
@@ -142,24 +203,87 @@ export class AdvancePaymentsService {
     if (advance.is_paid)
       throw new BadRequestException('Cannot update a paid invoice');
 
-    // Also block changing merchant_id to a disabled merchant
-    await this.assertAdvancePaymentsEnabled(dto.merchant_id);
-
-    const deductions =
-      Number(dto.delivery_fee || 0) +
-      Number(dto.cod_charge || 0) +
-      Number(dto.previous_weight_charge || 0) +
-      Number(dto.return_amount || 0) +
-      Number(dto.update_amount || 0) +
-      Number(dto.hold_amount || 0) +
-      Number(dto.hold_pay || 0);
-    const netAmount = Number(dto.total_collectable_amount) - deductions;
+    const nextMerchantId = dto.merchant_id || advance.merchant_id;
+    await this.assertAdvancePaymentsEnabled(nextMerchantId);
 
     Object.assign(advance, dto);
-    advance.net_amount_paid = netAmount;
+    advance.merchant_id = nextMerchantId;
+    advance.net_amount_paid = this.calculateNetAmount({
+      total_collectable_amount: advance.total_collectable_amount,
+      delivery_fee: advance.delivery_fee,
+      cod_charge: advance.cod_charge,
+      previous_weight_charge: advance.previous_weight_charge,
+      return_amount: advance.return_amount,
+      update_amount: advance.update_amount,
+      hold_amount: advance.hold_amount,
+      hold_pay: advance.hold_pay,
+    });
     advance.status = AdvancePaymentStatus.PENDING_MERCHANT_APPROVAL; // Reset for re-approval
 
     return await this.advanceRepo.save(advance);
+  }
+
+  async review(id: string, dto: ReviewAdvancePaymentDto, admin: User) {
+    const advance = await this.advanceRepo.findOne({
+      where: { id },
+      relations: ['merchant'],
+    });
+
+    if (!advance) throw new NotFoundException('Invoice not found');
+
+    if (advance.merchant?.is_advance_payment_disabled) {
+      throw new ForbiddenException(
+        'Advance payment feature is disabled for this merchant',
+      );
+    }
+
+    if (advance.status !== AdvancePaymentStatus.MERCHANT_REVIEW_REQUESTED) {
+      throw new BadRequestException(
+        'Only merchant review requests can be reviewed by admin',
+      );
+    }
+
+    if (
+      dto.action === AdvancePaymentReviewAction.REJECT &&
+      !dto.admin_note?.trim()
+    ) {
+      throw new BadRequestException('admin_note is required when rejecting');
+    }
+
+    if (dto.action === AdvancePaymentReviewAction.APPROVE) {
+      const nextMerchantId = dto.merchant_id || advance.merchant_id;
+      await this.assertAdvancePaymentsEnabled(nextMerchantId);
+
+      if (dto.merchant_id && dto.merchant_id !== advance.merchant_id) {
+        throw new BadRequestException('Merchant cannot be changed during review');
+      }
+
+      Object.assign(advance, dto);
+      advance.merchant_id = nextMerchantId;
+      advance.net_amount_paid = this.calculateNetAmount({
+        total_collectable_amount: advance.total_collectable_amount,
+        delivery_fee: advance.delivery_fee,
+        cod_charge: advance.cod_charge,
+        previous_weight_charge: advance.previous_weight_charge,
+        return_amount: advance.return_amount,
+        update_amount: advance.update_amount,
+        hold_amount: advance.hold_amount,
+        hold_pay: advance.hold_pay,
+      });
+      advance.admin_note = dto.admin_note?.trim() || advance.admin_note;
+    } else {
+      advance.admin_note = dto.admin_note?.trim() || null;
+    }
+
+    advance.status = AdvancePaymentStatus.PENDING_MERCHANT_APPROVAL;
+
+    const saved = await this.advanceRepo.save(advance);
+
+    this.logger.log(
+      `Advance payment review processed. Invoice: ${id}, Action: ${dto.action}, Admin: ${admin.id}`,
+    );
+
+    return saved;
   }
 
   // --- 4. THE INTERLINK: Payment & Balance Deduction ---
@@ -177,37 +301,7 @@ export class AdvancePaymentsService {
       );
     }
 
-    if (advance.status !== AdvancePaymentStatus.APPROVED_BY_MERCHANT) {
-      throw new BadRequestException(
-        'Merchant must approve the invoice before payment',
-      );
-    }
-
-    if (advance.is_paid) throw new BadRequestException('Already paid');
-
-    // === CRITICAL: INTERLINK WITH FINANCE ===
-    // We record a transaction that REDUCES the merchant's balance.
-    // Ensure 'ADVANCE_PAYMENT' is added to your FinanceTransactionType enum
-
-    // Note: We send the amount as negative because we are GIVING money before earning it.
-    // Or, depending on your finance logic, 'WITHDRAWAL' type automatically subtracts.
-    // Let's assume createTransaction handles sign based on type, or we pass negative.
-
-    await this.merchantFinanceService.createTransaction({
-      merchant_id: advance.merchant.user_id, // Use User ID as merchant_id per your schema
-      amount: -Math.abs(advance.net_amount_paid), // Negative to reduce balance
-      transaction_type: FinanceTransactionType.ADVANCE_PAYMENT, // You need to add this
-      description: `Advance Payment - Invoice ${advance.invoice_id}`,
-      reference_id: advance.id,
-      reference_type: FinanceReferenceType.ADVANCE_PAYMENT,
-      created_by: admin.id,
-    });
-
-    advance.status = AdvancePaymentStatus.PAID;
-    advance.is_paid = true;
-    advance.paid_at = new Date();
-
-    return await this.advanceRepo.save(advance);
+    return await this.finalizeAdvancePayment(advance, admin.id, 'admin pay');
   }
 
   async findAll(
