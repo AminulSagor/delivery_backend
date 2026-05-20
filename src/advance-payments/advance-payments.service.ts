@@ -123,7 +123,7 @@ export class AdvancePaymentsService {
     }
 
     // Security check: ensure the logged-in merchant owns this invoice
-    if (advance.merchant.user_id !== merchantUserId) {
+    if (advance.merchant_id !== merchantUserId) {
       throw new BadRequestException('Unauthorized access to this invoice');
     }
 
@@ -414,19 +414,9 @@ export class AdvancePaymentsService {
       currentUserMerchantId &&
       advance.merchant_id !== currentUserMerchantId
     ) {
-      // Fixed: using merchant_id column directly usually matches user_id in your schema, or check relation
-      // NOTE: In your schema, advance.merchant_id is a UUID.
-      // If currentUserMerchantId passed here is the User ID (which equals Merchant ID in your system usually), this works.
-      // If they are different tables, ensure you compare correct IDs.
-      // Based on previous files: Merchant entity has `user_id`.
-      // The `merchantId` from token usually refers to the User ID of the merchant.
-
-      // Let's verify via the relation to be safe if ids differ:
-      if (advance.merchant.user_id !== currentUserMerchantId) {
-        throw new ForbiddenException(
-          'You do not have permission to view this invoice',
-        );
-      }
+      throw new ForbiddenException(
+        'You do not have permission to view this invoice',
+      );
     }
 
     // Return full details for the detail view
