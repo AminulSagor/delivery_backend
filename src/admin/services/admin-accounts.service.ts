@@ -21,6 +21,16 @@ import { ManualTransactionDto } from '../dto/manual-transaction.dto';
 import { TransferFundsDto } from '../dto/transfer-funds.dto';
 import { UpdateStatementDto } from '../dto/update-statement.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { AdminFinanceAnalyticsQueryDto } from '../dto/admin-finance-analytics-query.dto';
+import { Parcel, ParcelStatus } from '../../parcels/entities/parcel.entity';
+import { HubExpense } from '../../hubs/entities/hub-expense.entity';
+import { TransferRecordStatus } from '../../common/enums/transfer-record-status.enum';
+import {
+  FinanceReferenceType,
+  FinanceTransactionType,
+} from '../../common/enums/finance-transaction-type.enum';
+import { MerchantFinance } from '../../merchant-finance/entities/merchant-finance.entity';
+import { MerchantFinanceTransaction } from '../../merchant-finance/entities/merchant-finance-transaction.entity';
 
 @Injectable()
 export class AdminAccountsService {
@@ -31,6 +41,14 @@ export class AdminAccountsService {
     private accountRepo: Repository<AdminAccount>,
     @InjectRepository(AdminAccountStatement)
     private statementRepo: Repository<AdminAccountStatement>,
+    @InjectRepository(Parcel)
+    private parcelRepo: Repository<Parcel>,
+    @InjectRepository(HubExpense)
+    private hubExpenseRepo: Repository<HubExpense>,
+    @InjectRepository(MerchantFinance)
+    private merchantFinanceRepo: Repository<MerchantFinance>,
+    @InjectRepository(MerchantFinanceTransaction)
+    private merchantFinanceTransactionRepo: Repository<MerchantFinanceTransaction>,
     private dataSource: DataSource,
   ) {}
 
@@ -753,5 +771,421 @@ export class AdminAccountsService {
       lifetime_expenses: Number(lifetimeExpenses.total || 0),
       lifetime_transferred: Number(lifetimeTransferred.total || 0),
     };
+  }
+
+  /**
+   * Admin: Finance & Analytics overview
+   */
+  async getAdminFinanceAnalytics(
+    _adminId: string,
+    query: AdminFinanceAnalyticsQueryDto,
+  ) {
+    const { start, end } = this.normalizeAnalyticsRange(
+      query.startDate,
+      query.endDate,
+    );
+
+    const revenueStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+
+    const successStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    const completionStatuses = [
+      ...successStatuses,
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.FAILED_DELIVERY,
+      ParcelStatus.CANCELLED,
+    ];
+
+    const parcelDateFilter =
+      'COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) BETWEEN :start AND :end';
+
+    const revenueRow = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COALESCE(SUM(parcel.delivery_charge), 0)', 'delivery_fee')
+      .addSelect('COALESCE(SUM(parcel.cod_charge), 0)', 'cod_fee')
+      .addSelect('COALESCE(SUM(parcel.weight_charge), 0)', 'weight_fee')
+      .addSelect('COALESCE(SUM(parcel.return_charge), 0)', 'return_fee')
+      .where('parcel.status IN (:...statuses)', { statuses: revenueStatuses })
+      .andWhere(parcelDateFilter, { start, end })
+      .getRawOne();
+
+    const deliveryFee = Number(revenueRow?.delivery_fee || 0);
+    const codFee = Number(revenueRow?.cod_fee || 0);
+    const weightFee = Number(revenueRow?.weight_fee || 0);
+    const returnFee = Number(revenueRow?.return_fee || 0);
+    const otherFees = weightFee + returnFee;
+    const totalRevenue = deliveryFee + codFee + otherFees;
+
+    const collectedRow = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('COALESCE(SUM(parcel.cod_collected_amount), 0)', 'total')
+      .where('parcel.status IN (:...statuses)', { statuses: successStatuses })
+      .andWhere(parcelDateFilter, { start, end })
+      .getRawOne();
+
+    const hubExpenseRow = await this.hubExpenseRepo
+      .createQueryBuilder('expense')
+      .select('COALESCE(SUM(expense.amount), 0)', 'total')
+      .where('expense.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
+      .andWhere('expense.created_at BETWEEN :start AND :end', { start, end })
+      .getRawOne();
+
+    const adminExpenseRow = await this.statementRepo
+      .createQueryBuilder('statement')
+      .select('COALESCE(SUM(statement.debit_amount), 0)', 'total')
+      .where('statement.reference_type = :refType', {
+        refType: AccountReferenceType.EXPENSE,
+      })
+      .andWhere('statement.type = :type', {
+        type: AccountTransactionType.DEBIT,
+      })
+      .andWhere('statement.created_at BETWEEN :start AND :end', { start, end })
+      .getRawOne();
+
+    const hubExpenses = Number(hubExpenseRow?.total || 0);
+    const adminExpenses = Number(adminExpenseRow?.total || 0);
+    const totalExpenses = hubExpenses + adminExpenses;
+
+    const netProfit = totalRevenue - totalExpenses;
+
+    const merchantPaymentRow = await this.merchantFinanceTransactionRepo
+      .createQueryBuilder('txn')
+      .select('COALESCE(SUM(txn.amount), 0)', 'total')
+      .where('txn.reference_type = :refType', {
+        refType: FinanceReferenceType.INVOICE_PAID,
+      })
+      .andWhere('txn.transaction_type = :type', {
+        type: FinanceTransactionType.DEBIT,
+      })
+      .andWhere('txn.created_at BETWEEN :start AND :end', { start, end })
+      .getRawOne();
+
+    const pendingPaymentRow = await this.merchantFinanceRepo
+      .createQueryBuilder('finance')
+      .select(
+        'COALESCE(SUM(finance.pending_balance + finance.invoiced_balance + finance.processing_balance), 0)',
+        'total',
+      )
+      .getRawOne();
+
+    const liquidityRow = await this.accountRepo
+      .createQueryBuilder('account')
+      .select('COALESCE(SUM(account.current_balance), 0)', 'total')
+      .where('account.is_active = :active', { active: true })
+      .getRawOne();
+
+    const year = start.getFullYear();
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year + 1, 0, 1);
+
+    const revenueMonthlyRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select(
+        "DATE_TRUNC('month', COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at))",
+        'month',
+      )
+      .addSelect(
+        'COALESCE(SUM(parcel.delivery_charge + parcel.cod_charge + parcel.weight_charge + parcel.return_charge), 0)',
+        'total',
+      )
+      .where('parcel.status IN (:...statuses)', { statuses: revenueStatuses })
+      .andWhere(
+        "COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) >= :yearStart",
+        { yearStart },
+      )
+      .andWhere(
+        "COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) < :yearEnd",
+        { yearEnd },
+      )
+      .andWhere(parcelDateFilter, { start, end })
+      .groupBy('month')
+      .orderBy('month', 'ASC')
+      .getRawMany();
+
+    const hubExpenseMonthlyRows = await this.hubExpenseRepo
+      .createQueryBuilder('expense')
+      .select("DATE_TRUNC('month', expense.created_at)", 'month')
+      .addSelect('COALESCE(SUM(expense.amount), 0)', 'total')
+      .where('expense.status = :status', {
+        status: TransferRecordStatus.APPROVED,
+      })
+      .andWhere('expense.created_at >= :yearStart', { yearStart })
+      .andWhere('expense.created_at < :yearEnd', { yearEnd })
+      .andWhere('expense.created_at BETWEEN :start AND :end', { start, end })
+      .groupBy('month')
+      .orderBy('month', 'ASC')
+      .getRawMany();
+
+    const adminExpenseMonthlyRows = await this.statementRepo
+      .createQueryBuilder('statement')
+      .select("DATE_TRUNC('month', statement.created_at)", 'month')
+      .addSelect('COALESCE(SUM(statement.debit_amount), 0)', 'total')
+      .where('statement.reference_type = :refType', {
+        refType: AccountReferenceType.EXPENSE,
+      })
+      .andWhere('statement.type = :type', {
+        type: AccountTransactionType.DEBIT,
+      })
+      .andWhere('statement.created_at >= :yearStart', { yearStart })
+      .andWhere('statement.created_at < :yearEnd', { yearEnd })
+      .andWhere('statement.created_at BETWEEN :start AND :end', { start, end })
+      .groupBy('month')
+      .orderBy('month', 'ASC')
+      .getRawMany();
+
+    const revenueByMonth = new Map<number, number>();
+    for (const row of revenueMonthlyRows) {
+      const monthIndex = new Date(row.month).getMonth();
+      revenueByMonth.set(monthIndex, Number(row.total) || 0);
+    }
+
+    const expensesByMonth = new Map<number, number>();
+    for (const row of hubExpenseMonthlyRows) {
+      const monthIndex = new Date(row.month).getMonth();
+      const current = expensesByMonth.get(monthIndex) || 0;
+      expensesByMonth.set(monthIndex, current + Number(row.total || 0));
+    }
+    for (const row of adminExpenseMonthlyRows) {
+      const monthIndex = new Date(row.month).getMonth();
+      const current = expensesByMonth.get(monthIndex) || 0;
+      expensesByMonth.set(monthIndex, current + Number(row.total || 0));
+    }
+
+    const months = this.getMonthLabels().map((label, index) => ({
+      month: label,
+      revenue: this.roundMoney(revenueByMonth.get(index) || 0),
+      expenses: this.roundMoney(expensesByMonth.get(index) || 0),
+    }));
+
+    const hubRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .leftJoin('parcel.currentHub', 'currentHub')
+      .leftJoin('parcel.store', 'store')
+      .leftJoin('store.hub', 'storeHub')
+      .select('COALESCE(parcel.current_hub_id, store.hub_id)', 'hub_id')
+      .addSelect(
+        'COALESCE(currentHub.branch_name, storeHub.branch_name)',
+        'hub_name',
+      )
+      .addSelect('COALESCE(currentHub.hub_code, storeHub.hub_code)', 'hub_code')
+      .addSelect('COUNT(*)', 'total_parcels')
+      .addSelect(
+        'SUM(CASE WHEN parcel.status IN (:...successStatuses) THEN 1 ELSE 0 END)',
+        'success_count',
+      )
+      .where('COALESCE(parcel.current_hub_id, store.hub_id) IS NOT NULL')
+      .andWhere('parcel.status IN (:...totalStatuses)', {
+        totalStatuses: completionStatuses,
+      })
+      .andWhere(parcelDateFilter, { start, end })
+      .groupBy('COALESCE(parcel.current_hub_id, store.hub_id)')
+      .addGroupBy('COALESCE(currentHub.branch_name, storeHub.branch_name)')
+      .addGroupBy('COALESCE(currentHub.hub_code, storeHub.hub_code)')
+      .orderBy('total_parcels', 'DESC')
+      .limit(3)
+      .setParameters({ successStatuses })
+      .getRawMany();
+
+    const hubPerformance = hubRows.map((row) => {
+      const totalParcels = Number(row.total_parcels || 0);
+      const successCount = Number(row.success_count || 0);
+      const successRate = totalParcels
+        ? this.roundMoney((successCount / totalParcels) * 100)
+        : 0;
+
+      return {
+        hub_id: row.hub_id,
+        hub_name: row.hub_name,
+        hub_code: row.hub_code,
+        parcels: totalParcels,
+        success_rate: successRate,
+      };
+    });
+
+    const zoneRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .leftJoin('parcel.delivery_coverage_area', 'coverage')
+      .select('COALESCE(coverage.area, parcel.delivery_area)', 'zone_name')
+      .addSelect('COUNT(*)', 'total_deliveries')
+      .where('parcel.status IN (:...statuses)', { statuses: successStatuses })
+      .andWhere(parcelDateFilter, { start, end })
+      .groupBy('zone_name')
+      .orderBy('total_deliveries', 'DESC')
+      .limit(5)
+      .getRawMany();
+
+    const topDeliveryZones = zoneRows.map((row) => ({
+      zone_name: row.zone_name,
+      deliveries: Number(row.total_deliveries || 0),
+    }));
+
+    const statements = await this.statementRepo.find({
+      relations: ['account'],
+      order: { created_at: 'DESC' },
+      take: 10,
+    });
+
+    const transactionHistory = statements.map((statement) => ({
+      id: statement.id,
+      account: statement.account
+        ? {
+            id: statement.account.id,
+            name: statement.account.account_name,
+            number_masked: this.maskAccountNumber(
+              statement.account.account_number,
+            ),
+            provider_type: statement.account.provider_type,
+          }
+        : null,
+      type: statement.type,
+      amount:
+        statement.type === AccountTransactionType.CREDIT
+          ? Number(statement.credit_amount)
+          : Number(statement.debit_amount),
+      description: statement.description,
+      reference_type: statement.reference_type,
+      balance_after: Number(statement.balance_after),
+      created_at: statement.created_at,
+    }));
+
+    return {
+      range: {
+        start,
+        end,
+      },
+      summary: {
+        total_revenue: this.roundMoney(totalRevenue),
+        total_expenses: this.roundMoney(totalExpenses),
+        net_profit: this.roundMoney(netProfit),
+        collected_amount: this.roundMoney(Number(collectedRow?.total || 0)),
+        merchant_payment: this.roundMoney(
+          Number(merchantPaymentRow?.total || 0),
+        ),
+        pending_payment: this.roundMoney(
+          Number(pendingPaymentRow?.total || 0),
+        ),
+      },
+      revenue_sources: [
+        {
+          key: 'delivery_fee',
+          label: 'Delivery Fee',
+          amount: this.roundMoney(deliveryFee),
+          percent: totalRevenue
+            ? this.roundMoney((deliveryFee / totalRevenue) * 100)
+            : 0,
+        },
+        {
+          key: 'cod_charges',
+          label: 'COD Charges',
+          amount: this.roundMoney(codFee),
+          percent: totalRevenue
+            ? this.roundMoney((codFee / totalRevenue) * 100)
+            : 0,
+        },
+        {
+          key: 'others',
+          label: 'Others',
+          amount: this.roundMoney(otherFees),
+          percent: totalRevenue
+            ? this.roundMoney((otherFees / totalRevenue) * 100)
+            : 0,
+        },
+      ],
+      revenue_vs_expenses: {
+        year,
+        months,
+      },
+      hub_performance: hubPerformance,
+      top_delivery_zones: topDeliveryZones,
+      liquidity: {
+        total: this.roundMoney(Number(liquidityRow?.total || 0)),
+      },
+      transaction_history: transactionHistory,
+    };
+  }
+
+  private normalizeAnalyticsRange(startDate?: string, endDate?: string) {
+    const now = new Date();
+    let start: Date | null = null;
+    let end: Date | null = null;
+
+    if (startDate) {
+      start = this.getStartOfDay(new Date(startDate));
+    }
+
+    if (endDate) {
+      end = this.getEndOfDay(new Date(endDate));
+    }
+
+    if (!start && !end) {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+
+      return { start: startOfMonth, end: endOfMonth };
+    }
+
+    if (!start && end) {
+      start = new Date(end.getFullYear(), end.getMonth(), 1);
+    }
+
+    if (start && !end) {
+      end = this.getEndOfDay(now);
+    }
+
+    return { start: start!, end: end! };
+  }
+
+  private getStartOfDay(date: Date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  }
+
+  private getEndOfDay(date: Date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  }
+
+  private getMonthLabels() {
+    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  }
+
+  private roundMoney(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
+
+  private maskAccountNumber(value: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    const raw = value.replace(/\s+/g, '');
+    if (raw.length <= 4) {
+      return raw;
+    }
+
+    return `${'*'.repeat(raw.length - 4)}${raw.slice(-4)}`;
   }
 }
