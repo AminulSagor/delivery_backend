@@ -1036,33 +1036,27 @@ export class AdminAccountsService {
       deliveries: Number(row.total_deliveries || 0),
     }));
 
-    const statements = await this.statementRepo.find({
-      relations: ['account'],
-      order: { created_at: 'DESC' },
-      take: 10,
-    });
+    const transactionRows = await this.statementRepo
+      .createQueryBuilder('statement')
+      .leftJoin('statement.account', 'account')
+      .select('account.id', 'account_id')
+      .addSelect('account.account_name', 'account_name')
+      .addSelect('account.account_number', 'account_number')
+      .addSelect(
+        'COALESCE(SUM(statement.credit_amount + statement.debit_amount), 0)',
+        'total_amount',
+      )
+      .where('statement.created_at BETWEEN :start AND :end', { start, end })
+      .groupBy('account.id')
+      .addGroupBy('account.account_name')
+      .addGroupBy('account.account_number')
+      .orderBy('total_amount', 'DESC')
+      .getRawMany();
 
-    const transactionHistory = statements.map((statement) => ({
-      id: statement.id,
-      account: statement.account
-        ? {
-            id: statement.account.id,
-            name: statement.account.account_name,
-            number_masked: this.maskAccountNumber(
-              statement.account.account_number,
-            ),
-            provider_type: statement.account.provider_type,
-          }
-        : null,
-      type: statement.type,
-      amount:
-        statement.type === AccountTransactionType.CREDIT
-          ? Number(statement.credit_amount)
-          : Number(statement.debit_amount),
-      description: statement.description,
-      reference_type: statement.reference_type,
-      balance_after: Number(statement.balance_after),
-      created_at: statement.created_at,
+    const transactionHistory = transactionRows.map((row) => ({
+      bank_name: row.account_name,
+      account_number: this.maskAccountNumber(row.account_number),
+      total: this.roundMoney(Number(row.total_amount || 0)),
     }));
 
     return {
