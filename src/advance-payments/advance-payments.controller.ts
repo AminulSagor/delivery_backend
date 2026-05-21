@@ -144,8 +144,9 @@ export class AdvancePaymentsController {
     @Param('id') id: string,
     @Body() dto: MerchantActionDto,
     @CurrentUser('merchantId') mid: string,
+    @CurrentUser('userId') uid: string,
   ) {
-    return this.service.merchantAction(id, dto, mid);
+    return this.service.merchantAction(id, dto, mid, uid);
   }
 
   private shouldUseMerchantMockData(): boolean {
