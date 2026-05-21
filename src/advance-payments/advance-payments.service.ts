@@ -106,6 +106,7 @@ export class AdvancePaymentsService {
   async merchantAction(
     id: string,
     dto: MerchantActionDto,
+    merchantId: string,
     merchantUserId: string,
   ) {
     // Find advance linked to this merchant
@@ -123,7 +124,7 @@ export class AdvancePaymentsService {
     }
 
     const isMerchantOwner =
-      advance.merchant_id === merchantUserId ||
+      advance.merchant_id === merchantId ||
       advance.merchant?.user_id === merchantUserId;
 
     // Security check: ensure the logged-in merchant owns this invoice
