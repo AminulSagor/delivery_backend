@@ -25,6 +25,7 @@ import { ManualTransactionDto } from '../dto/manual-transaction.dto';
 import { TransferFundsDto } from '../dto/transfer-funds.dto';
 import { UpdateStatementDto } from '../dto/update-statement.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { AdminFinanceAnalyticsQueryDto } from '../dto/admin-finance-analytics-query.dto';
 
 @Controller('admin/accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -83,6 +84,15 @@ export class AdminAccountsController {
   @Get('finance/overview')
   async getFinanceOverview(@CurrentUser() user: any) {
     return this.service.getAdminFinanceOverview(user.userId);
+  }
+
+  // Finance & Analytics Overview
+  @Get('finance/analytics')
+  async getFinanceAnalytics(
+    @CurrentUser() user: any,
+    @Query() query: AdminFinanceAnalyticsQueryDto,
+  ) {
+    return this.service.getAdminFinanceAnalytics(user.userId, query);
   }
 
   @Post('transfer')
