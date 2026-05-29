@@ -339,6 +339,30 @@ export class StaffController {
   }
 
   /**
+   * Initiate a payout for a staff member (Admin only)
+   * POST /staff/:id/pay
+   */
+  @Post(':id/pay')
+  @Roles(UserRole.ADMIN)
+  async payStaff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('amount') amount: number,
+    @CurrentUser() user: any,
+  ) {
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      throw new BadRequestException('Invalid amount');
+    }
+
+    const tx = await this.staffService.payStaff(id, Number(amount), user.id);
+
+    return {
+      success: true,
+      data: tx,
+      message: 'Staff payout initiated',
+    };
+  }
+
+  /**
    * Activate staff (Admin only)
    * PATCH /staff/:id/activate
    */

@@ -16,12 +16,17 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { StaffPosition } from '../common/enums/staff-position.enum';
 import * as bcrypt from 'bcrypt';
+import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
+import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
+import { PayoutRecipientType } from '../common/enums/payout-recipient-type.enum';
 
 @Injectable()
 export class StaffService {
   constructor(
     @InjectRepository(Staff)
     private readonly staffRepository: Repository<Staff>,
+    @InjectRepository(PayoutTransaction)
+    private readonly payoutRepository: Repository<PayoutTransaction>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Hub)
@@ -569,23 +574,67 @@ export class StaffService {
       .where('staff.is_active = :isActive', { isActive: true })
       .orderBy('staff.created_at', 'ASC')
       .getMany();
+    // Include last paid date by checking staff payout transactions
+    const results = await Promise.all(
+      staff.map(async (s) => {
+        const last = await this.payoutRepository.findOne({
+          where: {
+            staff_id: s.id,
+            recipient_type: PayoutRecipientType.STAFF,
+            status: PayoutTransactionStatus.COMPLETED,
+          },
+          order: { completed_at: 'DESC' },
+        });
 
-    return staff.map((s) => ({
-      id: s.staff_code || 'N/A',
-      profile: {
-        name: s.user?.full_name || 'N/A',
-        phone: s.user?.phone || 'N/A',
-        photo: s.photo || null,
-      },
-      position: s.position,
-      assigned_hub: {
-        id: s.hub_id,
-        name: s.hub?.branch_name || 'N/A',
-        code: s.hub?.hub_code || 'N/A',
-      },
-      secondary_phone: s.secondary_phone || null,
-      salary: parseFloat(s.fixed_salary.toString()),
-      last_paid: null, // TODO: Implement staff payment tracking
-    }));
+        return {
+          id: s.staff_code || 'N/A',
+          profile: {
+            name: s.user?.full_name || 'N/A',
+            phone: s.user?.phone || 'N/A',
+            photo: s.photo || null,
+          },
+          position: s.position,
+          assigned_hub: {
+            id: s.hub_id,
+            name: s.hub?.branch_name || 'N/A',
+            code: s.hub?.hub_code || 'N/A',
+          },
+          secondary_phone: s.secondary_phone || null,
+          salary: parseFloat(s.fixed_salary.toString()),
+          last_paid: last?.completed_at || null,
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Initiate a payout for a single staff member. Creates a payout transaction record
+   * with status PENDING. Actual processing/integration with payment provider
+   * should be handled by background worker or admin processing flow.
+   */
+  async payStaff(
+    staffId: string,
+    amount: number,
+    initiatedBy?: string | null,
+  ): Promise<any> {
+    const staff = await this.staffRepository.findOne({ where: { id: staffId } });
+    if (!staff) throw new NotFoundException(`Staff with ID "${staffId}" not found`);
+
+    const tx = this.payoutRepository.create({
+      recipient_type: PayoutRecipientType.STAFF,
+      staff_id: staffId,
+      merchant_id: null,
+      payout_method_id: null,
+      amount,
+      status: PayoutTransactionStatus.PENDING,
+      initiated_by: initiatedBy || null,
+      reference_number: null,
+      admin_notes: null,
+      failure_reason: null,
+    });
+
+    return await this.payoutRepository.save(tx);
   }
 }
