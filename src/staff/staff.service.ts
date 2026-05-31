@@ -18,7 +18,6 @@ import { StaffPosition } from '../common/enums/staff-position.enum';
 import * as bcrypt from 'bcrypt';
 import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
-import { PayoutRecipientType } from '../common/enums/payout-recipient-type.enum';
 
 @Injectable()
 export class StaffService {
@@ -580,7 +579,6 @@ export class StaffService {
         const last = await this.payoutRepository.findOne({
           where: {
             staff_id: s.id,
-            recipient_type: PayoutRecipientType.STAFF,
             status: PayoutTransactionStatus.COMPLETED,
           },
           order: { completed_at: 'DESC' },
@@ -623,7 +621,6 @@ export class StaffService {
     if (!staff) throw new NotFoundException(`Staff with ID "${staffId}" not found`);
 
     const tx = this.payoutRepository.create({
-      recipient_type: PayoutRecipientType.STAFF,
       staff_id: staffId,
       merchant_id: null,
       payout_method_id: null,
