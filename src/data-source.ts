@@ -44,11 +44,8 @@ const isProductionEnv = !!(
   databaseUrl
 );
 
-// Synchronize: ALWAYS enabled for both development and production
-// This auto-creates/updates all tables based on entities
-// No manual migrations needed!
-// SET DISABLE_SYNC=true to temporarily disable this if needed
-const shouldSynchronize = process.env.DISABLE_SYNC !== 'true';
+// Synchronize: hardcoded ON for now so schema stays aligned with entities
+const shouldSynchronize = true;
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -60,7 +57,6 @@ const baseConfig = {
     ? [path.join(__dirname, 'migrations/*.ts')]
     : [path.join(__dirname, 'migrations/*.js')],
   // synchronize: Auto-creates/updates tables based on entities
-  // Development: always enabled | Production: only with FORCE_SYNC
   synchronize: shouldSynchronize,
   logging: (shouldSynchronize
     ? ['schema', 'error', 'warn']
