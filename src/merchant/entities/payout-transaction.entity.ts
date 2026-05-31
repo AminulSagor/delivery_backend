@@ -12,9 +12,12 @@ import { Merchant } from './merchant.entity';
 import { MerchantPayoutMethod } from './merchant-payout-method.entity';
 import { User } from '../../users/entities/user.entity';
 import { PayoutTransactionStatus } from '../../common/enums/payout-transaction-status.enum';
+import { PayoutRecipientType } from '../../common/enums/payout-recipient-type.enum';
+import { Staff } from '../../staff/entities/staff.entity';
 
 @Entity('payout_transactions')
 @Index(['merchant_id'])
+@Index(['staff_id'])
 @Index(['status'])
 @Index(['created_at'])
 export class PayoutTransaction {
@@ -22,21 +25,32 @@ export class PayoutTransaction {
   id: string;
 
   // ===== RELATIONSHIPS =====
-  @Column({ type: 'uuid' })
-  merchant_id: string;
+  @Column({ type: 'enum', enum: PayoutRecipientType, default: PayoutRecipientType.MERCHANT })
+  recipient_type: PayoutRecipientType;
 
-  @ManyToOne(() => Merchant, { onDelete: 'CASCADE' })
+  @Column({ type: 'uuid', nullable: true })
+  merchant_id: string | null;
+
+  @ManyToOne(() => Merchant, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'merchant_id' })
-  merchant: Merchant;
+  merchant: Merchant | null;
 
-  @Column({ type: 'uuid' })
-  payout_method_id: string;
+  @Column({ type: 'uuid', nullable: true })
+  staff_id: string | null;
+
+  @ManyToOne(() => Staff, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'staff_id' })
+  staff: Staff | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  payout_method_id: string | null;
 
   @ManyToOne(() => MerchantPayoutMethod, (method) => method.transactions, {
     onDelete: 'RESTRICT',
+    nullable: true,
   })
   @JoinColumn({ name: 'payout_method_id' })
-  payout_method: MerchantPayoutMethod;
+  payout_method: MerchantPayoutMethod | null;
 
   // ===== TRANSACTION DETAILS =====
   @Column({ type: 'decimal', precision: 10, scale: 2 })

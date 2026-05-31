@@ -25,6 +25,7 @@ import { MerchantFinanceModule } from './merchant-finance/merchant-finance.modul
 import { BanksModule } from './banks/banks.module';
 import { AdvancePaymentsModule } from './advance-payments/advance-payments.module';
 import { StaffModule } from './staff/staff.module';
+import { SalaryModule } from './salary/salary.module';
 import { CarrybeeAssignmentWorker } from './workers/carrybee-assignment.worker';
 
 // Synchronize is ALWAYS enabled - no manual migrations needed
@@ -50,6 +51,7 @@ import { CarrybeeAssignmentWorker } from './workers/carrybee-assignment.worker';
     HubsModule,
     RidersModule,
     StaffModule,
+    SalaryModule,
     AuthModule,
     StoresModule,
     CoverageAreasModule,

@@ -1,0 +1,296 @@
+{
+  "info": {
+    "_postman_id": "staff-collection-001",
+    "name": "Staff API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection for Staff management and payroll endpoints. Use {{baseUrl}} and set Authorization header with Bearer token."
+  },
+  "item": [
+    {
+      "name": "Create Staff",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/staff", "host": ["{{baseUrl}}"], "path": ["staff"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"John Staff\",\n  \"phone\": \"01712345678\",\n  \"email\": \"john.staff@example.com\",\n  \"password\": \"StrongPass123\",\n  \"position\": \"ADMIN_STAFF\",\n  \"photo\": null,\n  \"secondary_phone\": null,\n  \"guardian_mobile_no\": \"01799999999\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890123\",\n  \"license_no\": \"DL-12345\",\n  \"present_address\": \"123 Current Address\",\n  \"permanent_address\": \"456 Permanent Address\",\n  \"fixed_salary\": 15000,\n  \"bank_name\": \"DBBL\",\n  \"bank_account_number\": \"1234567890\",\n  \"bank_branch\": \"Gulshan Branch\",\n  \"nid_front_photo\": \"staff/nid/front.jpg\",\n  \"nid_back_photo\": \"staff/nid/back.jpg\",\n  \"license_front_photo\": null,\n  \"license_back_photo\": null,\n  \"parent_nid_front_photo\": \"staff/parent/nid/front.jpg\",\n  \"parent_nid_back_photo\": \"staff/parent/nid/back.jpg\",\n  \"hub_id\": \"<hub-uuid>\"\n}"
+        },
+        "description": "Create a new staff. Fields must conform to CreateStaffDto (see API docs). Phone must be Bangladesh format 01XXXXXXXXX."
+      },
+      "response": []
+    },
+    {
+      "name": "List Staff",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/staff?hubId={{hubId}}&isActive=true&page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["staff"], "query": [
+          { "key": "hubId", "value": "{{hubId}}" },
+          { "key": "isActive", "value": "true" },
+          { "key": "page", "value": "1" },
+          { "key": "limit", "value": "20" }
+        ] },
+        "description": "List staff. Hub managers will be scoped to their hub."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Staff Details",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/details/{{staffId}}", "host": ["{{baseUrl}}"], "path": ["staff","details","{{staffId}}"] },
+        "description": "Get detailed staff information."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Staff (basic)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}"] },
+        "description": "Get staff basic info."
+      },
+      "response": []
+    },
+    {
+      "name": "Admin Staff List (formatted)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/admin/list", "host": ["{{baseUrl}}"], "path": ["staff","admin","list"] },
+        "description": "Formatted staff list for admin UI (includes salary and last_paid)."
+      },
+      "response": []
+    },
+    {
+      "name": "Update Staff",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"present_address\": \"New address\",\n  \"fixed_salary\": 16000,\n  \"bank_name\": \"DBBL\"\n}"
+        },
+        "description": "Partial update for staff. Use fields from CreateStaffDto. Hub managers limited by hub scope."
+      },
+      "response": []
+    },
+    {
+      "name": "Activate Staff",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}/activate", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}","activate"] },
+        "description": "Activate staff (Admin only)."
+      },
+      "response": []
+    },
+    {
+      "name": "Deactivate Staff",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}/deactivate", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}","deactivate"] },
+        "description": "Deactivate staff (Admin or Hub Manager within scope)."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Staff (soft)",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}"] },
+        "description": "Soft-delete staff (sets is_active=false)."
+      },
+      "response": []
+    },
+    {
+      "name": "Initiate Staff Payout",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/staff/{{staffId}}/pay", "host": ["{{baseUrl}}"], "path": ["staff","{{staffId}}","pay"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 1500\n}"
+        },
+        "description": "Create a PENDING payout record for staff. Processing handled by worker."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Staff Payouts",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/api/salary/staff/{{staffId}}/payouts?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","salary","staff","{{staffId}}","payouts"], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "20" } ] },
+        "description": "List staff payout history."
+      },
+      "response": []
+    },
+    {
+      "name": "Salary Flow",
+      "item": [
+        {
+          "name": "Get Create Salary List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/create-list?page=1&limit=4",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "create-list"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "4" }
+              ]
+            },
+            "description": "Create Salary list view. Returns staff, attendance, salary_amount, last_paid and status."
+          },
+          "response": [
+            {
+              "name": "Success - Create Salary List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"staff\": [\n      {\n        \"id\": \"1011\",\n        \"profile\": {\n          \"name\": \"Salman Sah\",\n          \"phone\": \"+8801234567890\",\n          \"avatar_url\": \"https://example.com/avatar1.jpg\"\n        },\n        \"position\": \"HUB-Manager\",\n        \"assigned_hub\": \"Dhanmondi\",\n        \"attendance\": {\n          \"present\": 20,\n          \"total_days\": 30\n        },\n        \"salary_amount\": 30250,\n        \"last_paid\": \"2025-09-30T14:35:00Z\",\n        \"status\": \"pending_creation\"\n      }\n    ],\n    \"pagination\": {\n      \"total_items\": 121,\n      \"current_page\": 1,\n      \"items_per_page\": 4,\n      \"total_pages\": 31\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Create Salary Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/staff/{{staffId}}/create-details",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "staff", "{{staffId}}", "create-details"]
+            },
+            "description": "Create Salary modal details for a staff member."
+          },
+          "response": [
+            {
+              "name": "Success - Create Salary Details",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"staff_information\": {\n      \"id\": \"1011\",\n      \"name\": \"Ahmed Wasi\",\n      \"is_verified\": true,\n      \"position\": \"HUB-Manager\",\n      \"assigned_hub\": \"Dhanmondi\",\n      \"phone\": \"+8801234567890\",\n      \"base_salary\": 130000,\n      \"commission\": 68000,\n      \"avatar_url\": \"https://example.com/avatar2.jpg\"\n    },\n    \"salary_summary\": {\n      \"basic_salary\": 547256333,\n      \"per_day\": 547256333\n    },\n    \"salary_increment_modifiers\": {\n      \"increment\": 0,\n      \"commitment_increment\": 0,\n      \"pickup_increment\": 0,\n      \"eid_bonus_per\": 0\n    },\n    \"monthly_salary_modifiers\": {\n      \"attendance\": 0,\n      \"delivery\": 0,\n      \"cancel\": 0,\n      \"pickup\": 0,\n      \"overtime\": 0,\n      \"advance_acceptance\": 0,\n      \"loan\": 0,\n      \"previous_month\": 0\n    },\n    \"calculated_payment_amount\": 547256333\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Generate Salary Slip",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "generate"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"staff_id\": \"1011\",\n  \"salary_increment_modifiers\": {\n    \"increment\": 0,\n    \"commitment_increment\": 0,\n    \"pickup_increment\": 0,\n    \"eid_bonus_per\": 0\n  },\n  \"monthly_salary_modifiers\": {\n    \"attendance\": 0,\n    \"delivery\": 0,\n    \"cancel\": 0,\n    \"pickup\": 0,\n    \"overtime\": 0,\n    \"advance_acceptance\": 0,\n    \"loan\": 0,\n    \"previous_month\": 0\n  },\n  \"final_payment_amount\": 547256333\n}"
+            },
+            "description": "Confirm payment / generate payslip payload."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pay Salary List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/pay-list?page=1&limit=4",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "pay-list"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "4" }
+              ]
+            },
+            "description": "Pay Salary list view."
+          },
+          "response": [
+            {
+              "name": "Success - Pay Salary List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"staff\": [\n      {\n        \"id\": \"1011\",\n        \"profile\": {\n          \"name\": \"Salman Sah\",\n          \"phone\": \"+8801234567890\",\n          \"avatar_url\": \"https://example.com/avatar1.jpg\"\n        },\n        \"position\": \"HUB-Manager\",\n        \"assigned_hub\": \"Dhanmondi\",\n        \"total_earnings\": 70250,\n        \"salary_pending\": 30250,\n        \"payment_method\": \"Bkash\",\n        \"last_paid\": \"2025-09-30T14:35:00Z\",\n        \"month\": \"October 26\",\n        \"is_payable\": true\n      }\n    ],\n    \"pagination\": {\n      \"total_items\": 121,\n      \"current_page\": 1,\n      \"items_per_page\": 4,\n      \"total_pages\": 31\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Pay Salary Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/staff/{{staffId}}/payment-details",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "staff", "{{staffId}}", "payment-details"]
+            },
+            "description": "Pay Salary modal details for a staff member."
+          },
+          "response": [
+            {
+              "name": "Success - Pay Salary Details",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"staff_information\": {\n      \"id\": \"1011\",\n      \"name\": \"Ahmed Wasi\",\n      \"is_verified\": true,\n      \"position\": \"HUB-Manager\",\n      \"assigned_hub\": \"Dhanmondi\",\n      \"phone\": \"+8801234567890\",\n      \"base_salary\": 130000,\n      \"commission\": 68000,\n      \"avatar_url\": \"https://example.com/avatar2.jpg\"\n    },\n    \"payment_summary\": {\n      \"total_earnings\": 547256333,\n      \"last_paid\": \"2025-10-19T14:50:00Z\",\n      \"salary_pending\": 547256333\n    },\n    \"available_bank_accounts\": [\n      {\n        \"account_id\": \"acc_001\",\n        \"bank_name\": \"EBL Bank\",\n        \"masked_number\": \"8842363...\",\n        \"logo_url\": \"https://example.com/ebl_logo.png\",\n        \"is_default\": true\n      }\n    ],\n    \"selected_account_details\": {\n      \"bank_name\": \"EBL Sky Banking\",\n      \"account_no\": \"8842362184559\",\n      \"account_holder_name\": \"Shahriar Emon\",\n      \"account_balance\": 547256333,\n      \"last_used\": \"2025-10-19T14:50:00Z\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Process Salary Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/salary/process-payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "salary", "process-payment"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"staff_id\": \"1011\",\n  \"account_id\": \"acc_001\",\n  \"payment_amount\": 547256333,\n  \"payment_method\": \"bank_transfer\"\n}"
+            },
+            "description": "Confirm and process salary payment."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "adminToken", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "hubId", "value": "" },
+    { "key": "staffId", "value": "" }
+  ]
+}
