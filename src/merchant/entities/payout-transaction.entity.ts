@@ -12,7 +12,6 @@ import { Merchant } from './merchant.entity';
 import { MerchantPayoutMethod } from './merchant-payout-method.entity';
 import { User } from '../../users/entities/user.entity';
 import { PayoutTransactionStatus } from '../../common/enums/payout-transaction-status.enum';
-import { PayoutRecipientType } from '../../common/enums/payout-recipient-type.enum';
 import { Staff } from '../../staff/entities/staff.entity';
 
 @Entity('payout_transactions')
@@ -25,9 +24,6 @@ export class PayoutTransaction {
   id: string;
 
   // ===== RELATIONSHIPS =====
-  @Column({ type: 'enum', enum: PayoutRecipientType, default: PayoutRecipientType.MERCHANT })
-  recipient_type: PayoutRecipientType;
-
   @Column({ type: 'uuid', nullable: true })
   merchant_id: string | null;
 

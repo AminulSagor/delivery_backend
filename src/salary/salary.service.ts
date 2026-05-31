@@ -11,7 +11,6 @@ import { Parcel, ParcelStatus, RIDER_DELIVERY_STATUSES } from '../parcels/entiti
 import { UserRole } from '../common/enums/user-role.enum';
 import { StaffPosition } from '../common/enums/staff-position.enum';
 import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
-import { PayoutRecipientType } from '../common/enums/payout-recipient-type.enum';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { ProcessSalaryPaymentDto } from './dto/process-salary-payment.dto';
 import { format, endOfMonth, startOfMonth } from 'date-fns';
@@ -292,7 +291,6 @@ export class SalaryService {
     }
 
     const transaction = this.payoutRepository.create({
-      recipient_type: PayoutRecipientType.STAFF,
       staff_id: staff.id,
       merchant_id: null,
       payout_method_id: null,
@@ -463,9 +461,6 @@ export class SalaryService {
       .createQueryBuilder('tx')
       .select('COALESCE(SUM(tx.amount), 0)', 'amount')
       .where('tx.staff_id = :staffId', { staffId })
-      .andWhere('tx.recipient_type = :recipientType', {
-        recipientType: PayoutRecipientType.STAFF,
-      })
       .andWhere('tx.status = :status', { status: PayoutTransactionStatus.COMPLETED })
       .andWhere('tx.completed_at BETWEEN :start AND :end', { start, end })
       .getRawOne<{ amount: string }>();
@@ -477,7 +472,6 @@ export class SalaryService {
     const last = await this.payoutRepository.findOne({
       where: {
         staff_id: staffId,
-        recipient_type: PayoutRecipientType.STAFF,
         status: PayoutTransactionStatus.COMPLETED,
       },
       order: { completed_at: 'DESC' },
