@@ -15,6 +15,7 @@ export enum StoreStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   DECLINED = 'DECLINED',
+  DISABLED = 'DISABLED',
 }
 
 @Entity('stores')
