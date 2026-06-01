@@ -82,10 +82,7 @@ export class SalaryService {
           },
           position: member.position,
           assigned_hub: member.hub?.branch_name ?? null,
-          attendance: {
-            present: 0,
-            total_days: this.getDaysInCurrentMonth(),
-          },
+          
           salary_amount: breakdown.calculated_payment_amount,
           last_paid: lastPaid,
           status: lastPaid ? 'created' : 'pending_creation',
@@ -136,7 +133,6 @@ export class SalaryService {
           eid_bonus_per: breakdown.eid_bonus_per,
         },
         monthly_salary_modifiers: {
-          attendance: breakdown.attendance,
           delivery: breakdown.delivery,
           cancel: breakdown.cancel,
           pickup: breakdown.pickup,
