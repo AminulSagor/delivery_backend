@@ -1,9 +1,9 @@
 {
   "info": {
     "_postman_id": "staff-collection-001",
-    "name": "Staff API",
+    "name": "Staff API - Production",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Collection for Staff management and payroll endpoints. Use {{baseUrl}} and set Authorization header with Bearer token."
+    "description": "Production-grade Staff API collection. All endpoints use environment variables ({{baseUrl}}, {{adminToken}}, {{staffId}}, {{hubId}}). No hardcoded values. Includes staff management, salary flow, and payout tracking."
   },
   "item": [
     {
@@ -17,7 +17,7 @@
         "url": { "raw": "{{baseUrl}}/staff", "host": ["{{baseUrl}}"], "path": ["staff"] },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"full_name\": \"John Staff\",\n  \"phone\": \"01712345678\",\n  \"email\": \"john.staff@example.com\",\n  \"password\": \"StrongPass123\",\n  \"position\": \"ADMIN_STAFF\",\n  \"photo\": null,\n  \"secondary_phone\": null,\n  \"guardian_mobile_no\": \"01799999999\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890123\",\n  \"license_no\": \"DL-12345\",\n  \"present_address\": \"123 Current Address\",\n  \"permanent_address\": \"456 Permanent Address\",\n  \"fixed_salary\": 15000,\n  \"bank_name\": \"DBBL\",\n  \"bank_account_number\": \"1234567890\",\n  \"bank_branch\": \"Gulshan Branch\",\n  \"nid_front_photo\": \"staff/nid/front.jpg\",\n  \"nid_back_photo\": \"staff/nid/back.jpg\",\n  \"license_front_photo\": null,\n  \"license_back_photo\": null,\n  \"parent_nid_front_photo\": \"staff/parent/nid/front.jpg\",\n  \"parent_nid_back_photo\": \"staff/parent/nid/back.jpg\",\n  \"hub_id\": \"<hub-uuid>\"\n}"
+          "raw": "{\n  \"full_name\": \"John Staff\",\n  \"phone\": \"01712345678\",\n  \"email\": \"john.staff@example.com\",\n  \"password\": \"StrongPass123\",\n  \"position\": \"ADMIN_STAFF\",\n  \"photo\": null,\n  \"secondary_phone\": null,\n  \"guardian_mobile_no\": \"01799999999\",\n  \"bike_type\": \"MOTORCYCLE\",\n  \"nid_number\": \"1234567890123\",\n  \"license_no\": \"DL-12345\",\n  \"present_address\": \"123 Current Address\",\n  \"permanent_address\": \"456 Permanent Address\",\n  \"fixed_salary\": 15000,\n  \"bank_name\": \"DBBL\",\n  \"bank_account_number\": \"1234567890\",\n  \"bank_branch\": \"Gulshan Branch\",\n  \"district\": \"Dhaka\",\n  \"account_holder_name\": \"John Staff\",\n  \"routing_number\": \"DBBLDHA\",\n  \"nid_front_photo\": \"staff/nid/front.jpg\",\n  \"nid_back_photo\": \"staff/nid/back.jpg\",\n  \"license_front_photo\": null,\n  \"license_back_photo\": null,\n  \"parent_nid_front_photo\": \"staff/parent/nid/front.jpg\",\n  \"parent_nid_back_photo\": \"staff/parent/nid/back.jpg\",\n  \"hub_id\": \"{{hubId}}\"\n}"
         },
         "description": "Create a new staff. Fields must conform to CreateStaffDto (see API docs). Phone must be Bangladesh format 01XXXXXXXXX."
       },
@@ -143,7 +143,64 @@
       "response": []
     },
     {
-      "name": "Salary Flow",
+      "name": "Payout History & Dashboard",
+      "item": [
+        {
+          "name": "Get Payout History List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payout-history?search=&page=1&limit=10&start_date=2026-01-01&end_date=2026-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payout-history"],
+              "query": [
+                { "key": "search", "value": "", "disabled": false },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "start_date", "value": "2026-01-01", "disabled": true },
+                { "key": "end_date", "value": "2026-12-31", "disabled": true }
+              ]
+            },
+            "description": "Aggregated staff payout history list for admin dashboard. Supports search by staff name/phone, pagination, and date range filtering."
+          },
+          "response": [
+            {
+              "name": "Success - Payout History List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"staff_id\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"staff_name\": \"Ahmed Wasi\",\n      \"staff_phone\": \"01712345678\",\n      \"staff_avatar\": \"https://cdn.example.com/staff/avatar1.jpg\",\n      \"position\": \"HUB-Manager\",\n      \"assigned_hub\": \"Dhanmondi\",\n      \"salary_paid\": 130000,\n      \"paid_using\": \"DBBL\",\n      \"paid_at\": \"2026-05-20T14:35:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"pagination\": {\n      \"total_items\": 45,\n      \"current_page\": 1,\n      \"items_per_page\": 10,\n      \"total_pages\": 5\n    },\n    \"filters\": {\n      \"search\": null,\n      \"start_date\": \"2026-01-01\",\n      \"end_date\": \"2026-12-31\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Payout History Details (Modal)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payout-history/{{staffId}}/details",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payout-history", "{{staffId}}", "details"]
+            },
+            "description": "Get detailed payout information for staff modal. Includes staff info, salary period, payment gateway details, remaining balance, and last payout."
+          },
+          "response": [
+            {
+              "name": "Success - Payout History Details",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"staff_information\": {\n      \"id\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"name\": \"Ahmed Wasi\",\n      \"phone\": \"01712345678\",\n      \"position\": \"HUB-Manager\",\n      \"assigned_hub\": \"Dhanmondi\",\n      \"avatar_url\": \"https://cdn.example.com/staff/avatar1.jpg\"\n    },\n    \"salary_period\": {\n      \"month\": \"May 2026\",\n      \"base_salary\": 130000,\n      \"total_earnings_to_date\": 520000\n    },\n    \"payment_gateway\": {\n      \"method_type\": \"BANK_ACCOUNT\",\n      \"bank_name\": \"DBBL\",\n      \"account_number\": \"1234****89\",\n      \"amount_paid\": 130000,\n      \"total_disbursed\": 390000,\n      \"remaining_balance\": 130000,\n      \"last_payout_at\": \"2026-05-15T10:30:00Z\",\n      \"last_payout_amount\": 130000\n    }\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Salary Management Flow",
+      "description": "Complete staff salary generation and payment workflow",
       "item": [
         {
           "name": "Get Create Salary List",
@@ -208,9 +265,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"staff_id\": \"1011\",\n  \"salary_increment_modifiers\": {\n    \"increment\": 0,\n    \"commitment_increment\": 0,\n    \"pickup_increment\": 0,\n    \"eid_bonus_per\": 0\n  },\n  \"monthly_salary_modifiers\": {\n    \"attendance\": 0,\n    \"delivery\": 0,\n    \"cancel\": 0,\n    \"pickup\": 0,\n    \"overtime\": 0,\n    \"advance_acceptance\": 0,\n    \"loan\": 0,\n    \"previous_month\": 0\n  },\n  \"final_payment_amount\": 547256333\n}"
+              "raw": "{\n  \"staff_id\": \"{{staffId}}\",\n  \"salary_increment_modifiers\": {\n    \"increment\": 0,\n    \"commitment_increment\": 0,\n    \"pickup_increment\": 0,\n    \"eid_bonus_per\": 0\n  },\n  \"monthly_salary_modifiers\": {\n    \"attendance\": 0,\n    \"delivery\": 0,\n    \"cancel\": 0,\n    \"pickup\": 0,\n    \"overtime\": 0,\n    \"advance_acceptance\": 0,\n    \"loan\": 0,\n    \"previous_month\": 0\n  },\n  \"final_payment_amount\": 130000\n}"
             },
-            "description": "Confirm payment / generate payslip payload."
+            "description": "Generate and confirm salary slip. All modifiers use variables. Submit calculated payment amount from Create Salary Details."
           },
           "response": []
         },
@@ -277,9 +334,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"staff_id\": \"1011\",\n  \"account_id\": \"acc_001\",\n  \"payment_amount\": 547256333,\n  \"payment_method\": \"bank_transfer\"\n}"
+              "raw": "{\n  \"staff_id\": \"{{staffId}}\",\n  \"account_id\": \"{{payoutMethodId}}\",\n  \"payment_amount\": 130000,\n  \"payment_method\": \"bank_transfer\"\n}"
             },
-            "description": "Confirm and process salary payment."
+            "description": "Confirm and process salary payment. Set {{payoutMethodId}} from available bank accounts in payment details."
           },
           "response": []
         }
@@ -291,6 +348,7 @@
     { "key": "adminToken", "value": "" },
     { "key": "token", "value": "" },
     { "key": "hubId", "value": "" },
-    { "key": "staffId", "value": "" }
+    { "key": "staffId", "value": "" },
+    { "key": "payoutMethodId", "value": "" }
   ]
 }

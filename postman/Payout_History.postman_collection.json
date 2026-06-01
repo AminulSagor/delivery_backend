@@ -1,0 +1,74 @@
+{
+  "info": {
+    "_postman_id": "payout-history-collection-001",
+    "name": "Payout History API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection for staff payout history dashboard and payout details modal. Use {{baseUrl}} and set Authorization with an admin bearer token."
+  },
+  "item": [
+    {
+      "name": "Get Payout History List",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payout-history?search=&page=1&limit=10&start_date=&end_date=",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payout-history"],
+          "query": [
+            { "key": "search", "value": "" },
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" },
+            { "key": "start_date", "value": "" },
+            { "key": "end_date", "value": "" }
+          ]
+        },
+        "description": "Fetch the payout history dashboard table, filters, and paginated staff payout rows."
+      },
+      "response": [
+        {
+          "name": "Success - Payout History List",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"success\": true,\n  \"meta\": {\n    \"title\": \"Payout History\",\n    \"subtitle\": \"Salary Management - Staff List\",\n    \"pagination\": {\n      \"total_records\": 2,\n      \"current_page\": 1,\n      \"limit\": 10,\n      \"showing\": \"1 - 2 of 2\"\n    }\n  },\n  \"filters\": {\n    \"selected_count\": 0,\n    \"export_formats\": [\"Excel\", \"CSV\"],\n    \"bulk_actions\": [\"Pay Salary\", \"Hold Payout\"]\n  },\n  \"data\": [\n    {\n      \"id\": \"45\",\n      \"profile\": {\n        \"name\": \"Ahmed Wasi\",\n        \"email\": \"wasi@gmail.com\",\n        \"avatar_url\": \"https://cdn.example.com/profiles/wasi.png\"\n      },\n      \"position\": \"Shift Manager\",\n      \"assigned_hub\": \"Dhanmondi\",\n      \"last_paid_at\": \"2025-10-19T14:58:00Z\",\n      \"salary_paid\": 547256333,\n      \"currency\": \"BDT\",\n      \"paid_using\": \"EBL Sky\"\n    },\n    {\n      \"id\": \"32\",\n      \"profile\": {\n        \"name\": \"Samiul Alim\",\n        \"email\": \"samiul@gmail.com\",\n        \"avatar_url\": \"https://cdn.example.com/profiles/samiul.png\"\n      },\n      \"position\": \"Hub Executive\",\n      \"assigned_hub\": \"Mirpur-10\",\n      \"last_paid_at\": \"2025-10-19T14:58:00Z\",\n      \"salary_paid\": 32500,\n      \"currency\": \"BDT\",\n      \"paid_using\": \"CBL Sky\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Get Payout Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payout-history/{{staffId}}/details",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payout-history", "{{staffId}}", "details"]
+        },
+        "description": "Fetch the granular payout modal context for one staff member."
+      },
+      "response": [
+        {
+          "name": "Success - Payout Details",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"staff_information\": {\n      \"id\": \"45\",\n      \"name\": \"Ahmed Wasi\",\n      \"status\": \"Verified\",\n      \"employment_type\": \"Permanent\",\n      \"position\": \"Shift Manager\",\n      \"email\": \"wasi@gmail.com\",\n      \"avatar_url\": \"https://cdn.example.com/profiles/wasi.png\",\n      \"base_salary\": 25000,\n      \"conveyance\": 1500,\n      \"total_earnings_to_date\": 547256333,\n      \"currency\": \"BDT\",\n      \"last_paid_at\": \"2025-10-19T14:58:00Z\"\n    },\n    \"salary_period\": {\n      \"month\": \"March\",\n      \"days_counted\": 4,\n      \"amount_paid\": 547256333,\n      \"total_disbursed\": 547256333\n    },\n    \"payment_gateway\": {\n      \"provider_name\": \"EBL Sky Banking\",\n      \"logo_identifier\": \"EBL_SKY\",\n      \"account_no\": \"543216521321554\",\n      \"account_holder_name\": \"Shahriar Hasan\",\n      \"current_account_balance\": 1547256333,\n      \"last_used_at\": \"2025-10-19T14:58:00Z\"\n    }\n  }\n}"
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "adminToken", "value": "" },
+    { "key": "staffId", "value": "" }
+  ]
+}

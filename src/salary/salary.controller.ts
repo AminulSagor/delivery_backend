@@ -17,6 +17,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { ProcessSalaryPaymentDto } from './dto/process-salary-payment.dto';
+import { FinalizePayoutDto } from './dto/finalize-payout.dto';
 
 @Controller('api/salary')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -61,6 +62,15 @@ export class SalaryController {
     @CurrentUser() user: any,
   ) {
     return this.salaryService.processPayment(dto, user.id);
+  }
+
+  @Post('payouts/:id/finalize')
+  finalizePayout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FinalizePayoutDto,
+  ) {
+    const processedAt = dto.processed_at ? new Date(dto.processed_at) : undefined;
+    return this.salaryService.finalizePayout(id, dto.status, processedAt, dto.failure_reason);
   }
 
   @Get('staff/:id/payouts')
