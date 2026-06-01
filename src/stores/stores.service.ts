@@ -448,6 +448,48 @@ export class StoresService {
     return store;
   }
 
+  async disableStore(
+    id: string,
+    userId: string,
+    options?: { isAdmin?: boolean },
+  ): Promise<Store> {
+    let store: Store | null = null;
+
+    if (options?.isAdmin) {
+      store = await this.storesRepository.findOne({
+        where: { id },
+        relations: ['hub', 'merchant', 'merchant.user'],
+      });
+
+      if (!store) {
+        throw new NotFoundException(`Store with ID ${id} not found`);
+      }
+    } else {
+      store = await this.findOne(id, userId);
+    }
+
+    if (store.status === StoreStatus.DISABLED) {
+      throw new BadRequestException('Store is already disabled.');
+    }
+
+    const parcelCount = await this.parcelRepository.count({
+      where: { store_id: id },
+    });
+
+    if (parcelCount > 0) {
+      throw new BadRequestException(
+        'Cannot disable a store that already has parcels.',
+      );
+    }
+
+    store.status = StoreStatus.DISABLED;
+    await this.storesRepository.save(store);
+
+    console.log(`[STORE DISABLED] Store ${store.id} disabled by user ${userId}`);
+
+    return store;
+  }
+
   async remove(id: string, userId: string): Promise<void> {
     const store = await this.findOne(id, userId);
 
@@ -482,6 +524,9 @@ export class StoresService {
         'Cannot approve a store that has been declined.',
       );
     }
+    if (store.status === StoreStatus.DISABLED) {
+      throw new BadRequestException('Cannot approve a disabled store.');
+    }
 
     // 2. Update status
     store.status = StoreStatus.APPROVED;
@@ -506,6 +551,9 @@ export class StoresService {
       throw new BadRequestException(
         'Cannot decline a store that is already approved.',
       );
+    }
+    if (store.status === StoreStatus.DISABLED) {
+      throw new BadRequestException('Cannot decline a disabled store.');
     }
 
     // 2. Update status

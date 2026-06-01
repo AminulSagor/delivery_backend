@@ -195,6 +195,19 @@ export class StoresController {
     };
   }
 
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Patch(':id/disable')
+  async disableStore(@Param('id') id: string, @CurrentUser() user: any) {
+    const store = await this.storesService.disableStore(id, user.userId, {
+      isAdmin: user.role === UserRole.ADMIN,
+    });
+    return {
+      store: toStoreDetail(store),
+      message: 'Store disabled successfully',
+    };
+  }
+
   @Roles(UserRole.MERCHANT)
   @HttpCode(HttpStatus.OK)
   @Delete(':id')
