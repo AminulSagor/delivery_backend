@@ -4,8 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, In, Repository } from 'typeorm';
+import { Between, In, Repository, DataSource } from 'typeorm';
 import { Staff } from '../staff/entities/staff.entity';
+import { StaffFinance } from '../staff/entities/staff-finance.entity';
+import { StaffPayoutMethod } from '../staff/entities/staff-payout-method.entity';
 import { Rider } from '../riders/entities/rider.entity';
 import { Parcel, ParcelStatus, RIDER_DELIVERY_STATUSES } from '../parcels/entities/parcel.entity';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -13,7 +15,7 @@ import { StaffPosition } from '../common/enums/staff-position.enum';
 import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { ProcessSalaryPaymentDto } from './dto/process-salary-payment.dto';
-import { format, endOfMonth, startOfMonth } from 'date-fns';
+import { format, endOfMonth, startOfMonth, endOfDay, startOfDay } from 'date-fns';
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
 
 type SalaryBreakdown = {
@@ -42,10 +44,15 @@ export class SalaryService {
     private readonly staffRepository: Repository<Staff>,
     @InjectRepository(PayoutTransaction)
     private readonly payoutRepository: Repository<PayoutTransaction>,
+    @InjectRepository(StaffPayoutMethod)
+    private readonly staffPayoutMethodRepository: Repository<StaffPayoutMethod>,
+    @InjectRepository(StaffFinance)
+    private readonly staffFinanceRepository: Repository<StaffFinance>,
     @InjectRepository(Rider)
     private readonly riderRepository: Repository<Rider>,
     @InjectRepository(Parcel)
     private readonly parcelRepository: Repository<Parcel>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getCreateList(page = 1, limit = 10) {
@@ -296,14 +303,34 @@ export class SalaryService {
       payout_method_id: null,
       amount: paymentAmount,
       reference_number: this.generateReferenceNumber(staff),
-      status: PayoutTransactionStatus.COMPLETED,
-      admin_notes: `Processed via ${dto.payment_method} (${dto.account_id})`,
+      status: PayoutTransactionStatus.PENDING,
+      admin_notes: `Requested via ${dto.payment_method}`,
       failure_reason: null,
       initiated_by: initiatedBy,
       initiated_at: new Date(),
-      processed_at: new Date(),
-      completed_at: new Date(),
+      processed_at: null,
+      completed_at: null,
     });
+
+    // validate and attach payout method
+    const StaffPayoutMethod = (await import('../staff/entities/staff-payout-method.entity')).StaffPayoutMethod;
+    const payoutMethod = await this.dataSource.getRepository(StaffPayoutMethod).findOne({
+      where: { id: dto.account_id },
+    });
+
+    if (!payoutMethod) {
+      throw new BadRequestException('Invalid account_id');
+    }
+
+    if (payoutMethod.staff_id !== staff.id) {
+      throw new BadRequestException('Payout method does not belong to the staff');
+    }
+
+    if (!payoutMethod.is_active) {
+      throw new BadRequestException('Selected payout method is not active');
+    }
+
+    transaction.payout_method_id = payoutMethod.id;
 
     const saved = await this.payoutRepository.save(transaction);
 
@@ -316,9 +343,48 @@ export class SalaryService {
         payment_method: dto.payment_method,
         reference_number: saved.reference_number,
         status: saved.status,
-        completed_at: saved.completed_at,
+        initiated_at: saved.initiated_at,
       },
     };
+  }
+
+  /**
+   * Finalize a payout transaction — mark as COMPLETED or FAILED and update StaffFinance accordingly.
+   * Intended to be called by payout worker after external transfer completes.
+   */
+  async finalizePayout(transactionId: string, status: PayoutTransactionStatus, processedAt?: Date, failureReason?: string) {
+    const tx = await this.payoutRepository.findOne({ where: { id: transactionId } });
+    if (!tx) throw new NotFoundException('Payout transaction not found');
+
+    if (tx.status === status) {
+      return tx;
+    }
+
+    tx.status = status;
+    tx.processed_at = processedAt || new Date();
+    if (status === PayoutTransactionStatus.COMPLETED) {
+      tx.completed_at = new Date();
+      tx.failure_reason = null;
+    } else {
+      tx.failure_reason = failureReason || null;
+    }
+
+    await this.payoutRepository.save(tx);
+
+    // If completed, update staff finance
+    if (status === PayoutTransactionStatus.COMPLETED && tx.staff_id) {
+      const finance = await this.staffFinanceRepository.findOne({ where: { staff_id: tx.staff_id } });
+      if (finance) {
+        const amount = Number(tx.amount || 0);
+        finance.total_paid_amount = Number((Number(finance.total_paid_amount || 0) + amount).toFixed(2));
+        finance.remaining_balance = Number(Math.max(0, Number(finance.remaining_balance || 0) - amount).toFixed(2));
+        finance.last_payout_at = tx.completed_at;
+        finance.last_payout_amount = amount;
+        await this.staffFinanceRepository.save(finance);
+      }
+    }
+
+    return tx;
   }
 
   async getPayouts(staffId: string, page = 1, limit = 20) {
@@ -343,6 +409,199 @@ export class SalaryService {
           id: staff.id,
           name: staff.user?.full_name ?? 'N/A',
         },
+      },
+    };
+  }
+
+  async getPayoutHistoryList(
+    search?: string,
+    page = 1,
+    limit = 10,
+    startDateInput?: string,
+    endDateInput?: string,
+  ) {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
+    const skip = (safePage - 1) * safeLimit;
+    const startDate = this.parseOptionalDate(startDateInput, 'start_date');
+    const endDate = this.parseOptionalDate(endDateInput, 'end_date');
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new BadRequestException('start_date must be earlier than end_date');
+    }
+
+    const baseQuery = this.payoutRepository
+      .createQueryBuilder('tx')
+      .innerJoin('tx.staff', 'staff')
+      .innerJoin('staff.user', 'user')
+      .leftJoin('staff.hub', 'hub')
+      .where('tx.status = :status', { status: PayoutTransactionStatus.COMPLETED })
+      .andWhere('tx.staff_id IS NOT NULL');
+
+    if (search?.trim()) {
+      baseQuery.andWhere(
+        '(user.full_name ILIKE :search OR user.email ILIKE :search OR staff.staff_code ILIKE :search OR staff.position::text ILIKE :search OR COALESCE(hub.branch_name, \'\') ILIKE :search OR COALESCE(staff.bank_name, \'\') ILIKE :search)',
+        { search: `%${search.trim()}%` },
+      );
+    }
+
+    if (startDate) {
+      baseQuery.andWhere('tx.completed_at >= :startDate', {
+        startDate: startOfDay(startDate),
+      });
+    }
+
+    if (endDate) {
+      baseQuery.andWhere('tx.completed_at <= :endDate', {
+        endDate: endOfDay(endDate),
+      });
+    }
+
+    const totalResult = await baseQuery
+      .clone()
+      .select('COUNT(DISTINCT staff.id)', 'total')
+      .getRawOne<{ total: string }>();
+
+    const rows = await baseQuery
+      .clone()
+      .select('staff.id', 'id')
+      .addSelect('user.full_name', 'full_name')
+      .addSelect('user.email', 'email')
+      .addSelect('staff.photo', 'avatar_url')
+      .addSelect('staff.position', 'position')
+      .addSelect('hub.branch_name', 'assigned_hub')
+      .addSelect('MAX(tx.completed_at)', 'last_paid_at')
+      .addSelect('COALESCE(SUM(tx.amount), 0)', 'salary_paid')
+      .groupBy('staff.id')
+      .addGroupBy('user.full_name')
+      .addGroupBy('user.email')
+      .addGroupBy('staff.photo')
+      .addGroupBy('staff.position')
+      .addGroupBy('hub.branch_name')
+      .orderBy('MAX(tx.completed_at)', 'DESC')
+      .offset(skip)
+      .limit(safeLimit)
+      .getRawMany<{
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        avatar_url: string | null;
+        position: string | null;
+        assigned_hub: string | null;
+        last_paid_at: string | Date | null;
+        salary_paid: string;
+      }>();
+
+    const staffIds = rows.map((row) => row.id);
+    const payoutMethods = await this.loadDefaultPayoutMethods(staffIds);
+
+    const data = rows.map((row) => {
+      const payoutMethod = payoutMethods.get(row.id) || null;
+
+      return {
+        id: row.id,
+        profile: {
+          name: row.full_name ?? 'N/A',
+          email: row.email ?? null,
+          avatar_url: row.avatar_url ?? null,
+        },
+        position: row.position ?? 'N/A',
+        assigned_hub: row.assigned_hub ?? null,
+        last_paid_at: row.last_paid_at ? new Date(row.last_paid_at).toISOString() : null,
+        salary_paid: this.toMoney(row.salary_paid),
+        currency: 'BDT',
+        paid_using: this.resolvePaymentLabel(payoutMethod),
+      };
+    });
+
+    const totalRecords = Number(totalResult?.total || 0);
+
+    return {
+      success: true,
+      meta: {
+        title: 'Payout History',
+        subtitle: 'Salary Management - Staff List',
+        pagination: {
+          total_records: totalRecords,
+          current_page: safePage,
+          limit: safeLimit,
+          showing: this.buildShowingRange(totalRecords, safePage, safeLimit, data.length),
+        },
+      },
+      filters: {
+        selected_count: [search, startDateInput, endDateInput].filter((value) => !!value).length,
+        export_formats: ['Excel', 'CSV'],
+        bulk_actions: ['Pay Salary', 'Hold Payout'],
+      },
+      data,
+    };
+  }
+
+  async getPayoutHistoryDetails(staffId: string) {
+    const staff = await this.findStaffOrThrow(staffId);
+    const completedTransactions = await this.payoutRepository.find({
+      where: {
+        staff_id: staff.id,
+        status: PayoutTransactionStatus.COMPLETED,
+      },
+      order: { completed_at: 'DESC' },
+    });
+
+    const defaultMethod = await this.findDefaultPayoutMethod(staff.id);
+    const latestTransaction = completedTransactions[0] ?? null;
+    const latestPaidAt = latestTransaction?.completed_at ?? null;
+    const periodReferenceDate = latestPaidAt ?? new Date();
+    const periodStart = startOfMonth(periodReferenceDate);
+    const periodEnd = endOfMonth(periodReferenceDate);
+
+    const periodTransactions = completedTransactions.filter((transaction) => {
+      if (!transaction.completed_at) {
+        return false;
+      }
+
+      return transaction.completed_at >= periodStart && transaction.completed_at <= periodEnd;
+    });
+
+    const amountPaid = periodTransactions.reduce(
+      (sum, transaction) => sum + this.toMoney(transaction.amount),
+      0,
+    );
+    const totalEarningsToDate = completedTransactions.reduce(
+      (sum, transaction) => sum + this.toMoney(transaction.amount),
+      0,
+    );
+
+    const paymentGateway = this.buildPaymentGateway(
+      staff,
+      defaultMethod,
+      latestPaidAt,
+      totalEarningsToDate,
+    );
+
+    return {
+      success: true,
+      data: {
+        staff_information: {
+          id: staff.id,
+          name: staff.user?.full_name ?? 'N/A',
+          status: staff.is_active ? 'Verified' : 'Inactive',
+          employment_type: 'Permanent',
+          position: staff.position,
+          email: staff.user?.email ?? null,
+          avatar_url: staff.photo ?? null,
+          base_salary: this.toMoney(staff.fixed_salary),
+          conveyance: 0,
+          total_earnings_to_date: this.toMoney(totalEarningsToDate),
+          currency: 'BDT',
+          last_paid_at: latestPaidAt ? latestPaidAt.toISOString() : null,
+        },
+        salary_period: {
+          month: format(periodReferenceDate, 'MMMM'),
+          days_counted: periodTransactions.length,
+          amount_paid: this.toMoney(amountPaid),
+          total_disbursed: this.toMoney(amountPaid),
+        },
+        payment_gateway: paymentGateway,
       },
     };
   }
@@ -487,7 +746,7 @@ export class SalaryService {
 
     return [
       {
-        account_id: `bank_${staff.id}`,
+        account_id: staff.id,
         bank_name: staff.bank_name ?? 'BANK_TRANSFER',
         masked_number: this.maskAccountNumber(staff.bank_account_number),
         logo_url: null,
@@ -526,6 +785,173 @@ export class SalaryService {
     }
 
     return `${accountNumber.slice(0, 4)}...${accountNumber.slice(-2)}`;
+  }
+
+  private async loadDefaultPayoutMethods(staffIds: string[]) {
+    if (!staffIds.length) {
+      return new Map<string, StaffPayoutMethod>();
+    }
+
+    const methods = await this.staffPayoutMethodRepository.find({
+      where: {
+        staff_id: In(staffIds),
+        is_default: true,
+      },
+      order: {
+        updated_at: 'DESC',
+        created_at: 'DESC',
+      },
+    });
+
+    const methodMap = new Map<string, StaffPayoutMethod>();
+
+    methods.forEach((method) => {
+      if (!methodMap.has(method.staff_id)) {
+        methodMap.set(method.staff_id, method);
+      }
+    });
+
+    return methodMap;
+  }
+
+  private async findDefaultPayoutMethod(staffId: string) {
+    const method = await this.staffPayoutMethodRepository.findOne({
+      where: {
+        staff_id: staffId,
+        is_default: true,
+      },
+      order: {
+        updated_at: 'DESC',
+        created_at: 'DESC',
+      },
+    });
+
+    return method || null;
+  }
+
+  /**
+   * Get staff balance information (remaining balance, last payout, etc.)
+   */
+  async getStaffBalance(staffId: string) {
+    const finance = await this.staffFinanceRepository.findOne({
+      where: { staff_id: staffId },
+    });
+
+    if (!finance) {
+      throw new NotFoundException(`Staff finance record not found for staff ${staffId}`);
+    }
+
+    return {
+      remaining_balance: Number(finance.remaining_balance),
+      total_paid_amount: Number(finance.total_paid_amount),
+      last_payout_at: finance.last_payout_at,
+      last_payout_amount: finance.last_payout_amount ? Number(finance.last_payout_amount) : null,
+    };
+  }
+
+  /**
+   * Get staff last payout transaction details
+   */
+  async getStaffLastPayout(staffId: string) {
+    const lastPayout = await this.payoutRepository.findOne({
+      where: {
+        staff_id: staffId,
+        status: PayoutTransactionStatus.COMPLETED,
+      },
+      order: {
+        created_at: 'DESC',
+      },
+    });
+
+    if (!lastPayout) {
+      return null;
+    }
+
+    return {
+      id: lastPayout.id,
+      amount: Number(lastPayout.amount),
+      paid_at: lastPayout.created_at,
+      reference: lastPayout.reference_number || null,
+    };
+  }
+
+  private resolvePaymentLabel(method: StaffPayoutMethod | null) {
+    if (!method) {
+      return 'BANK_TRANSFER';
+    }
+
+    if (method.method_type === 'BANK_ACCOUNT') {
+      return method.bank_name ?? 'BANK_TRANSFER';
+    }
+
+    if (method.method_type === 'BKASH') {
+      return 'bKash';
+    }
+
+    if (method.method_type === 'NAGAD') {
+      return 'Nagad';
+    }
+
+    return method.bank_name ?? method.method_type;
+  }
+
+  private buildPaymentGateway(
+    staff: Staff,
+    method: StaffPayoutMethod | null,
+    latestPaidAt: Date | null,
+    totalEarningsToDate: number,
+  ) {
+    const providerName = this.resolvePaymentLabel(method);
+    const accountNumber =
+      method?.account_number ?? method?.bkash_number ?? method?.nagad_number ?? staff.bank_account_number ?? null;
+    const accountHolderName =
+      method?.account_holder_name ??
+      method?.bkash_account_holder_name ??
+      method?.nagad_account_holder_name ??
+      staff.user?.full_name ??
+      null;
+
+    return {
+      provider_name: providerName,
+      logo_identifier: this.toLogoIdentifier(providerName),
+      account_no: accountNumber,
+      account_holder_name: accountHolderName,
+      current_account_balance: this.toMoney(Math.max(totalEarningsToDate, 0)),
+      last_used_at: latestPaidAt ? latestPaidAt.toISOString() : null,
+    };
+  }
+
+  private parseOptionalDate(value?: string, fieldName?: string) {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = new Date(value);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`${fieldName || 'date'} must be a valid date`);
+    }
+
+    return parsed;
+  }
+
+  private buildShowingRange(totalRecords: number, currentPage: number, limit: number, itemCount: number) {
+    if (!totalRecords || !itemCount) {
+      return '0 - 0 of 0';
+    }
+
+    const start = (currentPage - 1) * limit + 1;
+    const end = Math.min(start + itemCount - 1, totalRecords);
+
+    return `${start} - ${end} of ${totalRecords}`;
+  }
+
+  private toLogoIdentifier(value: string) {
+    return value
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toUpperCase();
   }
 
   private generateReferenceNumber(staff: Staff) {

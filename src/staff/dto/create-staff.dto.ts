@@ -78,18 +78,30 @@ export class CreateStaffDto {
   @Min(0, { message: 'Fixed salary cannot be negative' })
   fixed_salary: number;
 
-  // Bank Information
+  // Bank Information (All required for staff payout)
+  @IsNotEmpty({ message: 'Bank name is required' })
   @IsString()
-  @IsOptional()
-  bank_name?: string;
+  bank_name: string;
 
+  @IsNotEmpty({ message: 'Bank account number is required' })
   @IsString()
-  @IsOptional()
-  bank_account_number?: string;
+  bank_account_number: string;
 
+  @IsNotEmpty({ message: 'Bank branch is required' })
   @IsString()
-  @IsOptional()
-  bank_branch?: string;
+  bank_branch: string;
+
+  @IsNotEmpty({ message: 'District is required' })
+  @IsString()
+  district: string;
+
+  @IsNotEmpty({ message: 'Account holder name is required' })
+  @IsString()
+  account_holder_name: string;
+
+  @IsNotEmpty({ message: 'Routing number is required' })
+  @IsString()
+  routing_number: string;
 
   // Documents
   @IsString()

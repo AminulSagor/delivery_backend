@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Staff } from './entities/staff.entity';
+import { StaffFinance } from './entities/staff-finance.entity';
 import { User } from '../users/entities/user.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { Rider } from '../riders/entities/rider.entity';
@@ -18,12 +19,16 @@ import { StaffPosition } from '../common/enums/staff-position.enum';
 import * as bcrypt from 'bcrypt';
 import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
+import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
+import { PayoutMethodStatus } from '../common/enums/payout-method-status.enum';
 
 @Injectable()
 export class StaffService {
   constructor(
     @InjectRepository(Staff)
     private readonly staffRepository: Repository<Staff>,
+    @InjectRepository(StaffFinance)
+    private readonly staffFinanceRepository: Repository<StaffFinance>,
     @InjectRepository(PayoutTransaction)
     private readonly payoutRepository: Repository<PayoutTransaction>,
     @InjectRepository(User)
@@ -159,6 +164,37 @@ export class StaffService {
       });
 
       const savedStaff = await queryRunner.manager.save(Staff, staff);
+
+      // ALWAYS create a staff payout method record with bank account
+      const StaffPayoutMethod = (await import('./entities/staff-payout-method.entity')).StaffPayoutMethod;
+      const payoutRepo = queryRunner.manager.getRepository(StaffPayoutMethod);
+
+      const payoutMethod = payoutRepo.create({
+        staff_id: savedStaff.id,
+        method_type: PayoutMethodType.BANK_ACCOUNT,
+        status: PayoutMethodStatus.VERIFIED,
+        is_default: true,
+        is_active: true,
+        bank_name: createStaffDto.bank_name,
+        district: createStaffDto.district,
+        branch_name: createStaffDto.bank_branch,
+        account_holder_name: createStaffDto.account_holder_name,
+        account_number: createStaffDto.bank_account_number,
+        routing_number: createStaffDto.routing_number,
+      });
+
+      await payoutRepo.save(payoutMethod);
+
+      // Create staff finance record for balance tracking
+      const staffFinance = this.staffFinanceRepository.create({
+        staff_id: savedStaff.id,
+        total_paid_amount: 0,
+        remaining_balance: createStaffDto.fixed_salary || 0,
+        last_payout_at: null,
+        last_payout_amount: null,
+      });
+
+      await queryRunner.manager.save(StaffFinance, staffFinance);
 
       // Commit transaction
       await queryRunner.commitTransaction();
