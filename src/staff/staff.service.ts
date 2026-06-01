@@ -51,6 +51,16 @@ export class StaffService {
     return result;
   }
 
+  private generateRandomPassword(length = 12): string {
+    const chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
   private async generateUniqueStaffCode(
     manager: EntityManager,
   ): Promise<string> {
@@ -119,8 +129,9 @@ export class StaffService {
     await queryRunner.startTransaction();
 
     try {
-      // Hash password
-      const hashedPassword = await bcrypt.hash(createStaffDto.password, 10);
+      // Hash password (generate a secure random one when admin doesn't provide)
+      const rawPassword = createStaffDto.password ?? this.generateRandomPassword(12);
+      const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
       // Create user
       const user = queryRunner.manager.create(User, {

@@ -29,8 +29,9 @@ export class CreateStaffDto {
   email?: string;
 
   @IsString()
+  @IsOptional()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
-  password: string;
+  password?: string;
 
   // Position/Role
   @IsEnum(StaffPosition, { message: 'Invalid staff position' })
