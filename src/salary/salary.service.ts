@@ -12,6 +12,8 @@ import { Rider } from '../riders/entities/rider.entity';
 import { Parcel, ParcelStatus, RIDER_DELIVERY_STATUSES } from '../parcels/entities/parcel.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { StaffPosition } from '../common/enums/staff-position.enum';
+import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
+import { PayoutMethodStatus } from '../common/enums/payout-method-status.enum';
 import { PayoutTransactionStatus } from '../common/enums/payout-transaction-status.enum';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { ProcessSalaryPaymentDto } from './dto/process-salary-payment.dto';
@@ -241,6 +243,19 @@ export class SalaryService {
     );
     const salaryPending = Math.max(0, breakdown.calculated_payment_amount - paidThisMonth);
 
+    const payoutMethods = await this.staffPayoutMethodRepository.find({
+      where: {
+        staff_id: staff.id,
+        is_active: true,
+      },
+      order: {
+        is_default: 'DESC',
+        created_at: 'ASC',
+      },
+    });
+
+    const selectedPayoutMethod = payoutMethods.find((method) => method.is_default) || payoutMethods[0] || null;
+
     return {
       status: 'success',
       data: {
@@ -260,9 +275,10 @@ export class SalaryService {
           last_paid: lastPaid,
           salary_pending: salaryPending,
         },
-        available_bank_accounts: this.buildAvailableBankAccounts(staff, salaryPending),
+        available_bank_accounts: this.buildAvailableBankAccounts(staff, payoutMethods),
         selected_account_details: this.buildSelectedAccountDetails(
           staff,
+          selectedPayoutMethod,
           salaryPending,
           lastPaid,
         ),
@@ -311,12 +327,39 @@ export class SalaryService {
     // validate and attach payout method when a payout method record is used
     let payoutMethod: StaffPayoutMethod | null = null;
 
-    const isStaffBankTransfer =
-      dto.payment_method === 'bank_transfer' && dto.account_id === staff.id;
+    if (dto.payment_method === 'bank_transfer' && dto.account_id === staff.id) {
+      payoutMethod = await this.staffPayoutMethodRepository.findOne({
+        where: {
+          staff_id: staff.id,
+          method_type: PayoutMethodType.BANK_ACCOUNT,
+          is_active: true,
+        },
+        order: {
+          is_default: 'DESC',
+          created_at: 'ASC',
+        },
+      });
 
-    if (isStaffBankTransfer) {
-      if (!staff.bank_account_number) {
-        throw new BadRequestException('Invalid account_id');
+      if (!payoutMethod) {
+        if (!staff.bank_account_number) {
+          throw new BadRequestException('Invalid account_id');
+        }
+
+        payoutMethod = this.staffPayoutMethodRepository.create({
+          staff_id: staff.id,
+          method_type: PayoutMethodType.BANK_ACCOUNT,
+          status: PayoutMethodStatus.VERIFIED,
+          is_default: true,
+          is_active: true,
+          bank_name: staff.bank_name,
+          district: staff.bank_branch,
+          branch_name: staff.bank_branch,
+          account_holder_name: staff.user?.full_name ?? null,
+          account_number: staff.bank_account_number,
+          routing_number: null,
+        });
+
+        payoutMethod = await this.staffPayoutMethodRepository.save(payoutMethod);
       }
     } else {
       payoutMethod = await this.staffPayoutMethodRepository.findOne({
@@ -334,9 +377,9 @@ export class SalaryService {
       if (!payoutMethod.is_active) {
         throw new BadRequestException('Selected payout method is not active');
       }
-
-      transaction.payout_method_id = payoutMethod.id;
     }
+
+    transaction.payout_method_id = payoutMethod.id;
 
     const saved = await this.payoutRepository.save(transaction);
 
@@ -745,7 +788,21 @@ export class SalaryService {
     return last?.completed_at ?? null;
   }
 
-  private buildAvailableBankAccounts(staff: Staff, amount: number) {
+  private buildAvailableBankAccounts(staff: Staff, payoutMethods: StaffPayoutMethod[]) {
+    const bankMethods = payoutMethods.filter(
+      (method) => method.method_type === 'BANK_ACCOUNT' && !!method.account_number,
+    );
+
+    if (bankMethods.length > 0) {
+      return bankMethods.map((method) => ({
+        account_id: method.id,
+        bank_name: method.bank_name ?? 'BANK_TRANSFER',
+        masked_number: this.maskAccountNumber(method.account_number ?? ''),
+        logo_url: null,
+        is_default: method.is_default,
+      }));
+    }
+
     if (!staff.bank_account_number) {
       return [];
     }
@@ -761,15 +818,24 @@ export class SalaryService {
     ];
   }
 
-  private buildSelectedAccountDetails(staff: Staff, amount: number, lastPaid: Date | null) {
-    if (!staff.bank_account_number) {
+  private buildSelectedAccountDetails(
+    staff: Staff,
+    method: StaffPayoutMethod | null,
+    amount: number,
+    lastPaid: Date | null,
+  ) {
+    const bankName = method?.bank_name ?? staff.bank_name ?? 'BANK_TRANSFER';
+    const accountNo = method?.account_number ?? staff.bank_account_number;
+    const accountHolderName = method?.account_holder_name ?? staff.user?.full_name ?? 'N/A';
+
+    if (!accountNo) {
       return null;
     }
 
     return {
-      bank_name: staff.bank_name ?? 'BANK_TRANSFER',
-      account_no: staff.bank_account_number,
-      account_holder_name: staff.user?.full_name ?? 'N/A',
+      bank_name: bankName,
+      account_no: accountNo,
+      account_holder_name: accountHolderName,
       account_balance: amount,
       last_used: lastPaid,
     };
