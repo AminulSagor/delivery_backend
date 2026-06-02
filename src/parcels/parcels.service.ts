@@ -36,7 +36,7 @@ import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
-import { Store } from '../stores/entities/store.entity';
+import { Store, StoreStatus } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
 import { PricingService } from '../pricing/pricing.service';
@@ -1252,6 +1252,13 @@ export class ParcelsService {
           throw new NotFoundException(
             'Store not found or does not belong to this merchant. Please check the store ID.',
           );
+        
+        // Validate store is approved
+        if (store.status !== StoreStatus.APPROVED) {
+          throw new BadRequestException(
+            `Store must be APPROVED to create parcels. Current status: ${store.status}`,
+          );
+        }
 
         // Phase 2: Auto-link to pickup request
         try {
@@ -1542,6 +1549,13 @@ export class ParcelsService {
         );
       }
 
+      // Validate store is approved
+      if (store.status !== StoreStatus.APPROVED) {
+        throw new BadRequestException(
+          `Store must be APPROVED to create parcels. Current status: ${store.status}`,
+        );
+      }
+
       // 3. Find/Create Customer (Reused logic)
       let customer;
       try {
@@ -1710,6 +1724,13 @@ export class ParcelsService {
       if (!store) {
         throw new NotFoundException(
           'Store not found or does not belong to the specified merchant.',
+        );
+      }
+
+      // Validate store is approved
+      if (store.status !== StoreStatus.APPROVED) {
+        throw new BadRequestException(
+          `Store must be APPROVED to create parcels. Current status: ${store.status}`,
         );
       }
 
