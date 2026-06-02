@@ -308,25 +308,35 @@ export class SalaryService {
       completed_at: null,
     });
 
-    // validate and attach payout method
-    const StaffPayoutMethod = (await import('../staff/entities/staff-payout-method.entity')).StaffPayoutMethod;
-    const payoutMethod = await this.dataSource.getRepository(StaffPayoutMethod).findOne({
-      where: { id: dto.account_id },
-    });
+    // validate and attach payout method when a payout method record is used
+    let payoutMethod: StaffPayoutMethod | null = null;
 
-    if (!payoutMethod) {
-      throw new BadRequestException('Invalid account_id');
+    const isStaffBankTransfer =
+      dto.payment_method === 'bank_transfer' && dto.account_id === staff.id;
+
+    if (isStaffBankTransfer) {
+      if (!staff.bank_account_number) {
+        throw new BadRequestException('Invalid account_id');
+      }
+    } else {
+      payoutMethod = await this.staffPayoutMethodRepository.findOne({
+        where: { id: dto.account_id },
+      });
+
+      if (!payoutMethod) {
+        throw new BadRequestException('Invalid account_id');
+      }
+
+      if (payoutMethod.staff_id !== staff.id) {
+        throw new BadRequestException('Payout method does not belong to the staff');
+      }
+
+      if (!payoutMethod.is_active) {
+        throw new BadRequestException('Selected payout method is not active');
+      }
+
+      transaction.payout_method_id = payoutMethod.id;
     }
-
-    if (payoutMethod.staff_id !== staff.id) {
-      throw new BadRequestException('Payout method does not belong to the staff');
-    }
-
-    if (!payoutMethod.is_active) {
-      throw new BadRequestException('Selected payout method is not active');
-    }
-
-    transaction.payout_method_id = payoutMethod.id;
 
     const saved = await this.payoutRepository.save(transaction);
 
