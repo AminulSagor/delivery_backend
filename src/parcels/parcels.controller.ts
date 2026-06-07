@@ -30,6 +30,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
@@ -231,6 +232,20 @@ export class ParcelsController {
       parcels: result.items.map(toParcelListItem),
       pagination: result.pagination,
       message: 'Parcels retrieved successfully',
+    };
+  }
+
+  @Public()
+  @Get('tracking/:trackingNumber')
+  @HttpCode(HttpStatus.OK)
+  async findByTrackingNumber(@Param('trackingNumber') trackingNumber: string) {
+    const parcel = await this.parcelsService.findOneByTrackingNumber(
+      trackingNumber,
+    );
+
+    return {
+      parcel: toParcelDetail(parcel),
+      message: 'Parcel retrieved successfully',
     };
   }
 

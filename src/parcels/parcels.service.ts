@@ -156,6 +156,24 @@ export class ParcelsService {
     private dataSource: DataSource,
   ) {}
 
+  private readonly parcelDetailRelations = [
+    'merchant',
+    'merchant.user',
+    'store',
+    'store.hub',
+    'store.merchant',
+    'store.merchant.user',
+    'delivery_coverage_area',
+    'customer',
+    'assignedRider',
+    'assignedRider.user',
+    'assignedRider.hub',
+    'currentHub',
+    'originHub',
+    'destinationHub',
+    'thirdPartyProvider',
+  ];
+
   private formatSmsAmount(amount: number): string {
     const value = Number(amount || 0);
     if (Number.isInteger(value)) {
@@ -1986,6 +2004,27 @@ export class ParcelsService {
     }
   }
 
+  async findOneByTrackingNumber(trackingNumber: string): Promise<Parcel> {
+    try {
+      const parcel = await this.parcelRepository.findOne({
+        where: { tracking_number: trackingNumber },
+        relations: this.parcelDetailRelations,
+      });
+      if (!parcel) throw new NotFoundException('Parcel not found');
+      return parcel;
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException)
+        throw error;
+      this.logger.error(
+        `[FIND PARCEL BY TRACKING ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve parcel details. Please try again.',
+      );
+    }
+  }
+
   async findOne(
     id: string,
     merchantId: string | null,
@@ -2000,23 +2039,7 @@ export class ParcelsService {
         throw new BadRequestException('Invalid parcel ID format');
       const parcel = await this.parcelRepository.findOne({
         where: { id },
-        relations: [
-          'merchant',
-          'merchant.user',
-          'store',
-          'store.hub',
-          'store.merchant',
-          'store.merchant.user',
-          'delivery_coverage_area',
-          'customer',
-          'assignedRider',
-          'assignedRider.user',
-          'assignedRider.hub',
-          'currentHub',
-          'originHub',
-          'destinationHub',
-          'thirdPartyProvider',
-        ],
+        relations: this.parcelDetailRelations,
       });
       if (!parcel) throw new NotFoundException(`Parcel not found`);
       // Rider can only view parcels assigned to them
