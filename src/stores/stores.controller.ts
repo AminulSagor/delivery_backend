@@ -124,7 +124,7 @@ export class StoresController {
     };
   }
 
-  @Roles(UserRole.MERCHANT)
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @Get()
   async findAll(
