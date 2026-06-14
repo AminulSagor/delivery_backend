@@ -52,14 +52,13 @@ export class MerchantInvoiceService {
    * - Have money to pay or charges to collect
    */
   async getEligibleParcels(merchantId: string): Promise<Parcel[]> {
-    // Terminal statuses that are eligible for invoicing
+    // Terminal statuses that are eligible for invoicing.
+    // Return parcels are only invoice-ready after they have been marked RETURN_TO_MERCHANT.
     const terminalStatuses = [
       ParcelStatus.DELIVERED,
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
       ParcelStatus.PAID_RETURN,
-      ParcelStatus.RETURNED,
-      ParcelStatus.RETURNED_TO_HUB,
       ParcelStatus.RETURN_TO_MERCHANT,
     ];
 
@@ -69,7 +68,7 @@ export class MerchantInvoiceService {
         invoice_id: IsNull(), // NOT already invoiced
         paid_to_merchant: false,
         financial_status: FinancialStatus.PENDING,
-        status: In(terminalStatuses), // Only terminal statuses
+        status: In(terminalStatuses), // Only terminal statuses ready for invoicing
       },
       relations: [
         'store',
@@ -1698,8 +1697,6 @@ export class MerchantInvoiceService {
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
       ParcelStatus.PAID_RETURN,
-      ParcelStatus.RETURNED,
-      ParcelStatus.RETURNED_TO_HUB,
       ParcelStatus.RETURN_TO_MERCHANT,
     ];
 
@@ -1710,7 +1707,7 @@ export class MerchantInvoiceService {
         invoice_id: IsNull(),
         paid_to_merchant: false,
         financial_status: FinancialStatus.PENDING,
-        status: In(terminalStatuses), // Only terminal statuses
+        status: In(terminalStatuses), // Only terminal statuses ready for invoicing
       },
       relations: ['store', 'merchant', 'merchant.user'],
       order: {
