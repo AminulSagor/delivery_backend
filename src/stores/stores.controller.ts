@@ -60,6 +60,7 @@ export class StoresController {
   @Get('admin/all')
   async findAllStores(
     @Query('merchant_id') merchantId?: string,
+    @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -72,6 +73,7 @@ export class StoresController {
       pageNum,
       limitNum,
       search,
+      status,
     );
     return {
       stores: stores.map(toStoreDetail),
