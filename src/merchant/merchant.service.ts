@@ -2196,6 +2196,53 @@ export class MerchantService {
     };
   }
 
+  // --- API: Reject Individual Document (Admin) ---
+  async rejectDocument(
+    merchantId: string,
+    documentType: 'nid' | 'trade_license' | 'tin' | 'bin',
+  ) {
+    const profile = await this.profileRepo.findOne({
+      where: { merchant_id: merchantId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Merchant profile not found');
+    }
+
+    const docFieldMap = {
+      nid: { checkField: 'nid_number', verifiedField: 'nid_verified' },
+      trade_license: {
+        checkField: 'trade_license_number',
+        verifiedField: 'trade_license_verified',
+      },
+      tin: { checkField: 'tin_number', verifiedField: 'tin_verified' },
+      bin: { checkField: 'bin_number', verifiedField: 'bin_verified' },
+    };
+
+    const { checkField, verifiedField } = docFieldMap[documentType];
+
+    if (!profile[checkField]) {
+      throw new BadRequestException(
+        `${documentType.toUpperCase()} document has not been uploaded yet`,
+      );
+    }
+
+    if (!profile[verifiedField]) {
+      throw new BadRequestException(
+        `${documentType.toUpperCase()} document is not verified`,
+      );
+    }
+
+    profile[verifiedField] = false;
+    await this.profileRepo.save(profile);
+
+    return {
+      merchant_id: merchantId,
+      document_type: documentType,
+      verified: false,
+    };
+  }
+
   /**
    * Get Merchant Lifetime Parcel Summary
    * Returns counts and total prices for each parcel status category

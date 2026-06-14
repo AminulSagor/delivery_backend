@@ -328,6 +328,13 @@ export class MerchantController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/nid/reject')
+  async rejectNid(@Param('id') id: string) {
+    const result = await this.merchantService.rejectDocument(id, 'nid');
+    return { ...result, message: 'NID document rejected successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
   @Patch(':id/documents/trade-license/approve')
   async approveTradeLicense(@Param('id') id: string) {
     const result = await this.merchantService.approveDocument(
@@ -341,6 +348,16 @@ export class MerchantController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/trade-license/reject')
+  async rejectTradeLicense(@Param('id') id: string) {
+    const result = await this.merchantService.rejectDocument(
+      id,
+      'trade_license',
+    );
+    return { ...result, message: 'Trade license document rejected successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
   @Patch(':id/documents/tin/approve')
   async approveTin(@Param('id') id: string) {
     const result = await this.merchantService.approveDocument(id, 'tin');
@@ -348,10 +365,24 @@ export class MerchantController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/tin/reject')
+  async rejectTin(@Param('id') id: string) {
+    const result = await this.merchantService.rejectDocument(id, 'tin');
+    return { ...result, message: 'TIN document rejected successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
   @Patch(':id/documents/bin/approve')
   async approveBin(@Param('id') id: string) {
     const result = await this.merchantService.approveDocument(id, 'bin');
     return { ...result, message: 'BIN document approved successfully' };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/documents/bin/reject')
+  async rejectBin(@Param('id') id: string) {
+    const result = await this.merchantService.rejectDocument(id, 'bin');
+    return { ...result, message: 'BIN document rejected successfully' };
   }
 
   @Roles(UserRole.ADMIN)

@@ -3051,13 +3051,9 @@ export class HubsService {
       .select('COALESCE(SUM(expense.amount), 0)', 'total')
       .getRawOne();
 
-    // Calculate Available Balance
-    // = Total collected from rider settlements - Total approved transfers to admin
-    const totalCollectedFromRiders = Number(
-      finance.total_collected_from_riders || 0,
-    );
-    const totalApprovedTransfers = Number(lifetimeTransferred.total || 0);
-    const availableBalance = totalCollectedFromRiders - totalApprovedTransfers;
+    // Calculate Available Balance from the actual hub manager finance record.
+    // This ensures the wallet balance shows the cash that was collected and committed.
+    const availableBalance = Number(finance.current_balance || 0);
 
     // Get transferred this month (APPROVED transfers only)
     const transferredThisMonth = await this.hubTransferRecordRepository
