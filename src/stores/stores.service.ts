@@ -569,6 +569,7 @@ export class StoresService {
     page: number = 1,
     limit: number = 10,
     search?: string,
+    status?: string,
   ): Promise<{ data: any[]; total: number }> {
     const skip = (page - 1) * limit;
 
@@ -580,6 +581,10 @@ export class StoresService {
 
     if (merchantId) {
       query.andWhere('store.merchant_id = :merchantId', { merchantId });
+    }
+
+    if (status !== undefined && status !== null && status !== '') {
+      query.andWhere('store.status = :status', { status });
     }
 
     if (search) {

@@ -15,7 +15,7 @@ export class UpdateSettingsDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^(?:\+?88)?01[3-9]\d{8}$/, {
+  @Matches(/^(?:\+?88)?01\d{9}$/, {
     message:
       'contact_number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
   })
@@ -27,7 +27,7 @@ export class UpdateSettingsDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^(?:\+?88)?01[3-9]\d{8}$/, {
+  @Matches(/^(?:\+?88)?01\d{9}$/, {
     message:
       'optional_number must be a valid Bangladesh number (01XXXXXXXXX or +8801XXXXXXXXX)',
   })
