@@ -260,4 +260,62 @@ If you want, I can:
 - Add explicit `reject document` endpoints for merchant documents (server currently lacks those), or
 - Generate OpenAPI snippets for these routes.
 
+---
+
+## Customer Fraud Requests (Admin)
+
+These endpoints allow admins to review fraud reports submitted by merchants and either approve or reject them.
+
+### List fraud requests (Admin)
+- Method: GET
+- Path: /customers/fraud/admin/requests
+- Roles: ADMIN
+- Query params: `status` (optional: PENDING/APPROVED/REJECTED), `page`, `limit`, `search`
+- Success response (200):
+
+{
+  "success": true,
+  "data": [ /* array of fraud request objects */ ],
+  "pagination": { /* page/limit/total */ },
+  "message": "Fraud requests retrieved successfully"
+}
+
+### Review (approve/reject) a fraud request
+- Method: PATCH
+- Path: /customers/fraud/admin/requests/:requestId/review
+- Roles: ADMIN
+- Body (example):
+
+Approve example:
+
+{
+  "action": "APPROVE",
+  "admin_note": "Verified from logs, marking as fraud"
+}
+
+Reject example:
+
+{
+  "action": "REJECT",
+  "admin_note": "Insufficient evidence"
+}
+
+- Success response (200):
+
+{
+  "success": true,
+  "data": {
+    "id": "<request-id>",
+    "customer_id": "<customer-id>",
+    "merchant_id": "<merchant-id>",
+    "status": "APPROVED|REJECTED",
+    "admin_note": "...",
+    "reviewed_by_admin_id": "<admin-user-id>",
+    "reviewed_at": "2026-06-14T10:00:00.000Z"
+  },
+  "message": "Fraud request reviewed successfully"
+}
+
+Notes: The request uses `ReviewCustomerFraudDto` with `action` enum values `APPROVE` or `REJECT`, and an optional `admin_note`.
+
 
