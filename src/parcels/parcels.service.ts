@@ -3400,19 +3400,20 @@ export class ParcelsService {
             'Delivery coverage area not found. Please select a valid delivery area.',
           );
       }
+      // Capture previous product price before applying updates so we can detect changes
+      const prevProductPrice = Number(parcel.product_price || 0);
       Object.assign(parcel, updateParcelDto);
 
       // Auto-set is_cod and cod_amount based on product_price if it's being updated
       if (updateParcelDto.product_price !== undefined) {
-        // Record original price if this is the first time price is changed
-        if (!parcel.original_product_price) {
-          parcel.original_product_price = parcel.product_price || null;
-        }
-
-        // If the new price differs from the stored product_price, mark price change
         const newPrice = Number(updateParcelDto.product_price || 0);
-        const oldPrice = Number(parcel.product_price || 0);
-        if (Math.abs(newPrice - oldPrice) > 0.009) {
+
+        // If the new price differs from the previous product_price, mark price change
+        if (Math.abs(newPrice - prevProductPrice) > 0.009) {
+          // Record original price if this is the first time price is changed
+          if (!parcel.original_product_price) {
+            parcel.original_product_price = prevProductPrice || null;
+          }
           parcel.is_price_changed = true;
           parcel.price_changed_at = new Date();
         }
@@ -5276,24 +5277,22 @@ export class ParcelsService {
     } = options;
     const skip = (page - 1) * limit;
 
-    // If status is provided, use it; otherwise use default successful statuses
+    // Successful delivery statuses (used for collectable amount calculations)
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    // If status is provided, use it to filter; otherwise show ALL parcels assigned to rider
     const statuses = status
       ? status === 'ACTIVE'
-        ? [
-            ParcelStatus.DELIVERED,
-            ParcelStatus.PARTIAL_DELIVERY,
-            ParcelStatus.EXCHANGE,
-            ParcelStatus.PAID_RETURN,
-          ]
+        ? successfulStatuses
         : [status]
-      : [
-          ParcelStatus.DELIVERED,
-          ParcelStatus.PARTIAL_DELIVERY,
-          ParcelStatus.EXCHANGE,
-          ParcelStatus.PAID_RETURN,
-        ];
+      : null;
 
-    // Build query for cleared parcels
+    // Build query for parcels assigned to rider (by default: ALL assigned parcels)
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
@@ -5312,11 +5311,14 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
       .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
-      .andWhere('parcel.cod_cleared_at IS NULL') // Only not-yet-cleared parcels
-      .andWhere('parcel.status IN (:...statuses)', {
+      .andWhere('parcel.assigned_rider_id = :riderId', { riderId });
+
+    // If caller requested a status filter, apply it. Otherwise list all assigned parcels.
+    if (statuses && statuses.length) {
+      queryBuilder.andWhere('parcel.status IN (:...statuses)', {
         statuses: statuses,
       });
+    }
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -5341,7 +5343,13 @@ export class ParcelsService {
     // Get total count for pagination
     const total = await queryBuilder.getCount();
 
-    // Calculate total collectable amount (all not-yet-cleared parcels for this rider)
+    // Calculate total collectable amount (not-yet-cleared successful deliveries for this rider)
+    const statusesForCollect = status
+      ? status === 'ACTIVE'
+        ? successfulStatuses
+        : [status]
+      : successfulStatuses;
+
     const collectableQuery = this.parcelRepository
       .createQueryBuilder('parcel')
       .select('SUM(parcel.cod_collected_amount)', 'total')
@@ -5349,7 +5357,7 @@ export class ParcelsService {
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.cod_cleared_at IS NULL')
       .andWhere('parcel.status IN (:...statuses)', {
-        statuses: statuses,
+        statuses: statusesForCollect,
       });
 
     const collectableResult = await collectableQuery.getRawOne();
