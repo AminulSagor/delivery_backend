@@ -239,6 +239,16 @@ export class Parcel {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   paid_amount: number | null; // Actual amount paid in invoice
 
+  // ===== PRICE CHANGE TRACKING =====
+  @Column({ type: 'boolean', default: false })
+  is_price_changed: boolean;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  original_product_price: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  price_changed_at: Date | null;
+
   // ===== STATUS & TRACKING =====
   @Column({
     type: 'enum',

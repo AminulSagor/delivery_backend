@@ -283,15 +283,31 @@ export class RiderFinanceService {
         status: ParcelStatus.RETURN_TO_MERCHANT,
         dateField: 'updated_at',
       },
+      [RiderFinanceSummaryMetric.PRICE_CHANGE]: {
+        // Price change is not a status — keep status filter broad and use dateField as 'price_changed_at'
+        status: ParcelStatus.DELIVERED,
+        dateField: 'price_changed_at' as any,
+      },
     };
 
     const config = parcelMetricConfig[metric];
 
-    const where: any = {
-      assigned_rider_id: riderId,
-      status: config.status,
-      [config.dateField]: Between(summaryStart, summaryEnd),
-    };
+    // If metric is PRICE_CHANGE, build a specialized where clause
+    let where: any;
+    if (metric === (RiderFinanceSummaryMetric as any).PRICE_CHANGE) {
+      where = {
+        assigned_rider_id: riderId,
+        is_price_changed: true,
+        price_changed_at: Between(summaryStart, summaryEnd),
+      };
+    } else {
+      where = {
+        assigned_rider_id: riderId,
+        status: config.status,
+        [config.dateField]: Between(summaryStart, summaryEnd),
+        is_price_changed: false, // exclude price-changed parcels from other lists
+      };
+    }
 
     const [parcels, total] = await this.parcelRepository.findAndCount({
       where,
@@ -386,6 +402,7 @@ export class RiderFinanceService {
         assigned_rider_id: rider.id,
         status: In(commissionableStatuses),
         delivered_at: Between(start, end),
+        is_price_changed: false, // exclude price-changed parcels from commissionable count
       },
     });
 
@@ -405,6 +422,8 @@ export class RiderFinanceService {
       .select('SUM(parcel.cod_collected_amount)', 'total')
       .where('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.delivered_at BETWEEN :start AND :end', { start, end })
+      // Exclude parcels with price changed since they shouldn't count toward delivered cash for this endpoint
+      .andWhere('(parcel.is_price_changed IS NULL OR parcel.is_price_changed = false)')
       .getRawOne();
 
     return Number(total) || 0;
@@ -518,6 +537,7 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.DELIVERED,
         delivered_at: Between(start, end),
+        is_price_changed: false, // Exclude parcels whose price was changed
       },
     });
 
@@ -526,6 +546,7 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.PARTIAL_DELIVERY,
         delivered_at: Between(start, end),
+        is_price_changed: false,
       },
     });
 
@@ -535,6 +556,7 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.EXCHANGE,
         delivered_at: Between(start, end),
+        is_price_changed: false,
       },
     });
 
@@ -544,6 +566,7 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.PAID_RETURN,
         updated_at: Between(start, end),
+        is_price_changed: false,
       },
     });
 
@@ -555,6 +578,7 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.RETURNED,
         updated_at: Between(start, end),
+        is_price_changed: false,
       },
     });
 
@@ -563,15 +587,24 @@ export class RiderFinanceService {
         assigned_rider_id: riderId,
         status: ParcelStatus.RETURN_TO_MERCHANT,
         updated_at: Between(start, end),
+        is_price_changed: false,
       },
     });
 
-    // Price Change - Not a status. Likely an event.
-    // Schema doesn't have "PRICE_CHANGED" status. Checking for "Price Change" feature.
-    // Assuming it's not implemented or handled as an issue.
-    // I will return 0 for now or check if there's a flag.
-    // Scanning schema... no obvious 'is_price_changed' flag.
-    const priceChange = 0;
+    // Price Change - Parcels that had their product price updated
+    // Count parcels where `is_price_changed = true` and price_changed_at within range
+    const { priceChangeCount } = await this.parcelRepository
+      .createQueryBuilder('parcel')
+      .select('COUNT(parcel.id)', 'priceChangeCount')
+      .where('parcel.assigned_rider_id = :riderId', { riderId })
+      .andWhere('parcel.is_price_changed = true')
+      .andWhere('parcel.price_changed_at BETWEEN :start AND :end', {
+        start,
+        end,
+      })
+      .getRawOne();
+
+    const priceChange = Number(priceChangeCount) || 0;
 
     // Pickup (From Pickup Requests)
     const { pickupCount } = await this.pickupRequestRepository
