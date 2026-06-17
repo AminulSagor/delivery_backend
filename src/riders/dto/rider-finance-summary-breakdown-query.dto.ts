@@ -13,6 +13,7 @@ export enum RiderFinanceSummaryMetric {
   PARTIALLY_DELIVERED = 'partially_delivered',
   RETURN = 'return',
   PAID_RETURN = 'paid_return',
+  PRICE_CHANGE = 'price_change',
   PICKUP = 'pickup',
   EXCHANGED = 'exchanged',
   RETURN_TO_MERCHANT = 'return_to_merchant',
@@ -21,7 +22,7 @@ export enum RiderFinanceSummaryMetric {
 export class RiderFinanceSummaryBreakdownQueryDto {
   @IsEnum(RiderFinanceSummaryMetric, {
     message:
-      'Invalid metric. Use: delivered, partially_delivered, return, paid_return, pickup, exchanged, return_to_merchant',
+      'Invalid metric. Use: delivered, partially_delivered, return, paid_return, price_change, pickup, exchanged, return_to_merchant',
   })
   metric!: RiderFinanceSummaryMetric;
 

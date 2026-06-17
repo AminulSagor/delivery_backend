@@ -3404,13 +3404,24 @@ export class ParcelsService {
 
       // Auto-set is_cod and cod_amount based on product_price if it's being updated
       if (updateParcelDto.product_price !== undefined) {
-        parcel.cod_amount = updateParcelDto.product_price;
-        parcel.is_cod = updateParcelDto.product_price > 0;
+        // Record original price if this is the first time price is changed
+        if (!parcel.original_product_price) {
+          parcel.original_product_price = parcel.product_price || null;
+        }
+
+        // If the new price differs from the stored product_price, mark price change
+        const newPrice = Number(updateParcelDto.product_price || 0);
+        const oldPrice = Number(parcel.product_price || 0);
+        if (Math.abs(newPrice - oldPrice) > 0.009) {
+          parcel.is_price_changed = true;
+          parcel.price_changed_at = new Date();
+        }
+
+        parcel.product_price = newPrice;
+        parcel.cod_amount = newPrice;
+        parcel.is_cod = newPrice > 0;
         parcel.receivable_amount =
-          Math.round(
-            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) *
-              100,
-          ) / 100;
+          Math.round((Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) * 100) / 100;
       }
 
       let updatedParcel;
