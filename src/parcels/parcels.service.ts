@@ -3400,19 +3400,20 @@ export class ParcelsService {
             'Delivery coverage area not found. Please select a valid delivery area.',
           );
       }
+      // Capture previous product price before applying updates so we can detect changes
+      const prevProductPrice = Number(parcel.product_price || 0);
       Object.assign(parcel, updateParcelDto);
 
       // Auto-set is_cod and cod_amount based on product_price if it's being updated
       if (updateParcelDto.product_price !== undefined) {
-        // Record original price if this is the first time price is changed
-        if (!parcel.original_product_price) {
-          parcel.original_product_price = parcel.product_price || null;
-        }
-
-        // If the new price differs from the stored product_price, mark price change
         const newPrice = Number(updateParcelDto.product_price || 0);
-        const oldPrice = Number(parcel.product_price || 0);
-        if (Math.abs(newPrice - oldPrice) > 0.009) {
+
+        // If the new price differs from the previous product_price, mark price change
+        if (Math.abs(newPrice - prevProductPrice) > 0.009) {
+          // Record original price if this is the first time price is changed
+          if (!parcel.original_product_price) {
+            parcel.original_product_price = prevProductPrice || null;
+          }
           parcel.is_price_changed = true;
           parcel.price_changed_at = new Date();
         }
