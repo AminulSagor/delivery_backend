@@ -677,6 +677,30 @@ export class HubsController {
   }
 
   /**
+   * Get today's parcels for Hub Manager dashboard (not yet cleared by hub)
+   */
+  @Get('dashboard/today-parcels')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardTodayParcels(@CurrentUser() user: any) {
+    if (!user.hubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const parcels = await this.parcelsService.getTodayDashboardParcelsForHub(
+      user.hubId,
+    );
+
+    return {
+      success: true,
+      data: parcels,
+      message: 'Today dashboard parcels retrieved successfully',
+    };
+  }
+
+  /**
    * Get parcel detail for Hub Panel dashboard view (Hub Manager)
    * Provides grouped response for dashboard sections and action controls.
    */

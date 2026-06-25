@@ -2643,6 +2643,66 @@ export class ParcelsService {
     }
   }
 
+  async getTodayDashboardParcelsForHub(hubId: string): Promise<any[]> {
+    try {
+      const stores = await this.storeRepository.find({
+        where: { hub_id: hubId },
+        select: ['id'],
+      });
+
+      const storeIds = stores.map((store) => store.id);
+      if (storeIds.length === 0) {
+        return [];
+      }
+
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const parcels = await this.parcelRepository
+        .createQueryBuilder('parcel')
+        .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
+        .leftJoinAndSelect('parcel.destinationHub', 'destinationHub')
+        .where('parcel.store_id IN (:...storeIds)', { storeIds })
+        .andWhere('parcel.created_at BETWEEN :startOfDay AND :endOfDay', {
+          startOfDay,
+          endOfDay,
+        })
+        .andWhere('parcel.cod_cleared_at IS NULL')
+        .orderBy('parcel.created_at', 'DESC')
+        .getMany();
+
+      return parcels.map((parcel) => ({
+        id: parcel.id,
+        tracking_number: parcel.tracking_number,
+        status: parcel.status,
+        rider_name:
+          parcel.assignedRider?.user?.full_name || parcel.assignedRider?.full_name ||
+          null,
+        rider_photo: parcel.assignedRider?.photo ?? null,
+        vehicle: parcel.assignedRider?.bike_type ?? null,
+        parcel_destination: parcel.customer_address ?? null,
+        delivery_area: parcel.delivery_area ?? null,
+        destination_hub: parcel.destinationHub
+          ? {
+              id: parcel.destinationHub.id,
+              branch_name: parcel.destinationHub.branch_name,
+            }
+          : null,
+      }));
+    } catch (error: any) {
+      this.logger.error(
+        `[TODAY DASHBOARD PARCELS ERROR] ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve today dashboard parcels. Please try again.',
+      );
+    }
+  }
+
   async findInHubStatusesForHub(
     hubId: string,
     page: number = 1,
