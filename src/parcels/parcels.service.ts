@@ -2678,9 +2678,7 @@ export class ParcelsService {
         id: parcel.id,
         tracking_number: parcel.tracking_number,
         status: parcel.status,
-        rider_name:
-          parcel.assignedRider?.user?.full_name || parcel.assignedRider?.full_name ||
-          null,
+        rider_name: parcel.assignedRider?.user?.full_name ?? null,
         rider_photo: parcel.assignedRider?.photo ?? null,
         vehicle: parcel.assignedRider?.bike_type ?? null,
         parcel_destination: parcel.customer_address ?? null,
