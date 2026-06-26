@@ -379,7 +379,8 @@ export class SalaryService {
       }
     }
 
-    transaction.payout_method_id = payoutMethod.id;
+    transaction.payout_method_id = null;
+    transaction.staff_payout_method_id = payoutMethod.id;
 
     const saved = await this.payoutRepository.save(transaction);
 
