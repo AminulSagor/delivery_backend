@@ -13,6 +13,7 @@ import { MerchantPayoutMethod } from './merchant-payout-method.entity';
 import { User } from '../../users/entities/user.entity';
 import { PayoutTransactionStatus } from '../../common/enums/payout-transaction-status.enum';
 import { Staff } from '../../staff/entities/staff.entity';
+import { StaffPayoutMethod } from '../../staff/entities/staff-payout-method.entity';
 
 @Entity('payout_transactions')
 @Index(['merchant_id'])
@@ -47,6 +48,16 @@ export class PayoutTransaction {
   })
   @JoinColumn({ name: 'payout_method_id' })
   payout_method: MerchantPayoutMethod | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  staff_payout_method_id: string | null;
+
+  @ManyToOne(() => StaffPayoutMethod, (method) => method.transactions, {
+    onDelete: 'RESTRICT',
+    nullable: true,
+  })
+  @JoinColumn({ name: 'staff_payout_method_id' })
+  staff_payout_method: StaffPayoutMethod | null;
 
   // ===== TRANSACTION DETAILS =====
   @Column({ type: 'decimal', precision: 10, scale: 2 })

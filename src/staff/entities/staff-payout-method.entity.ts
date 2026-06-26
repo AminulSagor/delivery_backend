@@ -96,7 +96,7 @@ export class StaffPayoutMethod {
   })
   nagad_account_type: NagadAccountType | null;
 
-  @OneToMany(() => PayoutTransaction, (tx) => tx.payout_method)
+  @OneToMany(() => PayoutTransaction, (tx) => tx.staff_payout_method)
   transactions: PayoutTransaction[];
 
   @CreateDateColumn()

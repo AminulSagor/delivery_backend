@@ -61,7 +61,7 @@ export class SalaryController {
     @Body() dto: ProcessSalaryPaymentDto,
     @CurrentUser() user: any,
   ) {
-    return this.salaryService.processPayment(dto, user.id);
+    return this.salaryService.processPayment(dto, user.userId);
   }
 
   @Post('payouts/:id/finalize')
