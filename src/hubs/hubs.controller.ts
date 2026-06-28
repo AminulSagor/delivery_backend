@@ -677,6 +677,28 @@ export class HubsController {
   }
 
   /**
+   * Get hub dashboard summary cards for Hub Manager dashboard
+   */
+  @Get('dashboard/summary')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardSummary(@CurrentUser() user: any) {
+    if (!user.hubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    const summary = await this.hubsService.getHubDashboardSummary(user.hubId);
+
+    return {
+      success: true,
+      data: summary,
+      message: 'Hub dashboard summary retrieved successfully',
+    };
+  }
+
+  /**
    * Get today's parcels for Hub Manager dashboard (not yet cleared by hub)
    */
   @Get('dashboard/today-parcels')

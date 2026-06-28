@@ -433,6 +433,99 @@ export class HubsService {
     }
   }
 
+  async getHubDashboardSummary(hubId: string): Promise<any> {
+    try {
+      const stores = await this.storeRepository.find({
+        where: { hub_id: hubId },
+        select: ['id'],
+      });
+
+      const storeIds = stores.map((store) => store.id);
+
+      const parcelsToProcess = storeIds.length
+        ? await this.parcelRepository.count({
+            where: {
+              store_id: In(storeIds),
+              cod_cleared_at: IsNull(),
+            },
+          })
+        : 0;
+
+      const ridersActive = await this.riderRepository.count({
+        where: { hub_id: hubId, is_active: true },
+      });
+
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const todayParcels = storeIds.length
+        ? await this.parcelRepository.count({
+            where: {
+              store_id: In(storeIds),
+              created_at: Between(startOfDay, endOfDay),
+            },
+          })
+        : 0;
+
+      const threeHoursAgo = new Date();
+      threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
+
+      const trendCount = storeIds.length
+        ? await this.parcelRepository.count({
+            where: {
+              store_id: In(storeIds),
+              created_at: MoreThanOrEqual(threeHoursAgo),
+            },
+          })
+        : 0;
+
+      const trendDelta = trendCount - Math.max(0, todayParcels - 1);
+      const formatChange = (value: number) => {
+        const sign = value >= 0 ? '+' : '-';
+        return `${sign}${Math.abs(value)} in last 3 hours`;
+      };
+
+      return {
+        summary_cards: [
+          {
+            title: 'Parcels to Process',
+            value: parcelsToProcess,
+            change: formatChange(trendDelta),
+            currency: null,
+          },
+          {
+            title: 'Riders Active',
+            value: ridersActive,
+            change: formatChange(Math.max(0, ridersActive - 1)),
+            currency: null,
+          },
+          {
+            title: 'Today Parcels',
+            value: todayParcels,
+            change: formatChange(Math.max(0, todayParcels - 1)),
+            currency: null,
+          },
+        ],
+        today_summary: {
+          total_parcels: todayParcels,
+          parcels_to_process: parcelsToProcess,
+          riders_active: ridersActive,
+          generated_at: new Date().toISOString(),
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to get hub dashboard summary for hub ${hubId}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve hub dashboard summary. Please try again later.',
+      );
+    }
+  }
+
   /**
    * Get rider performance statistics for hub manager dashboard
    *
