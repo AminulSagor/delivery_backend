@@ -309,6 +309,7 @@ export class MerchantService {
     total: number;
     page: number;
     limit: number;
+    stats: Record<string, any>;
   }> {
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
