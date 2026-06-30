@@ -60,7 +60,7 @@ export class StaffController {
    * Get all staff with optional filters
    * GET /staff?hubId=xxx&isActive=true
    */
-  @Get('/')
+  @Get()
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findAll(
     @CurrentUser() user: any,

@@ -109,7 +109,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-@Controller(['api/hubs', 'api', 'hubs', ''])
+@Controller(['api/hubs', 'hubs'])
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class HubsController {
   constructor(
