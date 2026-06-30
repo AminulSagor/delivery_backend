@@ -405,7 +405,7 @@ function toThirdPartyProviderSummary(provider: any) {
   };
 }
 
-function toFullStoreSummary(store: any) {
+function toFullStoreSummary(store: any, includeMerchant = true) {
   if (!store) {
     return null;
   }
@@ -440,7 +440,7 @@ function toFullStoreSummary(store: any) {
       total_returns: 0,
     },
     hub: toHubSummary(store.hub),
-    merchant: toMerchantSummary(store.merchant),
+    merchant: includeMerchant ? toMerchantSummary(store.merchant) : undefined,
   };
 }
 
@@ -1019,7 +1019,9 @@ export function toMerchantDetailFull(data: any): any {
 
     // === Stores ===
     store_count: data.stores?.length || 0,
-    stores: (data.stores || []).map((store: any) => toFullStoreSummary(store)),
+    stores: (data.stores || []).map((store: any) =>
+      toFullStoreSummary(store, false),
+    ),
 
     // === Aggregated Parcel Stats ===
     parcel_stats: data.parcel_stats || {
