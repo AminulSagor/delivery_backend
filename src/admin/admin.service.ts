@@ -696,8 +696,17 @@ export class AdminService {
       area: hub.area,
       address: hub.address,
       manager: manager?.user
-        ? { id: manager.id, name: manager.user.full_name, phone: manager.user.phone }
-        : { name: hub.manager_name, phone: hub.manager_phone },
+        ? {
+            id: manager.id,
+            name: manager.user.full_name,
+            phone: manager.user.phone,
+            secondary_phone: manager.user.phone || hub.manager_phone,
+          }
+        : {
+            name: hub.manager_name,
+            phone: hub.manager_phone,
+            secondary_phone: hub.manager_phone,
+          },
       total_collected_amount: totalCollected,
       expenses_clearance: expenses,
       total_receivable_amount: receivable,
@@ -764,26 +773,36 @@ export class AdminService {
 
     const [parcels, total] = await qb.getManyAndCount();
 
-    const mappedParcels = parcels.map((p) => ({
-      id: p.id,
-      parcel_id: p.parcel_tx_id || p.id,
-      tracking_number: p.tracking_number,
-      customer_name: p.customer_name,
-      customer_phone: p.customer_phone,
-      customer_address: p.customer_address,
-      merchant_name: p.merchant?.user?.full_name || 'N/A',
-      area: p.delivery_area || p.delivery_coverage_area?.area || 'N/A',
-      rider_name: p.assignedRider?.user?.full_name || 'N/A',
-      rider_phone: p.assignedRider?.user?.phone || null,
-      status: p.status,
-      amount: Number(p.total_charge),
-      delivery_charge: Number(p.delivery_charge || 0),
-      cod_charge: Number(p.cod_charge || 0),
-      weight_charge: Number(p.weight_charge || 0),
-      age_days: Math.floor((new Date().getTime() - p.created_at.getTime()) / (1000 * 60 * 60 * 24)),
-      created_at: p.created_at,
-      updated_at: p.updated_at,
-    }));
+    const mappedParcels = parcels.map((p) => {
+      const deliveryCharge = Number(p.delivery_charge || 0);
+      const weightCharge = Number(p.weight_charge || 0);
+      const codCharge = Number(p.cod_charge || 0);
+      const totalCharge = Number(p.total_charge || 0);
+      const discount = Math.max(0, Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) / 100);
+
+      return {
+        id: p.id,
+        parcel_id: p.parcel_tx_id || p.id,
+        tracking_number: p.tracking_number,
+        customer_name: p.customer_name,
+        customer_phone: p.customer_phone,
+        customer_secondary_phone: p.customer_secondary_phone || null,
+        customer_address: p.customer_address,
+        merchant_name: p.merchant?.user?.full_name || 'N/A',
+        area: p.delivery_area || p.delivery_coverage_area?.area || 'N/A',
+        rider_name: p.assignedRider?.user?.full_name || 'N/A',
+        rider_phone: p.assignedRider?.user?.phone || null,
+        status: p.status,
+        amount: totalCharge,
+        delivery_charge: deliveryCharge,
+        cod_charge: codCharge,
+        weight_charge: weightCharge,
+        discount,
+        age_days: Math.floor((new Date().getTime() - p.created_at.getTime()) / (1000 * 60 * 60 * 24)),
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+      };
+    });
 
     return {
       hub: hubDetail,
