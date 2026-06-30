@@ -60,7 +60,7 @@ export class StaffController {
    * Get all staff with optional filters
    * GET /staff?hubId=xxx&isActive=true
    */
-  @Get()
+  @Get('/')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findAll(
     @CurrentUser() user: any,
@@ -222,7 +222,7 @@ export class StaffController {
    * Get single staff by ID
    * GET /staff/:id
    */
-  @Get(':id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})')
+  @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
