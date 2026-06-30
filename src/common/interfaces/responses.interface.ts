@@ -255,6 +255,14 @@ export interface MerchantListItem {
   district: string;
   status: string;
   created_at: Date;
+  total_parcels: number;
+  total_parcels_delivered: number;
+  total_parcels_returned: number;
+  collected_amount: number;
+  delivery_charge: number;
+  total_paid: number;
+  is_advance_payment_disabled: boolean;
+  action: any | null;
 }
 
 export interface MerchantDetail extends MerchantListItem {
@@ -922,7 +930,19 @@ export function toHubDetail(hub: any): HubDetail {
   };
 }
 
-export function toMerchantListItem(merchant: any): MerchantListItem {
+export function toMerchantListItem(
+  merchant: any,
+  stats: any = {},
+): MerchantListItem {
+  const {
+    total_parcels = 0,
+    total_delivered = 0,
+    total_returns = 0,
+    collected_amount = 0,
+    delivery_charge = 0,
+    total_paid = 0,
+  } = stats || {};
+
   return {
     id: merchant.id,
     full_name: merchant.user?.full_name || '',
@@ -932,6 +952,14 @@ export function toMerchantListItem(merchant: any): MerchantListItem {
     district: merchant.district,
     status: merchant.status,
     created_at: merchant.created_at,
+    total_parcels: Number(total_parcels) || 0,
+    total_parcels_delivered: Number(total_delivered) || 0,
+    total_parcels_returned: Number(total_returns) || 0,
+    collected_amount: Number(collected_amount) || 0,
+    delivery_charge: Number(delivery_charge) || 0,
+    total_paid: Number(total_paid) || 0,
+    is_advance_payment_disabled: !!merchant.is_advance_payment_disabled,
+    action: null,
   };
 }
 

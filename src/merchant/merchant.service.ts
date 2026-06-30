@@ -342,7 +342,63 @@ export class MerchantService {
       .orderBy('merchant.created_at', 'DESC')
       .getManyAndCount();
 
-    return { data, total, page, limit };
+    const merchantIds = data.map((merchant) => merchant.id);
+    let merchantParcelStats: Record<string, any> = {};
+
+    if (merchantIds.length > 0) {
+      const statsRows = await this.parcelRepo
+        .createQueryBuilder('parcel')
+        .select('parcel.merchant_id', 'merchant_id')
+        .addSelect('COUNT(parcel.id)', 'total_parcels')
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...deliveredStatuses) THEN 1 ELSE 0 END)`,
+          'total_delivered',
+        )
+        .addSelect(
+          `SUM(CASE WHEN parcel.status IN (:...returnStatuses) THEN 1 ELSE 0 END)`,
+          'total_returns',
+        )
+        .addSelect(
+          'COALESCE(SUM(parcel.cod_collected_amount), 0)',
+          'collected_amount',
+        )
+        .addSelect('COALESCE(SUM(parcel.delivery_charge), 0)', 'delivery_charge')
+        .addSelect('COALESCE(SUM(parcel.paid_amount), 0)', 'total_paid')
+        .where('parcel.merchant_id IN (:...merchantIds)', { merchantIds })
+        .groupBy('parcel.merchant_id')
+        .setParameters({
+          deliveredStatuses: [
+            ParcelStatus.DELIVERED,
+            ParcelStatus.PARTIAL_DELIVERY,
+            ParcelStatus.EXCHANGE,
+            ParcelStatus.PAID_RETURN,
+          ],
+          returnStatuses: [
+            ParcelStatus.RETURNED,
+            ParcelStatus.RETURNED_TO_HUB,
+            ParcelStatus.RETURN_TO_MERCHANT,
+            ParcelStatus.CANCELLED,
+            ParcelStatus.FAILED_DELIVERY,
+          ],
+        })
+        .getRawMany();
+
+      merchantParcelStats = statsRows.reduce(
+        (acc, row: any) => ({
+          ...acc,
+          [row.merchant_id]: row,
+        }),
+        {},
+      );
+    }
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      stats: merchantParcelStats,
+    };
   }
 
   async findOne(id: string): Promise<Merchant> {

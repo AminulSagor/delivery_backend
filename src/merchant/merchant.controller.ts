@@ -91,7 +91,9 @@ export class MerchantController {
       limit: limit ? parseInt(limit, 10) : undefined,
     });
     return {
-      merchants: result.data.map(toMerchantListItem),
+      merchants: result.data.map((merchant) =>
+        toMerchantListItem(merchant, result.stats?.[merchant.id]),
+      ),
       pagination: {
         total: result.total,
         page: result.page,
