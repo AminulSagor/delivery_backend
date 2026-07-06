@@ -21,6 +21,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { GetAdvancePaymentsQueryDto } from './dto/get-advance-payments.dto';
+import { AdvancePaymentMerchantSummaryQueryDto } from './dto/advance-payment-merchant-summary-query.dto';
 
 @Controller('advance-payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -45,6 +46,24 @@ export class AdvancePaymentsController {
       data: result.items,
       pagination: result.pagination,
       message: 'Advance payments retrieved successfully',
+    };
+  }
+
+  @Get('admin/merchant-summary')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async getMerchantSummary(
+    @Query() query: AdvancePaymentMerchantSummaryQueryDto,
+  ) {
+    const result = await this.service.getMerchantSummary(query);
+    return {
+      success: true,
+      data: {
+        summary: result.summary,
+        merchants: result.items,
+      },
+      pagination: result.pagination,
+      message: 'Advance payment merchant summary retrieved successfully',
     };
   }
 

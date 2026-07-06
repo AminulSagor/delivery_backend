@@ -12,6 +12,8 @@ import {
   AdvancePaymentStatus,
 } from './entities/advance-payment.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
+import { Store } from '../stores/entities/store.entity';
 import { CreateAdvancePaymentDto } from './dto/create-advance.dto';
 import { UpdateAdvancePaymentDto } from './dto/update-advance.dto';
 import {
@@ -33,6 +35,7 @@ import {
   PaginatedResponse,
   PaginationMeta,
 } from 'src/common/dto/pagination.dto';
+import { AdvancePaymentMerchantSummaryQueryDto } from './dto/advance-payment-merchant-summary-query.dto';
 
 @Injectable()
 export class AdvancePaymentsService {
@@ -43,6 +46,10 @@ export class AdvancePaymentsService {
     private readonly advanceRepo: Repository<AdvancePayment>,
     @InjectRepository(Merchant)
     private readonly merchantRepo: Repository<Merchant>,
+    @InjectRepository(Parcel)
+    private readonly parcelRepo: Repository<Parcel>,
+    @InjectRepository(Store)
+    private readonly storeRepo: Repository<Store>,
     private readonly merchantFinanceService: MerchantFinanceService,
   ) {}
 
@@ -400,6 +407,227 @@ export class AdvancePaymentsService {
     };
   }
 
+  async getMerchantSummary(query: AdvancePaymentMerchantSummaryQueryDto) {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      merchant_id,
+      hub_id,
+      start_date,
+      end_date,
+      sort_by = 'advance_paid',
+      sort_order = 'DESC',
+    } = query;
+
+    const paidAdvanceQb = this.advanceRepo
+      .createQueryBuilder('ap')
+      .leftJoin('ap.merchant', 'merchant')
+      .leftJoin('merchant.user', 'user')
+      .select('ap.merchant_id', 'merchant_id')
+      .addSelect('user.full_name', 'merchant_name')
+      .addSelect('user.phone', 'merchant_phone')
+      .addSelect('COUNT(ap.id)', 'total_advance_invoices')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN ap.status = :paidStatus THEN ap.net_amount_paid ELSE 0 END), 0)`,
+        'advance_paid',
+      )
+      .where('1 = 1')
+      .groupBy('ap.merchant_id')
+      .addGroupBy('user.full_name')
+      .addGroupBy('user.phone')
+      .setParameter('paidStatus', AdvancePaymentStatus.PAID);
+
+    if (merchant_id) {
+      paidAdvanceQb.andWhere('ap.merchant_id = :merchantId', {
+        merchantId: merchant_id,
+      });
+    }
+
+    if (search) {
+      paidAdvanceQb.andWhere(
+        '(user.full_name ILIKE :search OR user.phone ILIKE :search OR ap.invoice_id ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (start_date && end_date) {
+      paidAdvanceQb.andWhere('ap.created_at BETWEEN :start AND :end', {
+        start: start_date,
+        end: end_date,
+      });
+    }
+
+    const advanceRows = await paidAdvanceQb.getRawMany();
+    const merchantIds = advanceRows.map((row) => row.merchant_id);
+
+    if (merchantIds.length === 0) {
+      return {
+        summary: {
+          total_merchants: 0,
+          top_merchant_paid: null,
+          total_advance_paid: 0,
+        },
+        items: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+    }
+
+    const storeQb = this.storeRepo
+      .createQueryBuilder('store')
+      .leftJoinAndSelect('store.hub', 'hub')
+      .where('store.merchant_id IN (:...merchantIds)', { merchantIds })
+      .orderBy('store.is_default', 'DESC')
+      .addOrderBy('store.created_at', 'ASC');
+
+    if (hub_id) {
+      storeQb.andWhere('store.hub_id = :hubId', { hubId: hub_id });
+    }
+
+    const stores = await storeQb.getMany();
+    const storeByMerchant = new Map<string, Store>();
+    for (const store of stores) {
+      if (!storeByMerchant.has(store.merchant_id)) {
+        storeByMerchant.set(store.merchant_id, store);
+      }
+    }
+
+    const scopedMerchantIds = hub_id
+      ? merchantIds.filter((id) => storeByMerchant.has(id))
+      : merchantIds;
+
+    if (scopedMerchantIds.length === 0) {
+      return {
+        summary: {
+          total_merchants: 0,
+          top_merchant_paid: null,
+          total_advance_paid: 0,
+        },
+        items: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+    }
+
+    const successfulStatuses = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+
+    const parcelRows = await this.parcelRepo
+      .createQueryBuilder('parcel')
+      .select('parcel.merchant_id', 'merchant_id')
+      .addSelect('COUNT(parcel.id)', 'successful_parcels')
+      .addSelect(
+        'COALESCE(SUM(COALESCE(parcel.cod_collected_amount, parcel.cod_amount, 0)), 0)',
+        'total_transactions',
+      )
+      .where('parcel.merchant_id IN (:...merchantIds)', {
+        merchantIds: scopedMerchantIds,
+      })
+      .andWhere('parcel.status IN (:...successfulStatuses)', {
+        successfulStatuses,
+      })
+      .groupBy('parcel.merchant_id')
+      .getRawMany();
+
+    const parcelStatsByMerchant = new Map(
+      parcelRows.map((row) => [row.merchant_id, row]),
+    );
+
+    const merchants = advanceRows
+      .filter((row) => scopedMerchantIds.includes(row.merchant_id))
+      .map((row) => {
+        const store = storeByMerchant.get(row.merchant_id);
+        const parcelStats = parcelStatsByMerchant.get(row.merchant_id);
+        const merchantName =
+          store?.business_name || row.merchant_name || 'N/A';
+
+        return {
+          merchant_id: row.merchant_id,
+          merchant_name: merchantName,
+          business_name: store?.business_name || merchantName,
+          merchant_phone: row.merchant_phone || store?.phone_number || 'N/A',
+          assigned_hub: store?.hub
+            ? {
+                id: store.hub.id,
+                hub_code: store.hub.hub_code,
+                name: store.hub.branch_name,
+                area: store.hub.area,
+              }
+            : null,
+          total_advance_invoices: Number(row.total_advance_invoices || 0),
+          successful_parcels: Number(
+            parcelStats?.successful_parcels || 0,
+          ),
+          total_transactions: this.roundMoney(
+            Number(parcelStats?.total_transactions || 0),
+          ),
+          advance_paid: this.roundMoney(Number(row.advance_paid || 0)),
+          view_id: row.merchant_id,
+        };
+      });
+
+    const sortedMerchants = this.sortMerchantSummaryRows(
+      merchants,
+      sort_by,
+      sort_order,
+    );
+
+    const total = sortedMerchants.length;
+    const totalPages = Math.ceil(total / limit);
+    const items = sortedMerchants.slice((page - 1) * limit, page * limit);
+    const totalAdvancePaid = sortedMerchants.reduce(
+      (sum, item) => sum + item.advance_paid,
+      0,
+    );
+    const topMerchantPaid =
+      sortedMerchants.length > 0
+        ? [...sortedMerchants].sort((a, b) => b.advance_paid - a.advance_paid)[0]
+        : null;
+
+    return {
+      summary: {
+        total_merchants: total,
+        top_merchant_paid: topMerchantPaid
+          ? {
+              merchant_id: topMerchantPaid.merchant_id,
+              merchant_name: topMerchantPaid.merchant_name,
+              merchant_phone: topMerchantPaid.merchant_phone,
+              assigned_hub: topMerchantPaid.assigned_hub,
+              advance_paid: topMerchantPaid.advance_paid,
+              successful_parcels: topMerchantPaid.successful_parcels,
+            }
+          : null,
+        total_advance_paid: this.roundMoney(totalAdvancePaid),
+      },
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
   /**
    * Get Single Advance Payment by ID
    * Includes security check for merchants
@@ -463,5 +691,38 @@ export class AdvancePaymentsService {
       merchant_review_note: advance.merchant_review_note,
       created_by: advance.createdBy?.full_name || 'Admin',
     };
+  }
+
+  private sortMerchantSummaryRows<
+    T extends {
+      merchant_name: string;
+      total_transactions: number;
+      advance_paid: number;
+      successful_parcels: number;
+    },
+  >(
+    rows: T[],
+    sortBy: string,
+    sortOrder: 'ASC' | 'DESC',
+  ) {
+    const direction = sortOrder === 'ASC' ? 1 : -1;
+    const numericFields = new Set([
+      'total_transactions',
+      'advance_paid',
+      'successful_parcels',
+    ]);
+
+    return [...rows].sort((a, b) => {
+      if (sortBy === 'merchant_name') {
+        return a.merchant_name.localeCompare(b.merchant_name) * direction;
+      }
+
+      const field = numericFields.has(sortBy) ? sortBy : 'advance_paid';
+      return (a[field] - b[field]) * direction;
+    });
+  }
+
+  private roundMoney(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 }
