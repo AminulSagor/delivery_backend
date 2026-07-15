@@ -16,6 +16,7 @@ import { Store } from '../stores/entities/store.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
 import { HubExpense } from './entities/hub-expense.entity';
 import { AdminAccount } from 'src/admin/entities/admin-account.entity';
+import { HubDashboardService } from './services/hub-dashboard.service';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import { AdminAccount } from 'src/admin/entities/admin-account.entity';
     ]),
     forwardRef(() => ParcelsModule),
   ],
-  providers: [HubsService, UsersService],
+  providers: [HubsService, HubDashboardService, UsersService],
   controllers: [HubsController],
   exports: [HubsService],
 })

@@ -4,6 +4,7 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminEmailTestController } from './controllers/admin-email-test.controller';
 import { AdminSmsTestController } from './controllers/admin-sms-test.controller';
+import { AdminSmsPreferencesController } from './controllers/admin-sms-preferences.controller';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Parcel } from '../parcels/entities/parcel.entity';
@@ -21,10 +22,12 @@ import { AdminAccount } from './entities/admin-account.entity';
 import { AdminAccountStatement } from './entities/admin-account-statement.entity';
 import { AdminAccountsController } from './controllers/admin-accounts.controller';
 import { AdminAccountsService } from './services/admin-accounts.service';
+import { SmsPreferencesService } from './services/sms-preferences.service';
 import { MerchantModule } from '../merchant/merchant.module';
 import { ParcelsModule } from '../parcels/parcels.module';
 import { MerchantFinance } from '../merchant-finance/entities/merchant-finance.entity';
 import { MerchantFinanceTransaction } from '../merchant-finance/entities/merchant-finance-transaction.entity';
+import { SmsPreference } from './entities/sms-preference.entity';
 
 @Module({
   imports: [
@@ -43,6 +46,7 @@ import { MerchantFinanceTransaction } from '../merchant-finance/entities/merchan
       AdminAccountStatement,
       MerchantFinance,
       MerchantFinanceTransaction,
+      SmsPreference,
     ]),
     UsersModule,
     forwardRef(() => MerchantModule),
@@ -53,8 +57,15 @@ import { MerchantFinanceTransaction } from '../merchant-finance/entities/merchan
     AdminController,
     AdminEmailTestController,
     AdminSmsTestController,
+    AdminSmsPreferencesController,
   ],
-  providers: [AdminService, EmailService, SmsService, AdminAccountsService],
+  providers: [
+    AdminService,
+    EmailService,
+    SmsService,
+    AdminAccountsService,
+    SmsPreferencesService,
+  ],
   exports: [AdminAccountsService], // Export service if needed by Payout/Settlement modules
 })
 export class AdminModule {}
