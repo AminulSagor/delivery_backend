@@ -62,6 +62,18 @@ export class HubDashboardFlowQueryDto extends HubDashboardDateQueryDto {
   @IsOptional()
   @IsEnum(HubDashboardFlowRange)
   range?: HubDashboardFlowRange = HubDashboardFlowRange.TODAY;
+
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'start_date must use YYYY-MM-DD format',
+  })
+  start_date?: string;
+
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'end_date must use YYYY-MM-DD format',
+  })
+  end_date?: string;
 }
 
 export class HubDashboardRiderQueryDto extends PaginationDto {

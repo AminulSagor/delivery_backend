@@ -212,11 +212,12 @@ export class HubDashboardService {
   }
 
   async getParcelFlow(hubId: string, query: HubDashboardFlowQueryDto) {
-    const day = this.resolveDayRange(query.date);
-    const range = this.resolveFlowRange(
-      query.range ?? HubDashboardFlowRange.TODAY,
-      day,
-    );
+    const range = query.start_date || query.end_date
+      ? this.resolveCustomDateRange(query.start_date, query.end_date)
+      : this.resolveFlowRange(
+          query.range ?? HubDashboardFlowRange.TODAY,
+          this.resolveDayRange(query.date),
+        );
 
     return this.getParcelFlowForRange(hubId, range);
   }
@@ -899,6 +900,20 @@ export class HubDashboardService {
     const endExclusive = new Date(end);
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
     return { start, endExclusive, startDate, endDate };
+  }
+
+  private resolveCustomDateRange(
+    startDate?: string,
+    endDate?: string,
+  ): DateRange {
+    const range = this.resolveOptionalDateRange(startDate, endDate);
+    if (!range) {
+      throw new BadRequestException(
+        'start_date and end_date must be provided together',
+      );
+    }
+
+    return range;
   }
 
   private parseDateOnly(value: string, field: string) {
