@@ -200,7 +200,7 @@ describe('HubDashboardService', () => {
     );
   });
 
-  it('omits the live delivery map from overview responses', async () => {
+  it('keeps overview limited to non-duplicated bootstrap sections', async () => {
     const service = new HubDashboardService({} as any, {} as any, {} as any);
 
     jest.spyOn(service as any, 'getParcelMetrics').mockResolvedValue({
@@ -222,15 +222,6 @@ describe('HubDashboardService', () => {
       total: 1,
       active: 1,
     });
-    jest.spyOn(service as any, 'getParcelFlowForRange').mockResolvedValue({
-      range: {
-        start_date: '2026-07-15',
-        end_date: '2026-07-15',
-        start: '2026-07-15T00:00:00.000Z',
-        end_exclusive: '2026-07-16T00:00:00.000Z',
-      },
-      metrics: { parcels_received: 0, parcels_dispatched: 0, parcels_reported: 0 },
-    });
     jest.spyOn(service as any, 'getPendingActions').mockResolvedValue({
       counts: {
         otp_approval: 0,
@@ -240,32 +231,24 @@ describe('HubDashboardService', () => {
       },
       actions: [],
     });
-    jest.spyOn(service as any, 'getRiderStatus').mockResolvedValue({
-      counts: { all: 0, on_duty: 0, break: 0, leave: 0 },
-      items: [],
-      pagination: { total: 0, page: 1, limit: 5, totalPages: 0, hasNext: false, hasPrev: false },
-    });
-    jest.spyOn(service as any, 'getOngoingDeliveries').mockResolvedValue({
-      items: [],
-      pagination: { total: 0, page: 1, limit: 6, totalPages: 0, hasNext: false, hasPrev: false },
-    });
-    jest.spyOn(service as any, 'getLifetimeSummary').mockResolvedValue({
-      date_range: { start_date: null, end_date: null },
-      currency: 'BDT',
-      total_parcel: { count: 0, amount: 0 },
-      delivered: { count: 0, amount: 0 },
-      partially_delivered: { count: 0, amount: 0 },
-      paid_return: { count: 0, amount: 0 },
-      return: { count: 0, amount: 0 },
-      pending_return: { count: 0, amount: 0 },
-      pending: { count: 0, amount: 0 },
-      return_to_merchant: { count: 0, amount: 0 },
-      exchanged: { count: 0, amount: 0 },
-    });
+    const parcelFlowSpy = jest.spyOn(service, 'getParcelFlow');
+    const riderStatusSpy = jest.spyOn(service, 'getRiderStatus');
+    const ongoingDeliveriesSpy = jest.spyOn(service, 'getOngoingDeliveries');
+    const lifetimeSummarySpy = jest.spyOn(service, 'getLifetimeSummary');
 
-    const result = await service.getOverview('hub-1', { date: '2026-07-15' } as any);
+    const result = await service.getOverview('hub-1');
 
-    expect(result).not.toHaveProperty('live_delivery_map');
+    expect(result).toHaveProperty('top_cards');
+    expect(result).toHaveProperty('summary_for_todays_parcel');
+    expect(result).toHaveProperty('pending_actions');
+    expect(result).not.toHaveProperty('parcel_flow');
+    expect(result).not.toHaveProperty('rider_status');
+    expect(result).not.toHaveProperty('ongoing_deliveries');
+    expect(result).not.toHaveProperty('summary_for_lifetime_parcel');
+    expect(parcelFlowSpy).not.toHaveBeenCalled();
+    expect(riderStatusSpy).not.toHaveBeenCalled();
+    expect(ongoingDeliveriesSpy).not.toHaveBeenCalled();
+    expect(lifetimeSummarySpy).not.toHaveBeenCalled();
   });
 
   it('supports explicit start_date and end_date filters for parcel flow', async () => {
@@ -279,7 +262,11 @@ describe('HubDashboardService', () => {
           start: '2026-06-01T00:00:00.000Z',
           end_exclusive: '2026-07-01T00:00:00.000Z',
         },
-        metrics: { parcels_received: 0, parcels_dispatched: 0, parcels_reported: 0 },
+        metrics: {
+          parcels_received: 0,
+          parcels_dispatched: 0,
+          parcels_reported: 0,
+        },
       });
 
     await service.getParcelFlow('hub-1', {
