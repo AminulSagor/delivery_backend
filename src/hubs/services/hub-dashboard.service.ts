@@ -174,19 +174,6 @@ export class HubDashboardService {
         ? Number((parcelMetrics.deliveriesInProgress / activeRiders).toFixed(2))
         : 0;
 
-    const liveDeliveryMap = {
-      tracking_available: false,
-      reason:
-        'Live rider coordinates are not stored by the current backend schema.',
-      markers: [],
-      unlocated_deliveries: ongoingDeliveries.items.map((item) => ({
-        parcel_id: item.parcel_id,
-        rider_id: item.rider?.id ?? null,
-        rider_name: item.rider?.name ?? null,
-        destination: item.destination,
-      })),
-    };
-
     return {
       generated_at: new Date().toISOString(),
       date_context: {
@@ -220,7 +207,6 @@ export class HubDashboardService {
       pending_actions: pendingActions,
       rider_status: riderStatus,
       ongoing_deliveries: ongoingDeliveries,
-      live_delivery_map: liveDeliveryMap,
       summary_for_lifetime_parcel: lifetimeSummary,
     };
   }

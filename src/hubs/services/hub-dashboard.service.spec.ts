@@ -199,4 +199,72 @@ describe('HubDashboardService', () => {
       { hubId: 'hub-1' },
     );
   });
+
+  it('omits the live delivery map from overview responses', async () => {
+    const service = new HubDashboardService({} as any, {} as any, {} as any);
+
+    jest.spyOn(service as any, 'getParcelMetrics').mockResolvedValue({
+      parcelsToProcess: 1,
+      deliveriesInProgress: 1,
+      receivedLastHour: 1,
+      liveSuccessRate: 100,
+      todaySuccessRateChange: 0,
+    });
+    jest.spyOn(service as any, 'getTodayParcelSummary').mockResolvedValue({
+      currency: 'BDT',
+      new_parcels: { count: 0, amount: 0 },
+      pick_up: { count: 0, amount: 0 },
+      assigned: { count: 0, amount: 0 },
+      delivered: { count: 0, amount: 0 },
+      delivery_rescheduled: { count: 0, amount: 0 },
+    });
+    jest.spyOn(service as any, 'getRiderCounts').mockResolvedValue({
+      total: 1,
+      active: 1,
+    });
+    jest.spyOn(service as any, 'getParcelFlowForRange').mockResolvedValue({
+      range: {
+        start_date: '2026-07-15',
+        end_date: '2026-07-15',
+        start: '2026-07-15T00:00:00.000Z',
+        end_exclusive: '2026-07-16T00:00:00.000Z',
+      },
+      metrics: { parcels_received: 0, parcels_dispatched: 0, parcels_reported: 0 },
+    });
+    jest.spyOn(service as any, 'getPendingActions').mockResolvedValue({
+      counts: {
+        otp_approval: 0,
+        rider_assignment: 0,
+        return_processing: 0,
+        total: 0,
+      },
+      actions: [],
+    });
+    jest.spyOn(service as any, 'getRiderStatus').mockResolvedValue({
+      counts: { all: 0, on_duty: 0, break: 0, leave: 0 },
+      items: [],
+      pagination: { total: 0, page: 1, limit: 5, totalPages: 0, hasNext: false, hasPrev: false },
+    });
+    jest.spyOn(service as any, 'getOngoingDeliveries').mockResolvedValue({
+      items: [],
+      pagination: { total: 0, page: 1, limit: 6, totalPages: 0, hasNext: false, hasPrev: false },
+    });
+    jest.spyOn(service as any, 'getLifetimeSummary').mockResolvedValue({
+      date_range: { start_date: null, end_date: null },
+      currency: 'BDT',
+      total_parcel: { count: 0, amount: 0 },
+      delivered: { count: 0, amount: 0 },
+      partially_delivered: { count: 0, amount: 0 },
+      paid_return: { count: 0, amount: 0 },
+      return: { count: 0, amount: 0 },
+      pending_return: { count: 0, amount: 0 },
+      pending: { count: 0, amount: 0 },
+      return_to_merchant: { count: 0, amount: 0 },
+      exchanged: { count: 0, amount: 0 },
+    });
+
+    const result = await service.getOverview('hub-1', { date: '2026-07-15' } as any);
+
+    expect(result).not.toHaveProperty('live_delivery_map');
+  });
 });
