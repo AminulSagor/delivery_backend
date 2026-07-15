@@ -12,30 +12,18 @@ GET /hubs/dashboard/overview
 Authorization: Bearer <hub-manager-token>
 ```
 
-Optional query parameters:
-
-- `date=YYYY-MM-DD` (defaults to the current UTC date)
-- `flow_range=today|last_7_days|last_30_days`
-- `rider_limit=1..50`
-- `ongoing_limit=1..50`
-- `lifetime_start_date=YYYY-MM-DD`
-- `lifetime_end_date=YYYY-MM-DD`
-
-The two lifetime dates must be provided together.
-
-The response `data` contains the screenshot sections:
+This endpoint has no dashboard-filter query parameters. Its response `data`
+contains only the non-duplicated bootstrap sections:
 
 - `top_cards`
 - `summary_for_todays_parcel`
-- `parcel_flow`
 - `pending_actions`
-- `rider_status`
-- `ongoing_deliveries`
-- `live_delivery_map`
-- `summary_for_lifetime_parcel`
 
 Amounts are numeric BDT values. Percentages are numbers rounded to two decimal
 places. All day boundaries are returned in `date_context` and use UTC.
+
+Parcel flow, rider status, ongoing deliveries, and lifetime summary are not
+returned by this endpoint. Load them from their dedicated endpoints below.
 
 ## Independently refreshable widgets
 
@@ -46,6 +34,12 @@ GET /hubs/dashboard/parcel-flow?range=today&date=2026-07-15
 ```
 
 `range` supports `today`, `last_7_days`, and `last_30_days`.
+
+For a custom chart range, provide `start_date` and `end_date` together:
+
+```http
+GET /hubs/dashboard/parcel-flow?start_date=2026-06-01&end_date=2026-06-30
+```
 
 ### Pending actions
 
@@ -109,11 +103,3 @@ These existing routes and their response shapes are unchanged:
 - `GET /hubs/dashboard/parcels/:id`
 
 The new implementation is additive and does not add or alter database columns.
-
-## Live map limitation
-
-The current Rider and Parcel models do not store continuously updated GPS
-coordinates. `live_delivery_map.tracking_available` is therefore `false`, with
-an empty `markers` array and an `unlocated_deliveries` list containing the real
-rider and destination metadata. Coordinates should only be enabled after a
-rider-location ingestion flow is added; the API does not fabricate map points.

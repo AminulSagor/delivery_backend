@@ -1,5 +1,4 @@
-import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { IsEnum, IsOptional, Matches } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { ParcelStatus } from '../../parcels/entities/parcel.entity';
 
@@ -24,38 +23,6 @@ export class HubDashboardDateQueryDto {
     message: 'date must use YYYY-MM-DD format',
   })
   date?: string;
-}
-
-export class HubDashboardOverviewQueryDto extends HubDashboardDateQueryDto {
-  @IsOptional()
-  @IsEnum(HubDashboardFlowRange)
-  flow_range?: HubDashboardFlowRange = HubDashboardFlowRange.TODAY;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  rider_limit?: number = 5;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  ongoing_limit?: number = 6;
-
-  @IsOptional()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'lifetime_start_date must use YYYY-MM-DD format',
-  })
-  lifetime_start_date?: string;
-
-  @IsOptional()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'lifetime_end_date must use YYYY-MM-DD format',
-  })
-  lifetime_end_date?: string;
 }
 
 export class HubDashboardFlowQueryDto extends HubDashboardDateQueryDto {

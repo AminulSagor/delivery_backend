@@ -80,7 +80,6 @@ import {
   HubDashboardFlowQueryDto,
   HubDashboardLifetimeQueryDto,
   HubDashboardOngoingQueryDto,
-  HubDashboardOverviewQueryDto,
   HubDashboardRiderQueryDto,
 } from './dto/hub-dashboard-query.dto';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
@@ -703,13 +702,9 @@ export class HubsController {
   @Get('dashboard/overview')
   @Roles(UserRole.HUB_MANAGER)
   @HttpCode(HttpStatus.OK)
-  async getDashboardOverview(
-    @CurrentUser() user: JwtPayload,
-    @Query() query: HubDashboardOverviewQueryDto,
-  ) {
+  async getDashboardOverview(@CurrentUser() user: JwtPayload) {
     const data = await this.hubDashboardService.getOverview(
       this.getDashboardHubId(user),
-      query,
     );
 
     return {

@@ -9,7 +9,6 @@ import {
   HubDashboardFlowRange,
   HubDashboardLifetimeQueryDto,
   HubDashboardOngoingQueryDto,
-  HubDashboardOverviewQueryDto,
   HubDashboardRiderQueryDto,
   HubDashboardRiderStatus,
 } from '../dto/hub-dashboard-query.dto';
@@ -126,47 +125,16 @@ export class HubDashboardService {
     private readonly deliveryVerificationRepository: Repository<DeliveryVerification>,
   ) {}
 
-  async getOverview(hubId: string, query: HubDashboardOverviewQueryDto) {
-    const day = this.resolveDayRange(query.date);
-    const flowRange = this.resolveFlowRange(
-      query.flow_range ?? HubDashboardFlowRange.TODAY,
-      day,
-    );
+  async getOverview(hubId: string) {
+    const day = this.resolveDayRange();
 
-    const [
-      parcelMetrics,
-      todaySummary,
-      riderCounts,
-      parcelFlow,
-      pendingActions,
-      riderStatus,
-      ongoingDeliveries,
-      lifetimeSummary,
-    ] = await Promise.all([
-      this.getParcelMetrics(hubId, day),
-      this.getTodayParcelSummary(hubId, day),
-      this.getRiderCounts(hubId),
-      this.getParcelFlowForRange(hubId, flowRange),
-      this.getPendingActions(hubId),
-      this.getRiderStatus(hubId, {
-        page: 1,
-        limit: query.rider_limit ?? 5,
-        status: HubDashboardRiderStatus.ALL,
-        sortBy: 'created_at',
-        order: 'DESC',
-      }),
-      this.getOngoingDeliveries(hubId, {
-        page: 1,
-        limit: query.ongoing_limit ?? 6,
-        date: query.date,
-        sortBy: 'updated_at',
-        order: 'DESC',
-      }),
-      this.getLifetimeSummary(hubId, {
-        start_date: query.lifetime_start_date,
-        end_date: query.lifetime_end_date,
-      }),
-    ]);
+    const [parcelMetrics, todaySummary, riderCounts, pendingActions] =
+      await Promise.all([
+        this.getParcelMetrics(hubId, day),
+        this.getTodayParcelSummary(hubId, day),
+        this.getRiderCounts(hubId),
+        this.getPendingActions(hubId),
+      ]);
 
     const activeRiders = riderCounts.active;
     const averagePerActiveRider =
@@ -199,25 +167,22 @@ export class HubDashboardService {
           value: parcelMetrics.liveSuccessRate,
           unit: 'percent',
           today_change: parcelMetrics.todaySuccessRateChange,
-          comparison: 'selected_day_vs_previous_day',
+          comparison: 'today_vs_previous_day',
         },
       },
       summary_for_todays_parcel: todaySummary,
-      parcel_flow: parcelFlow,
       pending_actions: pendingActions,
-      rider_status: riderStatus,
-      ongoing_deliveries: ongoingDeliveries,
-      summary_for_lifetime_parcel: lifetimeSummary,
     };
   }
 
   async getParcelFlow(hubId: string, query: HubDashboardFlowQueryDto) {
-    const range = query.start_date || query.end_date
-      ? this.resolveCustomDateRange(query.start_date, query.end_date)
-      : this.resolveFlowRange(
-          query.range ?? HubDashboardFlowRange.TODAY,
-          this.resolveDayRange(query.date),
-        );
+    const range =
+      query.start_date || query.end_date
+        ? this.resolveCustomDateRange(query.start_date, query.end_date)
+        : this.resolveFlowRange(
+            query.range ?? HubDashboardFlowRange.TODAY,
+            this.resolveDayRange(query.date),
+          );
 
     return this.getParcelFlowForRange(hubId, range);
   }
