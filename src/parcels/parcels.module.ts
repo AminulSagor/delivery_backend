@@ -14,6 +14,8 @@ import { CustomerModule } from '../customer/customer.module';
 import { PickupRequestsModule } from '../pickup-requests/pickup-requests.module';
 import { CarrybeeModule } from '../carrybee/carrybee.module';
 import { SmsService } from '../utils/sms.service';
+import { SmsPreference } from '../admin/entities/sms-preference.entity';
+import { SmsPreferencesService } from '../admin/services/sms-preferences.service';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { SmsService } from '../utils/sms.service';
       Rider,
       Hub,
       User,
+      SmsPreference,
     ]),
     PricingModule,
     CustomerModule,
@@ -32,7 +35,7 @@ import { SmsService } from '../utils/sms.service';
     forwardRef(() => CarrybeeModule), // Circular dependency resolution
   ],
   controllers: [ParcelsController],
-  providers: [ParcelsService, SmsService],
+  providers: [ParcelsService, SmsService, SmsPreferencesService],
   exports: [ParcelsService],
 })
 export class ParcelsModule {}

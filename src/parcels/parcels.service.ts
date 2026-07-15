@@ -113,6 +113,11 @@ import { CarrybeeService } from '../carrybee/carrybee.service';
 import { SmsService } from '../utils/sms.service';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import { CarrybeeJob } from '../carrybee/entities/carrybee-job.entity';
+import { SmsPreferencesService } from '../admin/services/sms-preferences.service';
+import {
+  SmsPreferenceEvent,
+  SmsPreferenceRecipient,
+} from '../admin/entities/sms-preference.entity';
 
 type ParcelStatusFilter = ParcelStatus | 'ACTIVE';
 
@@ -153,6 +158,7 @@ export class ParcelsService {
     @Inject(forwardRef(() => CarrybeeService))
     private carrybeeService: CarrybeeService,
     private smsService: SmsService,
+    private smsPreferencesService: SmsPreferencesService,
     private dataSource: DataSource,
   ) {}
 
@@ -187,6 +193,18 @@ export class ParcelsService {
 
   private async sendAssignForRiderSms(parcel: Parcel, rider: Rider) {
     if (!parcel.customer_phone) {
+      return;
+    }
+
+    const smsEnabled = await this.smsPreferencesService.isEnabled(
+      SmsPreferenceRecipient.CUSTOMER,
+      SmsPreferenceEvent.DELIVERY_MAN_ASSIGNED,
+    );
+
+    if (!smsEnabled) {
+      this.logger.log(
+        `[ASSIGN SMS SKIPPED] Customer preference disabled for parcel ${parcel.tracking_number}`,
+      );
       return;
     }
 

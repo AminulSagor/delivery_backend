@@ -75,6 +75,15 @@ import { BulkTransferFromRidersDto } from './dto/bulk-transfer-from-riders.dto';
 import { RiderTransferQueryDto } from './dto/rider-transfer-query.dto';
 import { RiderAssignedParcelsQueryDto } from './dto/rider-assigned-parcels-query.dto';
 import { TransferSelectedParcelsDto } from './dto/transfer-selected-parcels.dto';
+import { HubDashboardService } from './services/hub-dashboard.service';
+import {
+  HubDashboardFlowQueryDto,
+  HubDashboardLifetimeQueryDto,
+  HubDashboardOngoingQueryDto,
+  HubDashboardOverviewQueryDto,
+  HubDashboardRiderQueryDto,
+} from './dto/hub-dashboard-query.dto';
+import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -115,7 +124,18 @@ export class HubsController {
   constructor(
     private readonly hubsService: HubsService,
     private readonly parcelsService: ParcelsService,
+    private readonly hubDashboardService: HubDashboardService,
   ) {}
+
+  private getDashboardHubId(user: JwtPayload): string {
+    if (!user.hubId) {
+      throw new BadRequestException(
+        'Your account is not assigned to any hub. Please contact admin.',
+      );
+    }
+
+    return user.hubId;
+  }
 
   // ===== HUB MANAGER ENDPOINTS =====
   @Roles(UserRole.HUB_MANAGER)
@@ -673,6 +693,135 @@ export class HubsController {
         pagination: result.pagination,
       },
       message: 'Parcels retrieved successfully',
+    };
+  }
+
+  /**
+   * Load every data section required by the Hub Panel dashboard in one request.
+   * This is additive and intentionally does not change dashboard/summary.
+   */
+  @Get('dashboard/overview')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardOverview(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: HubDashboardOverviewQueryDto,
+  ) {
+    const data = await this.hubDashboardService.getOverview(
+      this.getDashboardHubId(user),
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard overview retrieved successfully',
+    };
+  }
+
+  /**
+   * Independently refresh the parcel-flow chart.
+   */
+  @Get('dashboard/parcel-flow')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardParcelFlow(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: HubDashboardFlowQueryDto,
+  ) {
+    const data = await this.hubDashboardService.getParcelFlow(
+      this.getDashboardHubId(user),
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard parcel flow retrieved successfully',
+    };
+  }
+
+  /**
+   * Independently refresh actionable dashboard alerts.
+   */
+  @Get('dashboard/pending-actions')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardPendingActions(@CurrentUser() user: JwtPayload) {
+    const data = await this.hubDashboardService.getPendingActions(
+      this.getDashboardHubId(user),
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard pending actions retrieved successfully',
+    };
+  }
+
+  /**
+   * Paginated rider widget with all/on-duty/break/leave filters.
+   */
+  @Get('dashboard/rider-status')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardRiderStatus(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: HubDashboardRiderQueryDto,
+  ) {
+    const data = await this.hubDashboardService.getRiderStatus(
+      this.getDashboardHubId(user),
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard rider status retrieved successfully',
+    };
+  }
+
+  /**
+   * Paginated deliveries table used by the dashboard.
+   */
+  @Get('dashboard/ongoing-deliveries')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardOngoingDeliveries(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: HubDashboardOngoingQueryDto,
+  ) {
+    const data = await this.hubDashboardService.getOngoingDeliveries(
+      this.getDashboardHubId(user),
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard deliveries retrieved successfully',
+    };
+  }
+
+  /**
+   * Independently refresh the lifetime parcel cards.
+   */
+  @Get('dashboard/lifetime-summary')
+  @Roles(UserRole.HUB_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getDashboardLifetimeSummary(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: HubDashboardLifetimeQueryDto,
+  ) {
+    const data = await this.hubDashboardService.getLifetimeSummary(
+      this.getDashboardHubId(user),
+      query,
+    );
+
+    return {
+      success: true,
+      data,
+      message: 'Hub dashboard lifetime summary retrieved successfully',
     };
   }
 
