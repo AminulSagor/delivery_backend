@@ -267,4 +267,32 @@ describe('HubDashboardService', () => {
 
     expect(result).not.toHaveProperty('live_delivery_map');
   });
+
+  it('supports explicit start_date and end_date filters for parcel flow', async () => {
+    const service = new HubDashboardService({} as any, {} as any, {} as any);
+    const getParcelFlowForRangeSpy = jest
+      .spyOn(service as any, 'getParcelFlowForRange')
+      .mockResolvedValue({
+        range: {
+          start_date: '2026-06-01',
+          end_date: '2026-06-30',
+          start: '2026-06-01T00:00:00.000Z',
+          end_exclusive: '2026-07-01T00:00:00.000Z',
+        },
+        metrics: { parcels_received: 0, parcels_dispatched: 0, parcels_reported: 0 },
+      });
+
+    await service.getParcelFlow('hub-1', {
+      start_date: '2026-06-01',
+      end_date: '2026-06-30',
+    } as any);
+
+    expect(getParcelFlowForRangeSpy).toHaveBeenCalledWith(
+      'hub-1',
+      expect.objectContaining({
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+      }),
+    );
+  });
 });
