@@ -1129,18 +1129,18 @@ export class AdminAccountsService {
     }
 
     if (!start && !end) {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(
+      const earliestDate = new Date(2000, 0, 1, 0, 0, 0, 0);
+      const latestDate = new Date(
         now.getFullYear(),
-        now.getMonth() + 1,
-        0,
+        now.getMonth(),
+        now.getDate(),
         23,
         59,
         59,
         999,
       );
 
-      return { start: startOfMonth, end: endOfMonth };
+      return { start: earliestDate, end: latestDate };
     }
 
     if (!start && end) {
