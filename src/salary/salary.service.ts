@@ -670,13 +670,6 @@ export class SalaryService {
           ),
         },
       },
-      filters: {
-        selected_count: [search, startDateInput, endDateInput].filter(
-          (value) => !!value,
-        ).length,
-        export_formats: ['Excel', 'CSV'],
-        bulk_actions: ['Pay Salary', 'Hold Payout'],
-      },
       data,
     };
   }
