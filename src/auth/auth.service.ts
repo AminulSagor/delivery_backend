@@ -21,8 +21,8 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
-import { SmsService } from 'src/utils/sms.service';
-import { EmailService } from 'src/utils/email.service';
+import { SmsService } from '../utils/sms.service';
+import { EmailService } from '../utils/email.service';
 import { ConfigService } from '@nestjs/config';
 import {
   ChangePasswordDto,
@@ -423,6 +423,7 @@ export class AuthService {
         merchant_id: null,
         merchant: null,
         store_count: 0,
+        is_advance_payment_active: false,
       };
     }
 
@@ -434,6 +435,7 @@ export class AuthService {
       ...baseProfile,
       merchant_id: merchant.id,
       store_count: storeCount,
+      is_advance_payment_active: !merchant.is_advance_payment_disabled,
       merchant: {
         id: merchant.id,
         thana: merchant.thana,
