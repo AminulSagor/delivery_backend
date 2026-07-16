@@ -1,17 +1,24 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { SalaryService } from './salary.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
-@Controller('api/v1/payout-history')
+@Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class PayoutHistoryController {
   constructor(private readonly salaryService: SalaryService) {}
 
-  @Get()
+  @Get('payout-history')
   getPayoutHistoryList(
     @Query('search') search?: string,
     @Query('page') page?: string,
@@ -28,8 +35,8 @@ export class PayoutHistoryController {
     );
   }
 
-  @Get(':staffId/details')
-  getPayoutHistoryDetails(@Param('staffId') staffId: string) {
-    return this.salaryService.getPayoutHistoryDetails(staffId);
+  @Get('payout-history-details/:id')
+  getPayoutHistoryDetails(@Param('id', ParseUUIDPipe) id: string) {
+    return this.salaryService.getPayoutHistoryDetails(id);
   }
 }

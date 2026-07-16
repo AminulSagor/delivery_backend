@@ -8,7 +8,7 @@ import { SalaryController } from './salary.controller';
 import { SalaryService } from './salary.service';
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
 import { StaffPayoutMethod } from '../staff/entities/staff-payout-method.entity';
-import { PayoutHistoryController } from './payout-history.controller';
+import { AdminAccountStatement } from '../admin/entities/admin-account-statement.entity';
 
 @Module({
   imports: [
@@ -19,9 +19,10 @@ import { PayoutHistoryController } from './payout-history.controller';
       StaffPayoutMethod,
       Rider,
       Parcel,
+      AdminAccountStatement,
     ]),
   ],
-  controllers: [SalaryController, PayoutHistoryController],
+  controllers: [SalaryController],
   providers: [SalaryService],
   exports: [SalaryService],
 })

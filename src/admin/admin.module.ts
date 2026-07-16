@@ -28,6 +28,8 @@ import { ParcelsModule } from '../parcels/parcels.module';
 import { MerchantFinance } from '../merchant-finance/entities/merchant-finance.entity';
 import { MerchantFinanceTransaction } from '../merchant-finance/entities/merchant-finance-transaction.entity';
 import { SmsPreference } from './entities/sms-preference.entity';
+import { SalaryModule } from '../salary/salary.module';
+import { PayoutHistoryController } from '../salary/payout-history.controller';
 
 @Module({
   imports: [
@@ -51,8 +53,10 @@ import { SmsPreference } from './entities/sms-preference.entity';
     UsersModule,
     forwardRef(() => MerchantModule),
     ParcelsModule,
+    SalaryModule,
   ],
   controllers: [
+    PayoutHistoryController,
     AdminAccountsController,
     AdminController,
     AdminEmailTestController,
