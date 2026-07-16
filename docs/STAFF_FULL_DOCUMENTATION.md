@@ -139,67 +139,105 @@ Filters/Notes:
 ```
 
 3) Payout History (Admin dashboard aggregated list)
-  - Endpoint: GET [{{baseUrl}}]/api/v1/payout-history
+  - Endpoint: GET [{{baseUrl}}]/admin/payout-history
   - Query params / filters:
     - `search` — matches staff name or phone (partial)
     - `page`, `limit` — pagination
     - `start_date`, `end_date` — filter payouts within date range (ISO: YYYY-MM-DD)
 
   - Example request:
-    GET /api/v1/payout-history?search=John&page=1&limit=10&start_date=2026-01-01&end_date=2026-12-31
+    GET /admin/payout-history?search=John&page=1&limit=10&start_date=2026-01-01&end_date=2026-12-31
 
   - Response (200):
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "data": [
     {
-      "staff_id": "550e8400-e29b-41d4-a716-446655440000",
-      "staff_name": "John Staff",
-      "staff_phone": "01712345678",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "payout_id": "650e8400-e29b-41d4-a716-446655440001",
+      "profile": {
+        "profile_pic": null,
+        "name": "John Staff",
+        "number": "01712345678"
+      },
       "position": "ADMIN_STAFF",
       "assigned_hub": "Gulshan",
-      "salary_paid": 45000,
-      "paid_using": "DBBL",
-      "paid_at": "2026-05-15T10:30:00Z"
+      "last_paid": { "date_time": "2026-05-15T10:30:00.000Z" },
+      "salary_amount": 15000,
+      "currency": "BDT",
+      "paid_using": "DBBL"
     }
   ],
   "meta": {
-    "pagination": { "total_items": 1, "current_page": 1, "items_per_page": 10, "total_pages": 1 },
-    "filters": { "search": "John", "start_date": "2026-01-01", "end_date": "2026-12-31" }
+    "title": "Payout History",
+    "subtitle": "Salary Management - Staff List",
+    "pagination": {
+      "total_records": 1,
+      "current_page": 1,
+      "limit": 10,
+      "showing": "1 - 1 of 1"
+    }
   }
 }
 ```
 
 4) Payout Details (Modal)
-  - Endpoint: GET [{{baseUrl}}]/api/v1/payout-history/{staffId}/details
-  - Description: Returns staff profile, salary period summary and payment gateway + balance info.
+  - Endpoint: GET [{{baseUrl}}]/admin/payout-history-details/{staffId}
+  - Description: Returns staff profile, lifetime paid salary, the amount paid in the latest payout month, the recipient account used for that payout, and the source admin account balance immediately after payment.
+  - The admin source account is resolved from a debit statement whose `reference_id` matches the payout transaction ID or reference number. It is `null` when the salary debit was not linked in the admin account ledger.
 
   - Response (200):
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "data": {
     "staff_information": {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "John Staff",
-      "phone": "01712345678",
+      "status": "Verified",
       "position": "ADMIN_STAFF",
-      "assigned_hub": "Gulshan",
-      "avatar_url": null
+      "hub": "Gulshan",
+      "number": "01712345678",
+      "profile_pic": null,
+      "salary": 15000,
+      "commission": 0
     },
-    "salary_period": { "month": "May 2026", "base_salary": 15000, "total_earnings_to_date": 45000 },
-    "payment_gateway": {
-      "method_type": "BANK_ACCOUNT",
-      "bank_name": "DBBL",
-      "account_number": "1234****9012",
-      "amount_paid": 15000,
-      "total_disbursed": 45000,
-      "remaining_balance": 0,
-      "last_payout_at": "2026-05-15T10:30:00Z",
-      "last_payout_amount": 15000
+    "total_earning": 45000,
+    "last_paid": { "date_time": "2026-05-15T10:30:00.000Z" },
+    "salary_paid": {
+      "month": "May 2026",
+      "amount": 15000
+    },
+    "currency": "BDT",
+    "paid_using": {
+      "recipient_account": {
+        "method_type": "BANK_ACCOUNT",
+        "provider_name": "DBBL",
+        "bank_name": "DBBL",
+        "district": "Dhaka",
+        "branch_name": "Gulshan",
+        "account_holder_name": "John Staff",
+        "account_number": "123456789012",
+        "routing_number": "090261726"
+      },
+      "admin_source_account": {
+        "id": "750e8400-e29b-41d4-a716-446655440002",
+        "account_name": "Main Salary Account",
+        "provider_type": "BANK",
+        "account_number": "987654321000",
+        "account_holder_name": "Delivery Admin",
+        "district": "Dhaka",
+        "branch_name": "Gulshan",
+        "routing": "090261726",
+        "balance_before_payment": 115000,
+        "balance_after_payment": 100000,
+        "ledger_statement_id": "850e8400-e29b-41d4-a716-446655440003"
+      },
+      "account_balance_after_payment": 100000,
+      "last_used_at": "2026-05-15T10:30:00.000Z"
     }
   }
 }
