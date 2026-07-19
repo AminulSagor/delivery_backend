@@ -12,6 +12,7 @@ import { Store } from '../stores/entities/store.entity';
 import { EmailService } from 'src/utils/email.service';
 import { SmsService } from 'src/utils/sms.service';
 import { ConfigModule } from '@nestjs/config';
+import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ConfigModule } from '@nestjs/config';
     ]),
     UsersModule,
     ConfigModule,
+    MerchantFinanceModule,
   ],
   providers: [AuthService, EmailService, SmsService],
   controllers: [AuthController],

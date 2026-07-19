@@ -16,6 +16,7 @@ import { CarrybeeModule } from '../carrybee/carrybee.module';
 import { SmsService } from '../utils/sms.service';
 import { SmsPreference } from '../admin/entities/sms-preference.entity';
 import { SmsPreferencesService } from '../admin/services/sms-preferences.service';
+import { ParcelImportParserService } from './services/parcel-import-parser.service';
 
 @Module({
   imports: [
@@ -35,7 +36,12 @@ import { SmsPreferencesService } from '../admin/services/sms-preferences.service
     forwardRef(() => CarrybeeModule), // Circular dependency resolution
   ],
   controllers: [ParcelsController],
-  providers: [ParcelsService, SmsService, SmsPreferencesService],
+  providers: [
+    ParcelsService,
+    ParcelImportParserService,
+    SmsService,
+    SmsPreferencesService,
+  ],
   exports: [ParcelsService],
 })
 export class ParcelsModule {}

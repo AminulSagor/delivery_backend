@@ -104,6 +104,20 @@ export class MerchantFinanceService {
   }
 
   /**
+   * Get the balance that a merchant can currently withdraw.
+   * Held funds are not available and a negative result is exposed as zero.
+   */
+  async getAvailableBalance(merchantId: string): Promise<number> {
+    const finance = await this.getOrCreateFinance(merchantId);
+    const availableBalance = Math.max(
+      0,
+      Number(finance.current_balance) - Number(finance.hold_amount),
+    );
+
+    return this.roundMoney(availableBalance);
+  }
+
+  /**
    * Get merchant finance overview/dashboard
    */
   async getMerchantFinanceOverview(

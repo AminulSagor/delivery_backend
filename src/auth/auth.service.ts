@@ -29,6 +29,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
 } from './dto/forgot-password.dto';
+import { MerchantFinanceService } from '../merchant-finance/merchant-finance.service';
 
 @Injectable()
 export class AuthService {
@@ -49,6 +50,7 @@ export class AuthService {
     private smsService: SmsService,
     private emailService: EmailService,
     private configService: ConfigService,
+    private merchantFinanceService: MerchantFinanceService,
   ) {}
 
   async login(loginDto: AuthLoginDto): Promise<{
@@ -412,6 +414,9 @@ export class AuthService {
   }
 
   private async getMerchantProfile(baseProfile: any): Promise<any> {
+    const checkBalance = await this.merchantFinanceService.getAvailableBalance(
+      baseProfile.user_id,
+    );
     const merchant = await this.merchantRepository.findOne({
       where: { user_id: baseProfile.user_id },
       relations: ['merchant_profile'],
@@ -424,6 +429,7 @@ export class AuthService {
         merchant: null,
         store_count: 0,
         is_advance_payment_active: false,
+        check_balance: checkBalance,
       };
     }
 
@@ -436,6 +442,7 @@ export class AuthService {
       merchant_id: merchant.id,
       store_count: storeCount,
       is_advance_payment_active: !merchant.is_advance_payment_disabled,
+      check_balance: checkBalance,
       merchant: {
         id: merchant.id,
         thana: merchant.thana,
