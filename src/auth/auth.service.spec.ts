@@ -15,6 +15,10 @@ describe('AuthService.getProfile', () => {
       count: jest.fn(),
     } as any;
 
+    const merchantFinanceService = {
+      getAvailableBalance: jest.fn(),
+    } as any;
+
     const service = new AuthService(
       usersService,
       merchantRepository,
@@ -26,6 +30,7 @@ describe('AuthService.getProfile', () => {
       {} as any,
       {} as any,
       {} as any,
+      merchantFinanceService,
     );
 
     usersService.findById.mockResolvedValue({
@@ -51,9 +56,14 @@ describe('AuthService.getProfile', () => {
     });
 
     storeRepository.count.mockResolvedValue(2);
+    merchantFinanceService.getAvailableBalance.mockResolvedValue(1250.5);
 
     const profile = await service.getProfile('user-1');
 
     expect(profile.is_advance_payment_active).toBe(true);
+    expect(profile.check_balance).toBe(1250.5);
+    expect(merchantFinanceService.getAvailableBalance).toHaveBeenCalledWith(
+      'user-1',
+    );
   });
 });

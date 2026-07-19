@@ -50,6 +50,7 @@ import { AssignParcelToRiderDto } from '../riders/dto/assign-parcel.dto';
 import { BulkAssignParcelsToRiderDto } from '../riders/dto/bulk-assign-parcel.dto';
 import { BulkTransferDto, TransferParcelDto } from './dto/transfer-parcel.dto';
 import { BulkOrderItemDto } from './dto/bulk-suggest.dto';
+import { ParsedBulkImportRow } from './dto/bulk-import.dto';
 import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
@@ -60,6 +61,11 @@ export interface ParcelCreationResult {
   success: boolean;
   tracking?: string;
   error?: string;
+}
+
+export interface BulkImportRowResult extends ParcelCreationResult {
+  row_number: number;
+  merchant_order_id?: string;
 }
 
 export interface SuggestionResult {
@@ -1288,7 +1294,7 @@ export class ParcelsService {
           throw new NotFoundException(
             'Store not found or does not belong to this merchant. Please check the store ID.',
           );
-        
+
         // Validate store is approved
         if (store.status !== StoreStatus.APPROVED) {
           throw new BadRequestException(
@@ -1727,10 +1733,7 @@ export class ParcelsService {
       return savedParcel;
     } catch (error: any) {
       this.logger.error(`[HUB CREATE ERROR] ${error.message}`, error.stack);
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
+      if (error instanceof NotFoundException || error instanceof BadRequestException)
         throw error;
       throw new InternalServerErrorException(
         'Failed to create and receive parcel',
@@ -2031,7 +2034,10 @@ export class ParcelsService {
       if (!parcel) throw new NotFoundException('Parcel not found');
       return parcel;
     } catch (error: any) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException)
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      )
         throw error;
       this.logger.error(
         `[FIND PARCEL BY TRACKING ERROR] ${error.message}`,
@@ -6579,14 +6585,20 @@ export class ParcelsService {
         }
 
         // 2. Heuristic: choose best coverage area
-        const coverageArea = this.findBestCoverageAreaFromAddress(
-          item.customer_address,
-          coverageAreas,
-        );
+        const coverageArea = item.delivery_coverage_area_id
+          ? coverageAreas.find(
+              (area) => area.id === item.delivery_coverage_area_id,
+            ) || null
+          : this.findBestCoverageAreaFromAddress(
+              item.customer_address,
+              coverageAreas,
+            );
 
         if (!coverageArea) {
           throw new NotFoundException(
-            'No suitable coverage area found from customer address.',
+            item.delivery_coverage_area_id
+              ? 'The supplied delivery coverage area was not found.'
+              : 'No suitable coverage area found from customer address.',
           );
         }
 
@@ -6647,6 +6659,99 @@ export class ParcelsService {
   }
 
   /**
+   * Resolve spreadsheet rows and create every valid parcel through the normal
+   * single-parcel creation path. Invalid rows are reported without preventing
+   * other rows in the same file from being created.
+   */
+  async bulkImportRows(
+    rows: ParsedBulkImportRow[],
+    userId: string,
+    merchantId: string,
+  ): Promise<{
+    summary: { total: number; success: number; failed: number };
+    results: BulkImportRowResult[];
+  }> {
+    const items = rows.map((row) => ({ ...row.item }));
+    const storeIds = Array.from(
+      new Set(
+        items
+          .map((item) => item.store_id)
+          .filter((storeId): storeId is string => Boolean(storeId)),
+      ),
+    );
+
+    if (storeIds.length > 0) {
+      const stores = await this.storeRepository.find({
+        where: { id: In(storeIds), merchant_id: merchantId },
+      });
+      const storesById = new Map(stores.map((store) => [store.id, store]));
+
+      for (const item of items) {
+        if (!item.delivery_area && item.store_id) {
+          item.delivery_area =
+            storesById.get(item.store_id)?.business_address || '';
+        }
+      }
+    }
+
+    const suggestions = await this.getBulkSuggestions(items, merchantId);
+    const results = new Array<BulkImportRowResult | undefined>(rows.length);
+    const readyItems: BulkOrderItemDto[] = [];
+    const readyIndexes: number[] = [];
+
+    suggestions.forEach((suggestion, index) => {
+      if (suggestion.status !== 'SUCCESS' || !suggestion.suggested_area_id) {
+        results[index] = {
+          row_number: rows[index].row_number,
+          merchant_order_id: items[index].merchant_order_id,
+          success: false,
+          error:
+            suggestion.error ||
+            'The row could not be resolved to a delivery coverage area.',
+        };
+        return;
+      }
+
+      readyItems.push({
+        ...items[index],
+        delivery_coverage_area_id: suggestion.suggested_area_id,
+      });
+      readyIndexes.push(index);
+    });
+
+    if (readyItems.length > 0) {
+      const creation = await this.bulkCreateConfirmedBatch(
+        readyItems,
+        userId,
+        merchantId,
+      );
+
+      creation.results.forEach((creationResult, readyIndex) => {
+        const originalIndex = readyIndexes[readyIndex];
+        results[originalIndex] = {
+          row_number: rows[originalIndex].row_number,
+          merchant_order_id: items[originalIndex].merchant_order_id,
+          ...creationResult,
+        };
+      });
+    }
+
+    const finalizedResults = results.filter(
+      (result): result is BulkImportRowResult => Boolean(result),
+    );
+    const success = finalizedResults.filter((result) => result.success).length;
+
+    return {
+      summary: {
+        total: rows.length,
+        success,
+        failed: rows.length - success,
+      },
+      results: finalizedResults,
+    };
+  }
+
+  /**
    * Creates parcels from user-confirmed data (called by /bulk-create).
    */
   async bulkCreateConfirmedBatch(
@@ -6669,9 +6774,23 @@ export class ParcelsService {
         }
 
         const isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
+        const isExchange = item.is_exchange_raw?.toUpperCase() === 'TRUE';
         const weight = this.parseRawNumeric(item.product_weight_raw);
         const price = this.parseRawNumeric(item.product_price_raw);
         const codAmount = isCod ? price : 0;
+        const parcelType = item.parcel_type_raw
+          ? parseInt(item.parcel_type_raw, 10)
+          : undefined;
+        const deliveryType = item.delivery_type_raw
+          ? parseInt(item.delivery_type_raw, 10)
+          : undefined;
+
+        if (parcelType !== undefined && ![1, 2, 3].includes(parcelType)) {
+          throw new Error('Parcel type must be 1, 2, or 3.');
+        }
+        if (deliveryType !== undefined && ![1, 2, 3].includes(deliveryType)) {
+          throw new Error('Delivery type must be 1, 2, or 3.');
+        }
 
         // 2. Map to CreateParcelDto
         const createDto: CreateParcelDto = {
@@ -6679,6 +6798,7 @@ export class ParcelsService {
           delivery_coverage_area_id: item.delivery_coverage_area_id,
           customer_name: item.customer_name,
           customer_phone: item.customer_phone,
+          customer_secondary_phone: item.customer_secondary_phone || undefined,
           customer_address: item.customer_address,
           delivery_area: item.delivery_area,
 
@@ -6692,12 +6812,9 @@ export class ParcelsService {
           store_id: item.store_id ?? undefined,
           merchant_order_id: item.merchant_order_id ?? undefined,
           product_description: item.product_description || undefined,
-          parcel_type: item.parcel_type_raw
-            ? parseInt(item.parcel_type_raw, 10)
-            : undefined,
-          delivery_type: item.delivery_type_raw
-            ? parseInt(item.delivery_type_raw, 10)
-            : undefined,
+          parcel_type: parcelType,
+          delivery_type: deliveryType,
+          is_exchange: isExchange,
           special_instructions: item.special_instructions ?? undefined,
         } as CreateParcelDto;
 

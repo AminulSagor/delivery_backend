@@ -17,10 +17,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import {
+  BulkImportRowResult,
   ParcelCreationResult,
   ParcelsService,
   SuggestionResult,
 } from './parcels.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { extname } from 'path';
 import { CreateParcelDto } from './dto/create-parcel.dto';
 import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
@@ -34,6 +38,8 @@ import { Public } from '../common/decorators/public.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
+import { BulkImportDefaultsDto } from './dto/bulk-import.dto';
+import { ParcelImportParserService } from './services/parcel-import-parser.service';
 import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
 import { LifetimeSummaryQueryDto } from './dto/lifetime-summary-query.dto';
 import {
@@ -44,7 +50,10 @@ import {
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ParcelsController {
-  constructor(private readonly parcelsService: ParcelsService) {}
+  constructor(
+    private readonly parcelsService: ParcelsService,
+    private readonly parcelImportParser: ParcelImportParserService,
+  ) {}
 
   @Post('calculate-pricing')
   @HttpCode(HttpStatus.OK)
@@ -489,6 +498,66 @@ export class ParcelsController {
 
     const result = await this.parcelsService.remove(id, merchantId, isAdmin);
     return result;
+  }
+
+  /**
+   * Upload a CSV/XLSX file and create every valid parcel in the sheet.
+   * Failed rows are returned individually and do not roll back successful rows.
+   */
+  @Post('bulk-import')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.MERCHANT)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_request, file, callback) => {
+        const extension = extname(file.originalname || '').toLowerCase();
+        if (
+          !ParcelImportParserService.SUPPORTED_EXTENSIONS.includes(extension)
+        ) {
+          return callback(
+            new BadRequestException('Only .csv and .xlsx files are supported'),
+            false,
+          );
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async bulkImport(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() defaults: BulkImportDefaultsDto,
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('merchantId') merchantId: string,
+  ): Promise<{
+    message: string;
+    summary: { total: number; success: number; failed: number };
+    results: BulkImportRowResult[];
+  }> {
+    if (!merchantId) {
+      throw new ForbiddenException('Merchant ID missing in auth token');
+    }
+    if (!file) {
+      throw new BadRequestException(
+        'Upload a CSV or XLSX file using the file field',
+      );
+    }
+
+    const rows = await this.parcelImportParser.parse(file, defaults);
+    const importResult = await this.parcelsService.bulkImportRows(
+      rows,
+      userId,
+      merchantId,
+    );
+
+    return {
+      message:
+        importResult.summary.failed === 0
+          ? 'All parcels were imported successfully.'
+          : 'Bulk import completed with row-level results.',
+      ...importResult,
+    };
   }
 
   /**

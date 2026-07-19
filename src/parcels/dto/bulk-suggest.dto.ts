@@ -2,8 +2,6 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
-  IsNumber,
-  IsBoolean,
   IsUUID,
   ArrayMinSize,
   ValidateNested,
@@ -26,6 +24,10 @@ export class BulkOrderItemDto {
   @IsNotEmpty()
   @IsString()
   customer_phone: string;
+
+  @IsOptional()
+  @IsString()
+  customer_secondary_phone?: string;
 
   @IsNotEmpty()
   @IsString()
@@ -66,6 +68,10 @@ export class BulkOrderItemDto {
   @IsOptional()
   @IsString()
   is_cod_raw?: string; // 'TRUE' or 'FALSE'
+
+  @IsOptional()
+  @IsString()
+  is_exchange_raw?: string; // 'TRUE' or 'FALSE'
 
   @IsOptional()
   @IsString()
