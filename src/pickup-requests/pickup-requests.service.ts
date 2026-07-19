@@ -8,7 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, Between, IsNull } from 'typeorm';
+import { Repository, FindOptionsWhere, Between, IsNull, In } from 'typeorm';
 import { PickupRequest } from './entities/pickup-request.entity';
 import { CreatePickupRequestDto } from './dto/create-pickup-request.dto';
 import { UpdatePickupRequestDto } from './dto/update-pickup-request.dto';
@@ -16,7 +16,8 @@ import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum'
 import { Store } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Rider } from '../riders/entities/rider.entity';
-import { Parcel } from '../parcels/entities/parcel.entity';
+import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
+import { ParcelTrackingActorType } from '../parcels/parcel-tracking.types';
 import {
   PaginatedResponse,
   PaginationMeta,
@@ -38,6 +39,61 @@ export class PickupRequestsService {
     @InjectRepository(Parcel)
     private readonly parcelRepository: Repository<Parcel>,
   ) {}
+
+  private async updateParcelPickupLifecycle(
+    pickupRequestId: string,
+    status: ParcelStatus.OUT_FOR_PICKUP | ParcelStatus.PICKED_UP,
+    actorType: ParcelTrackingActorType,
+    actorId: string,
+    parcelIds?: string[],
+    targetPickupRequestId?: string,
+  ): Promise<number> {
+    if (parcelIds && parcelIds.length === 0) return 0;
+
+    const where: FindOptionsWhere<Parcel> = {
+      pickup_request_id: pickupRequestId,
+    };
+    if (parcelIds) where.id = In(parcelIds);
+
+    const parcels = await this.parcelRepository.find({ where });
+    if (parcelIds && parcels.length !== parcelIds.length) {
+      throw new BadRequestException(
+        'One or more selected parcels do not belong to this pickup request',
+      );
+    }
+
+    const eligible = parcels.filter((parcel) =>
+      status === ParcelStatus.OUT_FOR_PICKUP
+        ? parcel.status === ParcelStatus.PENDING
+        : [
+            ParcelStatus.PENDING,
+            ParcelStatus.OUT_FOR_PICKUP,
+            ParcelStatus.PICKED_UP,
+          ].includes(parcel.status),
+    );
+    const occurredAt = new Date();
+
+    for (const parcel of eligible) {
+      parcel.status = status;
+      if (status === ParcelStatus.PICKED_UP) {
+        parcel.picked_up_at = occurredAt;
+      }
+      if (targetPickupRequestId) {
+        parcel.pickup_request_id = targetPickupRequestId;
+      }
+      parcel.tracking_context = {
+        actor_type: actorType,
+        actor_id: actorId,
+        source: 'PICKUP_REQUEST',
+        metadata: {
+          pickup_request_id: targetPickupRequestId || pickupRequestId,
+        },
+      };
+      await this.parcelRepository.save(parcel);
+    }
+
+    return eligible.length;
+  }
 
   /**
    * Generate unique request code in format: REQ-2001, REQ-2002, etc.
@@ -784,7 +840,14 @@ export class PickupRequestsService {
     pickupRequest.status = PickupRequestStatus.PICKED_UP;
     pickupRequest.picked_up_at = new Date();
 
-    return await this.pickupRequestRepository.save(pickupRequest);
+    const saved = await this.pickupRequestRepository.save(pickupRequest);
+    await this.updateParcelPickupLifecycle(
+      id,
+      ParcelStatus.PICKED_UP,
+      ParcelTrackingActorType.HUB,
+      hubId,
+    );
+    return saved;
   }
 
   /**
@@ -998,7 +1061,14 @@ export class PickupRequestsService {
       `Pickup ${pickupId} assigned to rider ${riderId} by hub ${hubId}`,
     );
 
-    return await this.pickupRequestRepository.save(pickup);
+    const saved = await this.pickupRequestRepository.save(pickup);
+    await this.updateParcelPickupLifecycle(
+      pickup.id,
+      ParcelStatus.OUT_FOR_PICKUP,
+      ParcelTrackingActorType.HUB,
+      hubId,
+    );
+    return saved;
   }
 
   /**
@@ -1268,6 +1338,7 @@ export class PickupRequestsService {
     riderId: string,
     pickedUpCount?: number,
     notes?: string,
+    parcelIds?: string[],
   ): Promise<{ pickup: PickupRequest; remaining: number; pickedUp: number }> {
     // Find pickup request
     const pickup = await this.pickupRequestRepository.findOne({
@@ -1308,6 +1379,12 @@ export class PickupRequestsService {
       );
     }
 
+    if (parcelIds && parcelIds.length !== actualPickedCount) {
+      throw new BadRequestException(
+        'parcel_ids length must match picked_up_count',
+      );
+    }
+
     // Calculate remaining
     const remaining = originalEstimated - actualPickedCount;
 
@@ -1336,6 +1413,17 @@ export class PickupRequestsService {
       });
 
       await this.pickupRequestRepository.save(completedPickup);
+
+      if (parcelIds) {
+        await this.updateParcelPickupLifecycle(
+          pickup.id,
+          ParcelStatus.PICKED_UP,
+          ParcelTrackingActorType.RIDER,
+          riderId,
+          parcelIds,
+          completedPickup.id,
+        );
+      }
 
       // 2. Update original request with remaining parcels
       pickup.estimated_parcels = remaining;
@@ -1373,6 +1461,12 @@ export class PickupRequestsService {
       }
 
       await this.pickupRequestRepository.save(pickup);
+      await this.updateParcelPickupLifecycle(
+        pickup.id,
+        ParcelStatus.PICKED_UP,
+        ParcelTrackingActorType.RIDER,
+        riderId,
+      );
       completedPickup = pickup;
 
       this.logger.log(
@@ -1485,6 +1579,12 @@ export class PickupRequestsService {
         }
 
         await this.pickupRequestRepository.save(pickup);
+        await this.updateParcelPickupLifecycle(
+          pickup.id,
+          ParcelStatus.OUT_FOR_PICKUP,
+          ParcelTrackingActorType.HUB,
+          hubId || rider.hub_id,
+        );
         results.push({
           pickupId,
           success: true,

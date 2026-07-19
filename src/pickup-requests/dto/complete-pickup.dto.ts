@@ -1,4 +1,13 @@
-import { IsInt, IsNotEmpty, Min, IsOptional, IsString } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 
 /**
  * DTO for rider to complete pickup with actual count
@@ -13,4 +22,11 @@ export class CompletePickupDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** Required for exact per-parcel tracking when only part of a pickup is collected. */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  parcel_ids?: string[];
 }

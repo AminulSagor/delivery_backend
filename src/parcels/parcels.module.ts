@@ -17,6 +17,9 @@ import { SmsService } from '../utils/sms.service';
 import { SmsPreference } from '../admin/entities/sms-preference.entity';
 import { SmsPreferencesService } from '../admin/services/sms-preferences.service';
 import { ParcelImportParserService } from './services/parcel-import-parser.service';
+import { ParcelTrackingEvent } from './entities/parcel-tracking-event.entity';
+import { ParcelTrackingService } from './services/parcel-tracking.service';
+import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscriber';
 
 @Module({
   imports: [
@@ -29,6 +32,7 @@ import { ParcelImportParserService } from './services/parcel-import-parser.servi
       Hub,
       User,
       SmsPreference,
+      ParcelTrackingEvent,
     ]),
     PricingModule,
     CustomerModule,
@@ -41,7 +45,9 @@ import { ParcelImportParserService } from './services/parcel-import-parser.servi
     ParcelImportParserService,
     SmsService,
     SmsPreferencesService,
+    ParcelTrackingService,
+    ParcelTrackingSubscriber,
   ],
-  exports: [ParcelsService],
+  exports: [ParcelsService, ParcelTrackingService],
 })
 export class ParcelsModule {}

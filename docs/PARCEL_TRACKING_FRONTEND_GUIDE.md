@@ -1,138 +1,163 @@
-## Parcel tracking — quick, human guide
+# Parcel lifecycle tracking API
 
-This page explains, in plain language, what the backend sends in `tracking` and how to show it in your UI.
+The backend exposes a public, authentication-free parcel tracker:
 
-Purpose: the backend already turns internal parcel timestamps and status values into a small, ready-to-display `tracking` object. Use that object directly — it tells you what steps are done and provides a short activity history.
+```http
+GET /parcels/tracking/:trackingNumber
+```
 
-What you get:
+`:trackingNumber` accepts either `tracking_number` or `parcel_tx_id`. Leading
+and trailing whitespace is ignored.
 
-- `parcel_id`: the parcel reference (show this at the top).
-- `current_status`: one of the parcel status enums (use for a badge).
-- `delivery_milestones`: ordered steps with `is_completed` booleans (use for a stepper/progress view).
-- `activities`: short messages with timestamps (use for a timeline, newest-first).
+## Backward compatibility
 
-Simple example (typical shape):
+The endpoint still returns the complete `parcel` object and keeps these older
+tracking fields unchanged:
+
+- `tracking.parcel_id`
+- `tracking.current_status`
+- `tracking.delivery_milestones`
+- `tracking.activities` (newest first)
+
+The durable lifecycle fields below are additive, so an existing frontend can
+keep working and adopt the richer tracker gradually.
+
+## New lifecycle fields
 
 ```json
 {
-  "tracking": {
-    "parcel_id": "MF120526DHV4",
-    "current_status": "ASSIGNED_TO_THIRD_PARTY",
-    "delivery_milestones": [
-      { "key": "picked", "label": "Picked", "is_completed": true },
-      { "key": "sorted", "label": "Sorted", "is_completed": true },
-      { "key": "in_transit", "label": "In Transit", "is_completed": false }
-    ],
-    "activities": [
-      { "id": 1, "message": "Assigned to third-party provider", "timestamp": "2026-05-12T11:00:00.000Z", "location": null }
-    ]
-  }
+  "parcel": {
+    "tracking_number": "MF120526DHV4",
+    "status": "IN_TRANSIT",
+    "tracking": {
+      "parcel_id": "#139679",
+      "current_status": "IN_TRANSIT",
+      "current_stage": "HUB_TRANSFER_STARTED",
+      "direction": "RETURN",
+      "is_return_parcel": false,
+      "is_returning": true,
+      "is_terminal": false,
+      "is_successful_delivery": false,
+      "is_return_completed": false,
+      "delivery_milestones": [],
+      "lifecycle_milestones": [],
+      "activities": [],
+      "events": [
+        {
+          "id": "event-uuid",
+          "event_type": "HUB_TRANSFER_STARTED",
+          "title": "Hub transfer started",
+          "description": "The parcel departed from Dhaka Hub for Cumilla Hub.",
+          "message": "The parcel departed from Dhaka Hub for Cumilla Hub.",
+          "from_status": "RETURNED_TO_HUB",
+          "to_status": "IN_TRANSIT",
+          "status": "IN_TRANSIT",
+          "timestamp": "2026-07-19T10:00:00.000Z",
+          "location": "Dhaka Hub",
+          "actor": {
+            "type": "HUB",
+            "id": "hub-uuid",
+            "name": "Dhaka Hub",
+            "source": "PARCEL_SERVICE"
+          },
+          "hub": null,
+          "route": {
+            "from_hub": { "id": "hub-1", "name": "Dhaka Hub" },
+            "to_hub": { "id": "hub-2", "name": "Cumilla Hub" }
+          },
+          "rider": null,
+          "related_parcel": null,
+          "metadata": null,
+          "is_legacy_backfill": false
+        }
+      ],
+      "journey": {
+        "current_hub": null,
+        "origin_hub": { "id": "hub-1", "branch_name": "Dhaka Hub" },
+        "destination_hub": {
+          "id": "hub-2",
+          "branch_name": "Cumilla Hub"
+        },
+        "is_inter_hub_transfer": true,
+        "is_in_transit": true,
+        "transferred_at": "2026-07-19T10:00:00.000Z",
+        "received_at_destination_hub": null
+      },
+      "linked_parcels": {
+        "original": null,
+        "returns": [
+          {
+            "id": "return-parcel-uuid",
+            "tracking_number": "RTN-MF120526DHV4",
+            "parcel_tx_id": "#RTN123",
+            "status": "IN_HUB",
+            "is_return_parcel": true,
+            "original_parcel_id": "original-parcel-uuid"
+          }
+        ]
+      }
+    }
+  },
+  "message": "Parcel retrieved successfully"
 }
 ```
 
-How milestones become `is_completed` (server rules):
+## Events recorded
 
-- `picked` = `picked_up_at` exists, or any later physical-progress state exists (hub, received, assigned, out-for-delivery, delivered)
-- `sorted` = parcel is in hub / in transit or `picked` is already true
-- `in_transit` = parcel.status === `IN_TRANSIT`
-- `received_at_lmh` = `received_at` or `received_at_destination_hub` exists
-- `assigned_for_delivery` = `assigned_at` exists
-- `delivered` = `delivered_at` exists
+The tracker persists immutable rows in `parcel_tracking_events`. A later update
+never overwrites an earlier hub, rider, delivery attempt, or return step.
 
-How activity messages are made (server-side):
+Covered lifecycle groups include:
 
-- The backend collects events from parcel fields (created, weight change, picked up, hub update, assignment, out-for-delivery, delivered) and pushes short human messages into an array.
-- If the rider enters a delivery-initiation note, the backend stores it on the parcel and adds it to `activities` as a rider note message.
-- Messages are fixed text templates inside `toParcelDetail()` and include small contextual bits (e.g. rider name/phone, hub branch name).
-- The array is sorted oldest→newest, assigned incremental IDs, then reversed so the API returns newest-first.
+- parcel creation and merchant/hub/admin detail changes;
+- pickup request linkage, pickup, and initial hub receipt;
+- every inter-hub departure and destination receipt, including three or more
+  hub legs;
+- rider assignment, rider-to-rider transfer, acceptance, and unassignment;
+- internal and Carrybee/third-party handoffs and status webhooks;
+- out for pickup, out for delivery, delivered, partial delivery, and exchange;
+- failed attempts, reasons, rescheduling, and redelivery preparation;
+- returned, paid return, returned to hub, return to merchant, and the separately
+  linked `RTN-...` parcel journey;
+- issue reported, resolved, reopened, and cleared;
+- cancellation and other status transitions.
 
-Where to change text or add events:
+For a partial pickup, send the optional `parcel_ids` array to
+`PATCH /pickup-requests/:id/rider/complete`. Its length must match
+`picked_up_count`. This lets the backend mark the exact parcels as `PICKED_UP`
+and move them to the completed pickup record. Older clients may omit the field;
+their count-only behavior remains supported, but individual parcels cannot be
+identified from a count alone.
 
-- Edit `toParcelDetail()` in `src/common/interfaces/responses.interface.ts` — that's where milestone array and activity messages are built.
+Hub and rider names are saved as event-time snapshots. Renaming a hub or rider
+later therefore does not rewrite historical tracking text.
 
-Quick mapping you can paste into your frontend (status → badge color):
+## Existing parcels
 
-- ASSIGNED_TO_THIRD_PARTY → orange
-- PICKED_UP → green
-- IN_TRANSIT → blue
-- IN_HUB → cyan
-- OUT_FOR_DELIVERY → purple
-- DELIVERED → green
-- RETURNED → red
-- FAILED_DELIVERY → red
+Parcels created before this feature do not need a migration job. If they have no
+stored events, the API builds a compatible legacy timeline from their existing
+timestamps. When a legacy parcel is changed for the first time, the subscriber
+stores the recoverable baseline before recording the new mutation.
 
-Simple rendering rules for UI:
+Legacy events have `is_legacy_backfill: true`. Historical repeated actions that
+were overwritten before this feature existed cannot be reconstructed, but every
+new action is durable.
 
-1. Show `tracking.parcel_id` and `tracking.current_status` at top.
-2. Render `delivery_milestones` in the order provided; use `is_completed` to colour/mark each step.
-3. Render `activities` newest-first; show `message`, formatted `timestamp`, and `location` if present.
-4. If `tracking` is missing, show a friendly fallback like "Tracking not available yet." and refresh after actions.
+## Frontend rendering
 
-Tiny React example (copy-paste):
+1. Use `current_status` for the main badge and `direction` for forward/return UI.
+2. Use `lifecycle_milestones` for a detailed stepper; keep
+   `delivery_milestones` if the old six-step UI must remain unchanged.
+3. Render `events` newest first for the complete audit-style timeline.
+4. For a simple timeline, render `activities` using `message`, `timestamp`, and
+   `location`.
+5. Render `route.from_hub` and `route.to_hub` for hub-transfer events.
+6. Use `linked_parcels.original` and `linked_parcels.returns` to let users switch
+   between the forward parcel and its return tracking number.
 
-```tsx
-export function ParcelTrackingCard({ tracking }: { tracking?: any }) {
-  if (!tracking) return <div>Tracking not available.</div>;
+## Implementation locations
 
-  return (
-    <div>
-      <div><strong>{tracking.parcel_id}</strong> — {tracking.current_status}</div>
-      <ol>
-        {tracking.delivery_milestones.map((m: any) => (
-          <li key={m.key} style={{ color: m.is_completed ? 'green' : 'gray' }}>{m.label}</li>
-        ))}
-      </ol>
-      <div>
-        {tracking.activities.map((a: any) => (
-          <div key={a.id}>
-            <div><strong>{a.message}</strong></div>
-            <small>{new Date(a.timestamp).toLocaleString()}</small>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
-
-If you'd like, I can also:
-Below is a visual mapping that shows how backend parcel fields flow into the
-`tracking` object and into frontend components. Use this to wire your UI
-components to the server model.
-
-```mermaid
-flowchart TD
-  ParcelEntity[Parcel entity fields]
-  ParcelEntity -->|mapper: toParcelDetail()| TrackingObj[tracking object]
-  TrackingObj --> CurrentStatus[current_status]
-  TrackingObj --> Milestones[delivery_milestones]
-  TrackingObj --> Activities[activities]
-
-  CurrentStatus --> Badge[UI: Status Badge]
-  Milestones --> Stepper[UI: Stepper / Progress]
-  Activities --> Timeline[UI: Activity Timeline]
-
-  style ParcelEntity fill:#f9f,stroke:#333,stroke-width:1px
-  style TrackingObj fill:#ff9,stroke:#333,stroke-width:1px
-  style Badge fill:#9f9,stroke:#333
-  style Stepper fill:#9ff,stroke:#333
-  style Timeline fill:#f99,stroke:#333
-```
-
-Concise field → UI mapping:
-
-- Parcel entity `created_at`, `picked_up_at`, `assigned_at`, `out_for_delivery_at`, `delivered_at` → used by `toParcelDetail()` to populate `activities` (timeline entries) and `delivery_milestones`.
-- Parcel entity `status` → `tracking.current_status` (use for the status badge color/label).
-- `delivery_milestones[].is_completed` → Stepper completed state (boolean: filled/checked).
-- `activities[]` (id, message, timestamp, location) → render as newest-first timeline rows.
-
-Where to change text or add events:
-
-- Edit `toParcelDetail()` in `src/common/interfaces/responses.interface.ts` — that's where milestone array and activity messages are built and where you can adjust wording or add events.
-
-
-Source for the server logic:
-
-- `src/common/interfaces/responses.interface.ts` — builds `tracking` and activity messages
-- `src/parcels/entities/parcel.entity.ts` — defines the parcel fields used by the builder
-
+- `src/parcels/entities/parcel-tracking-event.entity.ts`: immutable event table
+- `src/parcels/subscribers/parcel-tracking.subscriber.ts`: automatic mutation capture
+- `src/parcels/services/parcel-tracking.service.ts`: event loading and legacy fallback
+- `src/common/interfaces/responses.interface.ts`: public response mapping

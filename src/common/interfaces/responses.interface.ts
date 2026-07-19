@@ -756,7 +756,8 @@ export function toParcelDetail(parcel: any): any {
       'Rider';
     const rPhone =
       parcel.assignedRider.user?.phone || parcel.assignedRider.phone || null;
-    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Assigned';
+    const statusLabel =
+      STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Assigned';
     acts.push({
       message: `Parcel assigned for delivery to ${rName}${rPhone ? ` (${rPhone})` : ''} (${statusLabel})`,
       timestamp: parcel.assigned_at,
@@ -767,7 +768,10 @@ export function toParcelDetail(parcel: any): any {
     acts.push({
       message: `Rider note: ${parcel.admin_notes}`,
       timestamp:
-        parcel.updated_at ?? parcel.out_for_delivery_at ?? parcel.assigned_at ?? parcel.created_at,
+        parcel.updated_at ??
+        parcel.out_for_delivery_at ??
+        parcel.assigned_at ??
+        parcel.created_at,
       location: null,
     });
   }
@@ -776,7 +780,8 @@ export function toParcelDetail(parcel: any): any {
       parcel.assignedRider.user?.full_name ||
       parcel.assignedRider.full_name ||
       'Rider';
-    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Out For Delivery';
+    const statusLabel =
+      STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Out For Delivery';
     acts.push({
       message: `${rName} is on the way to the recipient address (${statusLabel})`,
       timestamp: parcel.out_for_delivery_at,
@@ -784,7 +789,8 @@ export function toParcelDetail(parcel: any): any {
     });
   }
   if (parcel.delivered_at) {
-    const statusLabel = STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Delivered';
+    const statusLabel =
+      STATUS_LABELS[parcel.status] ?? parcel.status ?? 'Delivered';
     acts.push({
       message: `Parcel delivered (${statusLabel})`,
       timestamp: parcel.delivered_at,
@@ -797,15 +803,245 @@ export function toParcelDetail(parcel: any): any {
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   );
   acts.forEach((a: any, idx: number) => (a.id = idx + 1));
-  const activities = acts.reverse();
+  const syntheticActivities = acts.reverse();
+
+  const trackingEvents = Array.isArray(parcel.tracking_events)
+    ? [...parcel.tracking_events]
+        .filter((event: any) => event?.is_public !== false)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.occurred_at).getTime() -
+              new Date(a.occurred_at).getTime() ||
+            new Date(b.created_at || b.occurred_at).getTime() -
+              new Date(a.created_at || a.occurred_at).getTime(),
+        )
+        .map((event: any) => ({
+          id: event.id,
+          event_type: event.event_type,
+          title: event.title,
+          description: event.description ?? null,
+          message: event.description || event.title,
+          from_status: event.from_status ?? null,
+          to_status: event.to_status ?? null,
+          status: event.to_status ?? event.from_status ?? null,
+          timestamp: event.occurred_at,
+          location: event.location || event.hub_name || null,
+          actor: {
+            type: event.actor_type || 'SYSTEM',
+            id: event.actor_id ?? null,
+            name: event.actor_name ?? null,
+            source: event.source || 'SYSTEM',
+          },
+          hub: event.hub_id
+            ? { id: event.hub_id, name: event.hub_name ?? null }
+            : null,
+          route:
+            event.from_hub_id || event.to_hub_id
+              ? {
+                  from_hub: event.from_hub_id
+                    ? {
+                        id: event.from_hub_id,
+                        name: event.from_hub_name ?? null,
+                      }
+                    : null,
+                  to_hub: event.to_hub_id
+                    ? {
+                        id: event.to_hub_id,
+                        name: event.to_hub_name ?? null,
+                      }
+                    : null,
+                }
+              : null,
+          rider: event.rider_id
+            ? { id: event.rider_id, name: event.rider_name ?? null }
+            : null,
+          related_parcel: event.related_parcel_id
+            ? {
+                id: event.related_parcel_id,
+                tracking_number: event.related_tracking_number ?? null,
+              }
+            : null,
+          metadata: event.metadata ?? null,
+          is_legacy_backfill: event.source === 'LEGACY_BACKFILL',
+        }))
+    : [];
+
+  const activities =
+    trackingEvents.length > 0
+      ? trackingEvents.map((event: any) => ({
+          id: event.id,
+          event_type: event.event_type,
+          message: event.message,
+          timestamp: event.timestamp,
+          location: event.location,
+          status: event.status,
+          actor: event.actor,
+        }))
+      : syntheticActivities;
+
+  const eventTypes = new Set(
+    trackingEvents.map((event: any) => event.event_type),
+  );
+  const eventStatuses = new Set(
+    trackingEvents
+      .flatMap((event: any) => [event.from_status, event.to_status])
+      .filter(Boolean),
+  );
+  const hasEvent = (...types: string[]) =>
+    types.some((type) => eventTypes.has(type));
+
+  if (trackingEvents.length > 0) {
+    milestones[0].is_completed =
+      milestones[0].is_completed || hasEvent('PICKED_UP');
+    milestones[1].is_completed =
+      milestones[1].is_completed ||
+      hasEvent('HUB_RECEIVED', 'HUB_TRANSFER_RECEIVED', 'HUB_CHANGED');
+    milestones[2].is_completed =
+      milestones[2].is_completed ||
+      hasEvent('HUB_TRANSFER_STARTED') ||
+      eventStatuses.has(ParcelStatus.IN_TRANSIT);
+    milestones[3].is_completed =
+      milestones[3].is_completed ||
+      hasEvent('HUB_RECEIVED', 'HUB_TRANSFER_RECEIVED');
+    milestones[4].is_completed =
+      milestones[4].is_completed ||
+      hasEvent('RIDER_ASSIGNED', 'RIDER_TRANSFERRED');
+    milestones[5].is_completed =
+      parcel.status === ParcelStatus.DELIVERED ||
+      hasEvent('DELIVERY_COMPLETED');
+  }
+
+  const successfulStatuses = [
+    ParcelStatus.DELIVERED,
+    ParcelStatus.PARTIAL_DELIVERY,
+    ParcelStatus.EXCHANGE,
+  ];
+  const terminalStatuses = [
+    ...successfulStatuses,
+    ParcelStatus.RETURN_TO_MERCHANT,
+    ParcelStatus.CANCELLED,
+  ];
+  const returningStatuses = [
+    ParcelStatus.RETURNED,
+    ParcelStatus.PAID_RETURN,
+    ParcelStatus.RETURNED_TO_HUB,
+    ParcelStatus.RETURN_TO_MERCHANT,
+  ];
+  const hasReturnHistory = hasEvent(
+    'RETURN_INITIATED',
+    'PAID_RETURN_INITIATED',
+    'RETURNED_TO_HUB',
+    'RETURN_TO_MERCHANT',
+    'RETURN_PARCEL_CREATED',
+  );
+  const isReturnJourney =
+    !!parcel.is_return_parcel ||
+    returningStatuses.includes(parcel.status) ||
+    hasReturnHistory;
+  const isTerminal = terminalStatuses.includes(parcel.status);
+  const linkedReturns = Array.isArray(parcel.returnParcels)
+    ? parcel.returnParcels
+    : [];
+  const latestLinkedReturn = linkedReturns.at(-1) || null;
+  const isReturnCompleted =
+    isReturnJourney &&
+    (latestLinkedReturn
+      ? successfulStatuses.includes(latestLinkedReturn.status)
+      : !!parcel.is_return_parcel &&
+        successfulStatuses.includes(parcel.status));
+  const latestEvent = trackingEvents[0] || null;
+
+  const lifecycleMilestones = [
+    {
+      key: 'created',
+      label: 'Created',
+      is_completed:
+        !!parcel.created_at ||
+        hasEvent('PARCEL_CREATED', 'RETURN_PARCEL_CREATED'),
+    },
+    {
+      key: 'picked_up',
+      label: 'Picked Up',
+      is_completed: !!parcel.picked_up_at || hasEvent('PICKED_UP'),
+    },
+    {
+      key: 'hub_processing',
+      label: 'Hub Processing',
+      is_completed:
+        !!parcel.current_hub_id ||
+        hasEvent('HUB_RECEIVED', 'HUB_TRANSFER_RECEIVED', 'HUB_CHANGED'),
+    },
+    {
+      key: 'inter_hub_transit',
+      label: 'Inter-hub Transit',
+      is_completed:
+        !!parcel.is_inter_hub_transfer || hasEvent('HUB_TRANSFER_STARTED'),
+      is_applicable:
+        !!parcel.is_inter_hub_transfer || hasEvent('HUB_TRANSFER_STARTED'),
+    },
+    {
+      key: 'assigned_for_delivery',
+      label: 'Assigned For Delivery',
+      is_completed:
+        !!parcel.assigned_at || hasEvent('RIDER_ASSIGNED', 'RIDER_TRANSFERRED'),
+    },
+    {
+      key: 'out_for_delivery',
+      label: 'Out For Delivery',
+      is_completed:
+        !!parcel.out_for_delivery_at || hasEvent('OUT_FOR_DELIVERY'),
+    },
+    {
+      key: 'finalized',
+      label: isReturnJourney ? 'Returned To Merchant' : 'Finalized',
+      is_completed: isReturnJourney ? isReturnCompleted : isTerminal,
+    },
+  ];
+
+  const toLinkedParcel = (linked: any) =>
+    linked
+      ? {
+          id: linked.id,
+          tracking_number: linked.tracking_number,
+          parcel_tx_id: linked.parcel_tx_id ?? null,
+          status: linked.status,
+          is_return_parcel: !!linked.is_return_parcel,
+          original_parcel_id: linked.original_parcel_id ?? null,
+          created_at: linked.created_at ?? null,
+          updated_at: linked.updated_at ?? null,
+        }
+      : null;
 
   return {
     ...base,
     tracking: {
       parcel_id: base.parcel_tx_id || base.tracking_number || base.id,
       current_status: parcel.status,
+      current_stage: latestEvent?.event_type || parcel.status,
+      direction: isReturnJourney ? 'RETURN' : 'FORWARD',
+      is_return_parcel: !!parcel.is_return_parcel,
+      is_returning: isReturnJourney && !isReturnCompleted,
+      is_terminal: isTerminal,
+      is_successful_delivery:
+        !isReturnJourney && successfulStatuses.includes(parcel.status),
+      is_return_completed: isReturnCompleted,
       delivery_milestones: milestones,
+      lifecycle_milestones: lifecycleMilestones,
       activities,
+      events: trackingEvents,
+      journey: {
+        current_hub: toHubSummary(parcel.currentHub),
+        origin_hub: toHubSummary(parcel.originHub),
+        destination_hub: toHubSummary(parcel.destinationHub),
+        is_inter_hub_transfer: !!parcel.is_inter_hub_transfer,
+        is_in_transit: parcel.status === ParcelStatus.IN_TRANSIT,
+        transferred_at: parcel.transferred_at ?? null,
+        received_at_destination_hub: parcel.received_at_destination_hub ?? null,
+      },
+      linked_parcels: {
+        original: toLinkedParcel(parcel.originalParcel),
+        returns: linkedReturns.map(toLinkedParcel),
+      },
     },
   };
 }

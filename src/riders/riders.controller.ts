@@ -803,7 +803,7 @@ export class RidersController {
   // ===== RIDER PARCEL ACTIONS =====
 
   /**
-   * Rider accepts parcel (optional - marks when rider picks up from hub)
+   * Rider accepts parcel (optional - marks the parcel OUT_FOR_DELIVERY)
    * Note: This is optional. Rider can directly initiate delivery without accepting first.
    */
   @Patch('parcels/:id/accept')

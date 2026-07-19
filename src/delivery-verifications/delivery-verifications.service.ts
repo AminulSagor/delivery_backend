@@ -23,6 +23,7 @@ import {
   PaymentStatus,
   REASON_REQUIRED_STATUSES,
 } from '../parcels/entities/parcel.entity';
+import { ParcelTrackingActorType } from '../parcels/parcel-tracking.types';
 import {
   ReturnChargeConfiguration,
   ReturnStatus,
@@ -173,10 +174,15 @@ export class DeliveryVerificationsService {
       throw new NotFoundException('Parcel not found or not assigned to you');
     }
 
-    // Check if parcel is in correct status (ASSIGNED_TO_RIDER - ready for delivery)
-    if (parcel.status !== ParcelStatus.ASSIGNED_TO_RIDER) {
+    // Rider may initiate directly from assignment, or after explicitly accepting
+    // the parcel (which moves it to OUT_FOR_DELIVERY).
+    const deliveryReadyStatuses = [
+      ParcelStatus.ASSIGNED_TO_RIDER,
+      ParcelStatus.OUT_FOR_DELIVERY,
+    ];
+    if (!deliveryReadyStatuses.includes(parcel.status)) {
       throw new BadRequestException(
-        `Parcel must be ASSIGNED_TO_RIDER to initiate delivery. Current status: ${parcel.status}`,
+        `Parcel must be ASSIGNED_TO_RIDER or OUT_FOR_DELIVERY to initiate delivery. Current status: ${parcel.status}`,
       );
     }
 
@@ -271,6 +277,11 @@ export class DeliveryVerificationsService {
       this.resetOtpBypassRequestState(existingVerification);
 
       parcel.admin_notes = reason || null;
+      parcel.tracking_context = {
+        actor_type: ParcelTrackingActorType.RIDER,
+        actor_id: riderId,
+        source: 'DELIVERY_VERIFICATION',
+      };
       await this.parcelRepo.save(parcel);
 
       if (skipOtpVerification) {
@@ -377,6 +388,11 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     parcel.admin_notes = reason || null;
+    parcel.tracking_context = {
+      actor_type: ParcelTrackingActorType.RIDER,
+      actor_id: riderId,
+      source: 'DELIVERY_VERIFICATION',
+    };
     await this.parcelRepo.save(parcel);
 
     if (skipOtpVerification) {
@@ -1168,6 +1184,11 @@ export class DeliveryVerificationsService {
     // Update parcel status
     parcel.status = selectedStatus;
     parcel.delivered_at = new Date();
+    parcel.tracking_context = {
+      actor_type: ParcelTrackingActorType.RIDER,
+      actor_id: verification.rider_id,
+      source: 'DELIVERY_VERIFICATION',
+    };
 
     // Regenerate parcel display ID for delivery/exchange/return outcomes.
     // Uses original parcel create date in DDMMYY format.

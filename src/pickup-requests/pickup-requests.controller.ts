@@ -335,6 +335,7 @@ export class PickupRequestsController {
         riderId,
         completeDto.picked_up_count,
         completeDto.notes,
+        completeDto.parcel_ids,
       );
 
     return {

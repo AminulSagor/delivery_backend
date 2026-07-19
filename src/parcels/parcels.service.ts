@@ -55,6 +55,7 @@ import { ParcelType } from '../common/enums/parcel-type.enum';
 import { DeliveryType } from '../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
+import { createHash } from 'crypto';
 
 // --- EXPORTED TYPES (Required for Controller) ---
 export interface ParcelCreationResult {
@@ -124,6 +125,11 @@ import {
   SmsPreferenceEvent,
   SmsPreferenceRecipient,
 } from '../admin/entities/sms-preference.entity';
+import { ParcelTrackingService } from './services/parcel-tracking.service';
+import {
+  ParcelTrackingActorType,
+  ParcelTrackingEventType,
+} from './parcel-tracking.types';
 
 type ParcelStatusFilter = ParcelStatus | 'ACTIVE';
 
@@ -166,6 +172,7 @@ export class ParcelsService {
     private smsService: SmsService,
     private smsPreferencesService: SmsPreferencesService,
     private dataSource: DataSource,
+    private parcelTrackingService: ParcelTrackingService,
   ) {}
 
   private readonly parcelDetailRelations = [
@@ -184,6 +191,7 @@ export class ParcelsService {
     'originHub',
     'destinationHub',
     'thirdPartyProvider',
+    'originalParcel',
   ];
 
   private formatSmsAmount(amount: number): string {
@@ -1434,6 +1442,12 @@ export class ParcelsService {
         recipient_carrybee_zone_id,
         recipient_carrybee_area_id,
       });
+      parcel.tracking_context = {
+        actor_type: ParcelTrackingActorType.MERCHANT,
+        actor_id: merchantId,
+        actor_name: user.full_name || null,
+        source: 'MERCHANT_CREATE',
+      };
       let savedParcel;
       try {
         savedParcel = await this.parcelRepository.save(parcel);
@@ -1676,6 +1690,11 @@ export class ParcelsService {
         recipient_carrybee_zone_id: deliveryArea?.zone_id || null,
         recipient_carrybee_area_id: deliveryArea?.area_id || null,
       });
+      parcel.tracking_context = {
+        actor_type: ParcelTrackingActorType.HUB,
+        actor_id: hubId,
+        source: 'HUB_CREATE',
+      };
 
       const savedParcel = await this.parcelRepository.save(parcel);
 
@@ -1733,7 +1752,10 @@ export class ParcelsService {
       return savedParcel;
     } catch (error: any) {
       this.logger.error(`[HUB CREATE ERROR] ${error.message}`, error.stack);
-      if (error instanceof NotFoundException || error instanceof BadRequestException)
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      )
         throw error;
       throw new InternalServerErrorException(
         'Failed to create and receive parcel',
@@ -1857,6 +1879,11 @@ export class ParcelsService {
         recipient_carrybee_zone_id: deliveryArea?.zone_id || null,
         recipient_carrybee_area_id: deliveryArea?.area_id || null,
       });
+      parcel.tracking_context = {
+        actor_type: ParcelTrackingActorType.ADMIN,
+        actor_id: adminId,
+        source: 'ADMIN_CREATE',
+      };
 
       const savedParcel = await this.parcelRepository.save(parcel);
 
@@ -2027,12 +2054,19 @@ export class ParcelsService {
 
   async findOneByTrackingNumber(trackingNumber: string): Promise<Parcel> {
     try {
+      const normalizedTrackingNumber = trackingNumber?.trim();
+      if (!normalizedTrackingNumber) {
+        throw new BadRequestException('Tracking number is required');
+      }
       const parcel = await this.parcelRepository.findOne({
-        where: { tracking_number: trackingNumber },
+        where: [
+          { tracking_number: normalizedTrackingNumber },
+          { parcel_tx_id: normalizedTrackingNumber },
+        ],
         relations: this.parcelDetailRelations,
       });
       if (!parcel) throw new NotFoundException('Parcel not found');
-      return parcel;
+      return await this.parcelTrackingService.enrichParcel(parcel);
     } catch (error: any) {
       if (
         error instanceof NotFoundException ||
@@ -2072,7 +2106,6 @@ export class ParcelsService {
           throw new ForbiddenException(
             'You do not have permission to view this parcel',
           );
-        return parcel;
       }
       // Hub manager can only view parcels currently at their hub
       if (hubId) {
@@ -2080,14 +2113,19 @@ export class ParcelsService {
           throw new ForbiddenException(
             'You do not have permission to view this parcel',
           );
-        return parcel;
       }
       // merchant_id references merchants table, so compare with merchantId from JWT
-      if (!isAdmin && merchantId && parcel.merchant_id !== merchantId)
+      if (
+        !riderId &&
+        !hubId &&
+        !isAdmin &&
+        merchantId &&
+        parcel.merchant_id !== merchantId
+      )
         throw new ForbiddenException(
           'You do not have permission to view this parcel',
         );
-      return parcel;
+      return await this.parcelTrackingService.enrichParcel(parcel);
     } catch (error: any) {
       if (
         error instanceof NotFoundException ||
@@ -2840,6 +2878,7 @@ export class ParcelsService {
       // Only allow marking as received if status is PENDING or PICKED_UP
       if (
         parcel.status !== ParcelStatus.PENDING &&
+        parcel.status !== ParcelStatus.OUT_FOR_PICKUP &&
         parcel.status !== ParcelStatus.PICKED_UP
       ) {
         throw new BadRequestException(
@@ -2849,6 +2888,7 @@ export class ParcelsService {
 
       parcel.status = ParcelStatus.IN_HUB;
       parcel.current_hub_id = hubId;
+      parcel.picked_up_at = parcel.picked_up_at || new Date();
 
       // Set origin hub if not already set (first time receiving)
       if (!parcel.origin_hub_id) {
@@ -2997,6 +3037,7 @@ export class ParcelsService {
         // Only allow marking as received if status is PENDING or PICKED_UP
         if (
           parcel.status !== ParcelStatus.PENDING &&
+          parcel.status !== ParcelStatus.OUT_FOR_PICKUP &&
           parcel.status !== ParcelStatus.PICKED_UP
         ) {
           results.push({
@@ -3004,7 +3045,7 @@ export class ParcelsService {
             parcel_tx_id: parcel.parcel_tx_id,
             tracking_number: parcel.tracking_number,
             success: false,
-            error: `Invalid status: ${parcel.status}. Must be PENDING or PICKED_UP`,
+            error: `Invalid status: ${parcel.status}. Must be PENDING, OUT_FOR_PICKUP, or PICKED_UP`,
           });
           failedCount++;
           continue;
@@ -3013,6 +3054,7 @@ export class ParcelsService {
         // Mark as received
         parcel.status = ParcelStatus.IN_HUB;
         parcel.current_hub_id = hubId;
+        parcel.picked_up_at = parcel.picked_up_at || new Date();
 
         // Set origin hub if not already set (first time receiving)
         if (!parcel.origin_hub_id) {
@@ -3247,11 +3289,11 @@ export class ParcelsService {
             continue;
           }
 
-          // Update assignment
-          await queryRunner.manager.update(Parcel, parcel.id, {
-            assigned_rider_id: targetRider.id,
-            assigned_at: new Date(),
-          });
+          // Save the entity so the immutable tracking subscriber can preserve
+          // both the previous and target rider in the parcel lifecycle.
+          parcel.assigned_rider_id = targetRider.id;
+          parcel.assigned_at = new Date();
+          await queryRunner.manager.save(Parcel, parcel);
 
           const updatedParcel = await queryRunner.manager.findOne(Parcel, {
             where: { id: parcel.id },
@@ -3486,6 +3528,17 @@ export class ParcelsService {
       const prevProductPrice = Number(parcel.product_price || 0);
       Object.assign(parcel, updateParcelDto);
 
+      parcel.tracking_context = {
+        actor_type:
+          actor.role === UserRole.HUB_MANAGER
+            ? ParcelTrackingActorType.HUB
+            : actor.role === UserRole.ADMIN
+              ? ParcelTrackingActorType.ADMIN
+              : ParcelTrackingActorType.MERCHANT,
+        actor_id: actor.hubId || actor.merchantId || null,
+        source: 'PARCEL_UPDATE',
+      };
+
       // Auto-set is_cod and cod_amount based on product_price if it's being updated
       if (updateParcelDto.product_price !== undefined) {
         const newPrice = Number(updateParcelDto.product_price || 0);
@@ -3504,7 +3557,10 @@ export class ParcelsService {
         parcel.cod_amount = newPrice;
         parcel.is_cod = newPrice > 0;
         parcel.receivable_amount =
-          Math.round((Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) * 100) / 100;
+          Math.round(
+            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) *
+              100,
+          ) / 100;
       }
 
       let updatedParcel;
@@ -3758,7 +3814,7 @@ export class ParcelsService {
       throw new BadRequestException('Rider must belong to your hub');
     }
 
-    // Assign parcel to rider - use update to avoid relation loading issues
+    // Assign parcel to rider.
     // Increment reschedule_count if parcel was in DELIVERY_RESCHEDULED status
     const updateData: any = {
       assigned_rider_id: rider.id,
@@ -3770,7 +3826,8 @@ export class ParcelsService {
       updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
     }
 
-    await this.parcelRepository.update(parcelId, updateData);
+    Object.assign(parcel, updateData);
+    await this.parcelRepository.save(parcel);
 
     // Reload parcel with updated data
     const updatedParcel = await this.parcelRepository.findOne({
@@ -3964,7 +4021,8 @@ export class ParcelsService {
           updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
         }
 
-        await this.parcelRepository.update(parcelId, updateData);
+        Object.assign(parcel, updateData);
+        await this.parcelRepository.save(parcel);
 
         results.push({
           parcel_id: parcelId,
@@ -4344,8 +4402,8 @@ export class ParcelsService {
   }
 
   /**
-   * Rider accepts parcel assignment (optional - for tracking when rider picks up from hub)
-   * Note: This is optional. Rider can directly initiate delivery without accepting first.
+   * Rider accepts parcel assignment and starts the last-mile leg.
+   * This remains optional: a rider can initiate delivery verification directly.
    */
   async riderAcceptParcel(parcelId: string, riderId: string) {
     const parcel = await this.parcelRepository.findOne({
@@ -4383,8 +4441,11 @@ export class ParcelsService {
       throw new BadRequestException('Parcel already accepted');
     }
 
-    // Just mark when rider picked up from hub (no status change)
+    // Accepting means the rider has taken custody from the hub and started the
+    // last-mile leg. Direct delivery initiation still works without this step.
     parcel.rider_accepted_at = new Date();
+    parcel.out_for_delivery_at = parcel.rider_accepted_at;
+    parcel.status = ParcelStatus.OUT_FOR_DELIVERY;
 
     await this.parcelRepository.save(parcel);
 
@@ -4713,6 +4774,9 @@ export class ParcelsService {
     parcel.destination_hub_id = transferDto.destination_hub_id;
     parcel.is_inter_hub_transfer = true;
     parcel.transferred_at = new Date();
+    // A parcel can travel through more than two hubs. Reset the receipt marker
+    // for every new leg or the next destination would treat it as already received.
+    parcel.received_at_destination_hub = null;
     parcel.transfer_notes = transferDto.transfer_notes || null;
     parcel.status = ParcelStatus.IN_TRANSIT;
 
@@ -4811,6 +4875,7 @@ export class ParcelsService {
       parcel.destination_hub_id = destination_hub_id;
       parcel.is_inter_hub_transfer = true;
       parcel.transferred_at = new Date();
+      parcel.received_at_destination_hub = null;
       parcel.transfer_notes = transfer_notes || null;
       parcel.status = ParcelStatus.IN_TRANSIT;
 
@@ -5879,18 +5944,15 @@ export class ParcelsService {
       );
     } else {
       // For admin: filter to delivery-completed statuses
-      queryBuilder.where(
-        'parcel.status IN (:...deliveredStatuses)',
-        {
-          deliveredStatuses: [
-            ParcelStatus.DELIVERED,
-            ParcelStatus.PARTIAL_DELIVERY,
-            ParcelStatus.EXCHANGE,
-            ParcelStatus.PAID_RETURN,
-            ParcelStatus.RETURNED,
-          ],
-        },
-      );
+      queryBuilder.where('parcel.status IN (:...deliveredStatuses)', {
+        deliveredStatuses: [
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+          ParcelStatus.RETURNED,
+        ],
+      });
     }
 
     if (status) {
@@ -5969,6 +6031,7 @@ export class ParcelsService {
         `Cannot mark as return to merchant. Current status: ${originalParcel.status}`,
       );
     }
+    const previousOriginalStatus = originalParcel.status;
 
     // Get merchant_id (User ID) - parcel.merchant_id references User, not Merchant entity
     let merchantId: string | null = originalParcel.merchant_id;
@@ -6005,19 +6068,6 @@ export class ParcelsService {
 
     if (notes) {
       updateData.admin_notes = notes;
-    }
-
-    await this.parcelRepository
-      .createQueryBuilder()
-      .update()
-      .set(updateData)
-      .where('id = :id', { id: parcelId })
-      .execute();
-
-    // Update local object for return
-    originalParcel.status = ParcelStatus.RETURN_TO_MERCHANT;
-    if (!originalParcel.merchant_id) {
-      originalParcel.merchant_id = merchantId;
     }
 
     // Create a NEW return parcel to track the return journey
@@ -6085,7 +6135,64 @@ export class ParcelsService {
         originalParcel.return_reason || notes || 'Return to merchant',
     });
 
-    await this.parcelRepository.save(returnParcel);
+    returnParcel.tracking_context = {
+      actor_type: ParcelTrackingActorType.HUB,
+      actor_id: hubId,
+      source: 'RETURN_TO_MERCHANT',
+    };
+
+    // The original state, linked return parcel, and both tracking ledgers are
+    // committed atomically. A failure cannot leave RETURN_TO_MERCHANT without
+    // a usable return tracking number (or vice versa).
+    await this.dataSource.transaction(async (manager) => {
+      await this.parcelTrackingService.ensurePersistedBaseline(
+        originalParcel,
+        manager,
+      );
+
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(Parcel)
+        .set(updateData)
+        .where('id = :id', { id: parcelId })
+        .andWhere('status = :previousStatus', {
+          previousStatus: previousOriginalStatus,
+        })
+        .execute();
+
+      if (updateResult.affected !== 1) {
+        throw new ConflictException(
+          'Parcel status changed while creating the return journey. Please refresh and try again.',
+        );
+      }
+
+      await manager.save(Parcel, returnParcel);
+      await this.parcelTrackingService.record(
+        originalParcel.id,
+        {
+          event_type: ParcelTrackingEventType.RETURN_TO_MERCHANT,
+          title: 'Returning to merchant',
+          description: `A return journey was created as ${returnParcel.tracking_number}.`,
+          from_status: previousOriginalStatus,
+          to_status: ParcelStatus.RETURN_TO_MERCHANT,
+          actor_type: hubId
+            ? ParcelTrackingActorType.HUB
+            : ParcelTrackingActorType.ADMIN,
+          actor_id: hubId,
+          source: 'RETURN_TO_MERCHANT',
+          hub_id: hubId,
+          related_parcel_id: returnParcel.id,
+          related_tracking_number: returnParcel.tracking_number,
+          metadata: notes ? { notes } : null,
+        },
+        manager,
+      );
+    });
+
+    // Keep the returned in-memory object consistent with the committed row.
+    originalParcel.status = ParcelStatus.RETURN_TO_MERCHANT;
+    originalParcel.merchant_id = merchantId;
+    if (notes) originalParcel.admin_notes = notes;
 
     this.logger.log(
       `[RETURN TO MERCHANT] Original: ${originalParcel.tracking_number}, ` +
@@ -6293,16 +6400,26 @@ export class ParcelsService {
   private async generateReturnTrackingNumber(
     originalTracking: string,
   ): Promise<string> {
-    // Check if this is already a return (has RTN prefix)
     if (originalTracking.startsWith('RTN-')) {
-      // Extract base tracking and increment
-      const parts = originalTracking.split('-');
-      const sequence = parseInt(parts[parts.length - 1]) || 1;
-      parts[parts.length - 1] = String(sequence + 1);
-      return parts.join('-');
+      const sequenceMatch = originalTracking.match(/-R(\d+)$/);
+      const currentSequence = sequenceMatch ? Number(sequenceMatch[1]) : 1;
+      const baseTracking = sequenceMatch
+        ? originalTracking.slice(0, -sequenceMatch[0].length)
+        : originalTracking;
+      const suffix = `-R${currentSequence + 1}`;
+      return this.fitReturnTrackingNumber(`${baseTracking}${suffix}`, suffix);
     }
 
-    return `RTN-${originalTracking}`;
+    return this.fitReturnTrackingNumber(`RTN-${originalTracking}`);
+  }
+
+  private fitReturnTrackingNumber(value: string, suffix = ''): string {
+    if (value.length <= 50) return value;
+
+    const hash = createHash('sha256').update(value).digest('hex').slice(0, 8);
+    const valueWithoutSuffix = suffix ? value.slice(0, -suffix.length) : value;
+    const prefixLength = 50 - hash.length - suffix.length - 1;
+    return `${valueWithoutSuffix.slice(0, prefixLength)}-${hash}${suffix}`;
   }
 
   /**
@@ -6330,6 +6447,15 @@ export class ParcelsService {
     parcel.assigned_at = null;
     parcel.rider_accepted_at = null;
     parcel.out_for_delivery_at = null;
+    parcel.tracking_context = {
+      actor_type: ParcelTrackingActorType.HUB,
+      actor_id: hubId,
+      source: 'REDELIVERY',
+      event_type: ParcelTrackingEventType.REDELIVERY_PREPARED,
+      title: 'Prepared for redelivery',
+      description:
+        'The parcel returned to the hub queue for another delivery attempt.',
+    };
 
     await this.parcelRepository.save(parcel);
 
@@ -7237,6 +7363,14 @@ export class ParcelsService {
 
     parcel.total_charge = newTotalCharge;
     parcel.receivable_amount = newReceivableAmount;
+    parcel.tracking_context = {
+      actor_type:
+        role === UserRole.ADMIN
+          ? ParcelTrackingActorType.ADMIN
+          : ParcelTrackingActorType.HUB,
+      actor_id: hubId,
+      source: 'HUB_CHARGE_UPDATE',
+    };
 
     const updated = await this.parcelRepository.save(parcel);
 
@@ -7650,11 +7784,11 @@ export class ParcelsService {
           // Store previous rider info for logging
           const previousRiderId = parcel.assigned_rider_id;
 
-          // Update assignment
-          await queryRunner.manager.update(Parcel, parcel.id, {
-            assigned_rider_id: targetRider.id,
-            assigned_at: new Date(),
-          });
+          // Save the loaded entity so the rider-to-rider handoff is retained
+          // as a distinct lifecycle event.
+          parcel.assigned_rider_id = targetRider.id;
+          parcel.assigned_at = new Date();
+          await queryRunner.manager.save(Parcel, parcel);
 
           // Reload parcel for SMS
           const updatedParcel = await queryRunner.manager.findOne(Parcel, {
