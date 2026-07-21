@@ -21,6 +21,8 @@ import { DeliveryType } from '../../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../../common/enums/delivery-provider.enum';
 import { FinancialStatus } from '../../common/enums/financial-status.enum';
 import { ThirdPartyProvider } from '../../third-party-providers/entities/third-party-provider.entity';
+import type { ParcelTrackingContext } from '../parcel-tracking.types';
+import type { ParcelTrackingEvent } from './parcel-tracking-event.entity';
 
 export enum ParcelStatus {
   PENDING = 'PENDING',
@@ -411,8 +413,18 @@ export class Parcel {
   @JoinColumn({ name: 'original_parcel_id' })
   originalParcel: Parcel | null;
 
+  returnParcels: Parcel[];
+
   @Column({ type: 'boolean', default: false })
   is_return_parcel: boolean;
+
+  tracking_events: ParcelTrackingEvent[];
+
+  /**
+   * Per-operation context consumed by ParcelTrackingSubscriber. It is not a
+   * database column and therefore never changes the parcel response or schema.
+   */
+  tracking_context?: ParcelTrackingContext;
 
   // ===== TIMESTAMPS =====
   @Column({ type: 'timestamp', nullable: true })

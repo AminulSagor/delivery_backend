@@ -39,6 +39,24 @@ import { UpdateMerchantPasswordDto } from './dto/update-merchant-password.dto';
 import { MerchantDashboardQueryDto } from './dto/merchant-dashboard-query.dto';
 import { MerchantDeliveryPerformanceQueryDto } from './dto/merchant-delivery-performance-query.dto';
 
+export interface DeliveryPerformanceTrendPoint {
+  day: string;
+  date: string;
+  delivered: number;
+  returned: number;
+  total_parcel: number;
+}
+
+export interface DeliveryPerformanceChartBucket {
+  key: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  delivered: number;
+  returned: number;
+  total_parcel: number;
+}
+
 @Injectable()
 export class MerchantService {
   constructor(
@@ -1202,13 +1220,7 @@ export class MerchantService {
       });
     }
 
-    const trend: Array<{
-      day: string;
-      date: string;
-      delivered: number;
-      returned: number;
-      total_parcel: number;
-    }> = [];
+    const trend: DeliveryPerformanceTrendPoint[] = [];
 
     for (let i = 0; i < totalDays; i++) {
       const bucketDate = new Date(rangeStart);
@@ -1244,6 +1256,7 @@ export class MerchantService {
       },
       { delivered: 0, returned: 0, total_parcel: 0 },
     );
+    const chart = this.buildDeliveryPerformanceChart(performanceRange, trend);
 
     return {
       range: performanceRange,
@@ -1253,7 +1266,82 @@ export class MerchantService {
         .substring(0, 10),
       totals,
       trend,
+      chart,
     };
+  }
+
+  private buildDeliveryPerformanceChart(
+    performanceRange: 'weekly' | 'monthly',
+    trend: DeliveryPerformanceTrendPoint[],
+  ) {
+    const buckets =
+      performanceRange === 'monthly'
+        ? this.buildMonthlyPerformanceBuckets(trend)
+        : trend.map<DeliveryPerformanceChartBucket>((point) => ({
+            key: point.date,
+            label: point.day,
+            start_date: point.date,
+            end_date: point.date,
+            delivered: point.delivered,
+            returned: point.returned,
+            total_parcel: point.total_parcel,
+          }));
+
+    return {
+      bucket_type: performanceRange === 'monthly' ? 'week' : 'day',
+      categories: buckets.map((bucket) => bucket.label),
+      series: [
+        {
+          key: 'delivered',
+          name: 'Delivered',
+          data: buckets.map((bucket) => bucket.delivered),
+        },
+        {
+          key: 'returned',
+          name: 'Returned',
+          data: buckets.map((bucket) => bucket.returned),
+        },
+        {
+          key: 'total_parcel',
+          name: 'Total Parcel',
+          data: buckets.map((bucket) => bucket.total_parcel),
+        },
+      ],
+      buckets,
+    };
+  }
+
+  private buildMonthlyPerformanceBuckets(
+    trend: DeliveryPerformanceTrendPoint[],
+  ): DeliveryPerformanceChartBucket[] {
+    const weekRanges = [
+      { startIndex: 0, endIndex: 6 },
+      { startIndex: 7, endIndex: 13 },
+      { startIndex: 14, endIndex: 20 },
+      { startIndex: 21, endIndex: trend.length - 1 },
+    ];
+
+    return weekRanges.map((range, index) => {
+      const points = trend.slice(range.startIndex, range.endIndex + 1);
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
+      const metrics = points.reduce(
+        (totals, point) => ({
+          delivered: totals.delivered + point.delivered,
+          returned: totals.returned + point.returned,
+          total_parcel: totals.total_parcel + point.total_parcel,
+        }),
+        { delivered: 0, returned: 0, total_parcel: 0 },
+      );
+
+      return {
+        key: `week_${index + 1}`,
+        label: `Wk ${index + 1}`,
+        start_date: firstPoint?.date || '',
+        end_date: lastPoint?.date || '',
+        ...metrics,
+      };
+    });
   }
 
   private resolvePerformanceMonthRange(month: string): {
