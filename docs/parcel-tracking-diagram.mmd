@@ -1,16 +1,28 @@
 flowchart TD
-  ParcelEntity[Parcel entity fields]
-  ParcelEntity -->|mapper: toParcelDetail()| TrackingObj[tracking object]
-  TrackingObj --> CurrentStatus[current_status]
-  TrackingObj --> Milestones[delivery_milestones]
-  TrackingObj --> Activities[activities]
+  Mutation[Parcel lifecycle mutation] --> Save[TypeORM entity save]
+  Save --> Subscriber[ParcelTrackingSubscriber]
+  Subscriber --> Snapshot[Current parcels row]
+  Subscriber --> Ledger[(parcel_tracking_events)]
 
-  CurrentStatus --> Badge[UI: Status Badge]
-  Milestones --> Stepper[UI: Stepper / Progress]
-  Activities --> Timeline[UI: Activity Timeline]
+  Request[GET /parcels/tracking/:trackingNumber] --> Lookup[Lookup by tracking_number or parcel_tx_id]
+  Lookup --> Enrich[ParcelTrackingService.enrichParcel]
+  Ledger --> Enrich
+  Enrich --> Legacy{Stored events?}
+  Legacy -->|No| Fallback[Build recoverable legacy timeline]
+  Legacy -->|Yes| Timeline[Load immutable public events]
+  Fallback --> Mapper[toParcelDetail]
+  Timeline --> Mapper
+  Enrich --> Returns[Load original and all return descendants]
+  Returns --> Mapper
 
-  style ParcelEntity fill:#f9f,stroke:#333,stroke-width:1px
-  style TrackingObj fill:#ff9,stroke:#333,stroke-width:1px
-  style Badge fill:#9f9,stroke:#333
-  style Stepper fill:#9ff,stroke:#333
-  style Timeline fill:#f99,stroke:#333
+  Mapper --> SnapshotResponse[Current parcel snapshot]
+  Mapper --> Tracking[tracking]
+  Tracking --> Events[events: newest first]
+  Tracking --> Milestones[lifecycle and compatibility milestones]
+  Tracking --> Journey[hub journey snapshot]
+  Tracking --> Links[original / returns / active_return]
+
+  style Ledger fill:#fff3bf,stroke:#7f6000
+  style Tracking fill:#d3f9d8,stroke:#2b8a3e
+  style Events fill:#d0ebff,stroke:#1864ab
+  style Links fill:#f3d9fa,stroke:#862e9c

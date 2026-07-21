@@ -21,14 +21,32 @@ import {
   ParcelTrackingEventType,
 } from '../parcel-tracking.types';
 
-const PUBLIC_DETAIL_FIELDS = [
+/**
+ * Customer-visible shipment attributes whose mutation is operationally useful
+ * in the parcel timeline. Values are deliberately not copied into metadata;
+ * the event only preserves the changed field names so old PII is not retained
+ * in the immutable ledger.
+ */
+const TRACKED_DETAIL_FIELDS = [
+  'merchant_order_id',
+  'delivery_area',
+  'delivery_coverage_area_id',
+  'customer_name',
   'customer_phone',
+  'customer_secondary_phone',
   'customer_address',
+  'product_description',
   'product_price',
   'product_weight',
+  'parcel_type',
   'delivery_charge',
   'weight_charge',
+  'cod_charge',
+  'total_charge',
+  'is_cod',
   'cod_amount',
+  'is_exchange',
+  'delivery_type',
   'special_instructions',
   'admin_notes',
 ] as const;
@@ -359,7 +377,11 @@ export class ParcelTrackingSubscriber
         to_status: current.status,
         hub_id: current.current_hub_id,
         rider_id: current.issue_reported_by_id || current.assigned_rider_id,
-        metadata: { issue_type: current.issue_type },
+        occurred_at: current.issue_reported_at || undefined,
+        metadata: {
+          issue_type: current.issue_type,
+          reason: current.issue_description || null,
+        },
       });
     }
 
@@ -396,10 +418,10 @@ export class ParcelTrackingSubscriber
       });
     }
 
-    const changedDetails = PUBLIC_DETAIL_FIELDS.filter((field) =>
+    const changedDetails = TRACKED_DETAIL_FIELDS.filter((field) =>
       changed.has(field),
     );
-    if (changedDetails.length > 0 && !statusChanged) {
+    if (changedDetails.length > 0) {
       drafts.push({
         event_type: ParcelTrackingEventType.PARCEL_DETAILS_UPDATED,
         title: 'Parcel details updated',
@@ -482,9 +504,11 @@ export class ParcelTrackingSubscriber
       'out_for_delivery_at',
       'delivered_at',
       'issue_type',
+      'issue_description',
+      'issue_reported_at',
       'is_issue_resolved',
       'pickup_request_id',
-      ...PUBLIC_DETAIL_FIELDS,
+      ...TRACKED_DETAIL_FIELDS,
     ];
     for (const field of fields) {
       if (
@@ -526,7 +550,9 @@ export class ParcelTrackingSubscriber
         description: parcel.is_return_parcel
           ? 'A separate parcel was created to track the return journey.'
           : 'The merchant created the parcel order.',
-        to_status: ParcelStatus.PENDING,
+        to_status: parcel.is_return_parcel
+          ? ParcelStatus.IN_HUB
+          : ParcelStatus.PENDING,
         related_parcel_id: parcel.original_parcel_id,
         occurred_at: parcel.created_at || new Date(),
         dedupe_key: `${parcel.id}:created`,

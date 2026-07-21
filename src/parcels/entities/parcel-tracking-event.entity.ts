@@ -14,8 +14,14 @@ import {
 } from '../parcel-tracking.types';
 
 @Entity('parcel_tracking_events')
-@Index(['parcel_id', 'occurred_at'])
-@Index(['dedupe_key'], { unique: true, where: '"dedupe_key" IS NOT NULL' })
+@Index('IDX_parcel_tracking_events_parcel_occurred', [
+  'parcel_id',
+  'occurred_at',
+])
+@Index('IDX_parcel_tracking_events_dedupe', ['dedupe_key'], {
+  unique: true,
+  where: '"dedupe_key" IS NOT NULL',
+})
 export class ParcelTrackingEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
