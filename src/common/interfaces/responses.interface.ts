@@ -805,7 +805,7 @@ export function toParcelDetail(parcel: any): any {
   acts.forEach((a: any, idx: number) => (a.id = idx + 1));
   const syntheticActivities = acts.reverse();
 
-  const trackingEvents = Array.isArray(parcel.tracking_events)
+  const sortedTrackingEvents = Array.isArray(parcel.tracking_events)
     ? [...parcel.tracking_events]
         .filter((event: any) => event?.is_public !== false)
         .sort(
@@ -815,56 +815,61 @@ export function toParcelDetail(parcel: any): any {
             new Date(b.created_at || b.occurred_at).getTime() -
               new Date(a.created_at || a.occurred_at).getTime(),
         )
-        .map((event: any) => ({
-          id: event.id,
-          event_type: event.event_type,
-          title: event.title,
-          description: event.description ?? null,
-          message: event.description || event.title,
-          from_status: event.from_status ?? null,
-          to_status: event.to_status ?? null,
-          status: event.to_status ?? event.from_status ?? null,
-          timestamp: event.occurred_at,
-          location: event.location || event.hub_name || null,
-          actor: {
-            type: event.actor_type || 'SYSTEM',
-            id: event.actor_id ?? null,
-            name: event.actor_name ?? null,
-            source: event.source || 'SYSTEM',
-          },
-          hub: event.hub_id
-            ? { id: event.hub_id, name: event.hub_name ?? null }
-            : null,
-          route:
-            event.from_hub_id || event.to_hub_id
-              ? {
-                  from_hub: event.from_hub_id
-                    ? {
-                        id: event.from_hub_id,
-                        name: event.from_hub_name ?? null,
-                      }
-                    : null,
-                  to_hub: event.to_hub_id
-                    ? {
-                        id: event.to_hub_id,
-                        name: event.to_hub_name ?? null,
-                      }
-                    : null,
-                }
-              : null,
-          rider: event.rider_id
-            ? { id: event.rider_id, name: event.rider_name ?? null }
-            : null,
-          related_parcel: event.related_parcel_id
-            ? {
-                id: event.related_parcel_id,
-                tracking_number: event.related_tracking_number ?? null,
-              }
-            : null,
-          metadata: event.metadata ?? null,
-          is_legacy_backfill: event.source === 'LEGACY_BACKFILL',
-        }))
     : [];
+  const eventCount = sortedTrackingEvents.length;
+  const trackingEvents = sortedTrackingEvents.map(
+    (event: any, index: number) => ({
+      id: event.id,
+      sequence: eventCount - index,
+      event_type: event.event_type,
+      title: event.title,
+      description: event.description ?? null,
+      message: event.description || event.title,
+      from_status: event.from_status ?? null,
+      to_status: event.to_status ?? null,
+      status: event.to_status ?? event.from_status ?? null,
+      timestamp: event.occurred_at,
+      occurred_at: event.occurred_at,
+      location: event.location || event.hub_name || null,
+      actor: {
+        type: event.actor_type || 'SYSTEM',
+        id: event.actor_id ?? null,
+        name: event.actor_name ?? null,
+        source: event.source || 'SYSTEM',
+      },
+      hub: event.hub_id
+        ? { id: event.hub_id, name: event.hub_name ?? null }
+        : null,
+      route:
+        event.from_hub_id || event.to_hub_id
+          ? {
+              from_hub: event.from_hub_id
+                ? {
+                    id: event.from_hub_id,
+                    name: event.from_hub_name ?? null,
+                  }
+                : null,
+              to_hub: event.to_hub_id
+                ? {
+                    id: event.to_hub_id,
+                    name: event.to_hub_name ?? null,
+                  }
+                : null,
+            }
+          : null,
+      rider: event.rider_id
+        ? { id: event.rider_id, name: event.rider_name ?? null }
+        : null,
+      related_parcel: event.related_parcel_id
+        ? {
+            id: event.related_parcel_id,
+            tracking_number: event.related_tracking_number ?? null,
+          }
+        : null,
+      metadata: event.metadata ?? null,
+      is_legacy_backfill: event.source === 'LEGACY_BACKFILL',
+    }),
+  );
 
   const activities =
     trackingEvents.length > 0
@@ -950,6 +955,7 @@ export function toParcelDetail(parcel: any): any {
       : !!parcel.is_return_parcel &&
         successfulStatuses.includes(parcel.status));
   const latestEvent = trackingEvents[0] || null;
+  const isJourneyComplete = isReturnJourney ? isReturnCompleted : isTerminal;
 
   const lifecycleMilestones = [
     {
@@ -1022,9 +1028,13 @@ export function toParcelDetail(parcel: any): any {
       is_return_parcel: !!parcel.is_return_parcel,
       is_returning: isReturnJourney && !isReturnCompleted,
       is_terminal: isTerminal,
+      is_journey_complete: isJourneyComplete,
       is_successful_delivery:
         !isReturnJourney && successfulStatuses.includes(parcel.status),
       is_return_completed: isReturnCompleted,
+      event_count: eventCount,
+      last_event_at: latestEvent?.timestamp || null,
+      timeline_order: 'DESC',
       delivery_milestones: milestones,
       lifecycle_milestones: lifecycleMilestones,
       activities,
@@ -1041,6 +1051,10 @@ export function toParcelDetail(parcel: any): any {
       linked_parcels: {
         original: toLinkedParcel(parcel.originalParcel),
         returns: linkedReturns.map(toLinkedParcel),
+        active_return:
+          isReturnJourney && !parcel.is_return_parcel && !isReturnCompleted
+            ? toLinkedParcel(latestLinkedReturn)
+            : null,
       },
     },
   };

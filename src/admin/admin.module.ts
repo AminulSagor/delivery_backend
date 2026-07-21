@@ -30,6 +30,10 @@ import { MerchantFinanceTransaction } from '../merchant-finance/entities/merchan
 import { SmsPreference } from './entities/sms-preference.entity';
 import { SalaryModule } from '../salary/salary.module';
 import { PayoutHistoryController } from '../salary/payout-history.controller';
+import { Rider } from '../riders/entities/rider.entity';
+import { MerchantInvoice } from '../merchant/entities/merchant-invoice.entity';
+import { AdminDashboardController } from './controllers/admin-dashboard.controller';
+import { AdminDashboardService } from './services/admin-dashboard.service';
 
 @Module({
   imports: [
@@ -49,6 +53,8 @@ import { PayoutHistoryController } from '../salary/payout-history.controller';
       MerchantFinance,
       MerchantFinanceTransaction,
       SmsPreference,
+      Rider,
+      MerchantInvoice,
     ]),
     UsersModule,
     forwardRef(() => MerchantModule),
@@ -62,6 +68,7 @@ import { PayoutHistoryController } from '../salary/payout-history.controller';
     AdminEmailTestController,
     AdminSmsTestController,
     AdminSmsPreferencesController,
+    AdminDashboardController,
   ],
   providers: [
     AdminService,
@@ -69,6 +76,7 @@ import { PayoutHistoryController } from '../salary/payout-history.controller';
     SmsService,
     AdminAccountsService,
     SmsPreferencesService,
+    AdminDashboardService,
   ],
   exports: [AdminAccountsService], // Export service if needed by Payout/Settlement modules
 })

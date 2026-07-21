@@ -2,6 +2,7 @@ import { toParcelDetail } from '../common/interfaces/responses.interface';
 import { ParcelTrackingEvent } from './entities/parcel-tracking-event.entity';
 import { Parcel, ParcelStatus } from './entities/parcel.entity';
 import {
+  PARCEL_STATUS_EVENT,
   ParcelTrackingActorType,
   ParcelTrackingEventType,
 } from './parcel-tracking.types';
@@ -14,6 +15,12 @@ import { ParcelsService } from './parcels.service';
 const date = (value: string) => new Date(value);
 
 describe('parcel lifecycle tracking', () => {
+  it('has a public lifecycle event mapping for every parcel status', () => {
+    expect(Object.keys(PARCEL_STATUS_EVENT).sort()).toEqual(
+      Object.values(ParcelStatus).sort(),
+    );
+  });
+
   it('keeps repeated hub legs and recognizes a return journey while in transit', () => {
     const parcel: any = {
       id: 'parcel-1',
@@ -94,6 +101,14 @@ describe('parcel lifecycle tracking', () => {
       ),
     ).toHaveLength(2);
     expect(detail.tracking.events[0].route.to_hub.name).toBe('Hub C');
+    expect(detail.tracking.event_count).toBe(5);
+    expect(detail.tracking.timeline_order).toBe('DESC');
+    expect(detail.tracking.events.map((event: any) => event.sequence)).toEqual([
+      5, 4, 3, 2, 1,
+    ]);
+    expect(detail.tracking.events[0].occurred_at).toEqual(
+      detail.tracking.events[0].timestamp,
+    );
   });
 
   it('builds a compatible legacy timeline when a parcel has no stored events', async () => {
@@ -240,6 +255,156 @@ describe('parcel lifecycle tracking', () => {
     );
   });
 
+  it('records all operational address and parcel-detail changes without copying old values', async () => {
+    const saved: any[] = [];
+    const eventRepository = {
+      count: jest.fn().mockResolvedValue(1),
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => {
+        saved.push(value);
+        return value;
+      }),
+    };
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        if (entity === ParcelTrackingEvent) return eventRepository;
+        return { findOne: jest.fn().mockResolvedValue(null) };
+      }),
+    };
+    const subscriber = Object.create(
+      ParcelTrackingSubscriber.prototype,
+    ) as ParcelTrackingSubscriber;
+
+    await subscriber.afterUpdate({
+      entity: {
+        id: 'parcel-1',
+        status: ParcelStatus.PENDING,
+        customer_name: 'Updated Recipient',
+        customer_secondary_phone: '01800000000',
+        product_description: 'Updated product',
+        delivery_type: 2,
+      },
+      databaseEntity: {
+        id: 'parcel-1',
+        status: ParcelStatus.PENDING,
+        customer_name: 'Original Recipient',
+        customer_secondary_phone: null,
+        product_description: 'Original product',
+        delivery_type: 1,
+      },
+      updatedColumns: [],
+      manager,
+    } as any);
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toEqual(
+      expect.objectContaining({
+        event_type: ParcelTrackingEventType.PARCEL_DETAILS_UPDATED,
+        metadata: {
+          changed_fields: [
+            'customer_name',
+            'customer_secondary_phone',
+            'product_description',
+            'delivery_type',
+          ],
+        },
+      }),
+    );
+    expect(JSON.stringify(saved[0].metadata)).not.toContain(
+      'Original Recipient',
+    );
+  });
+
+  it('does not hide detail edits when status changes in the same save', async () => {
+    const saved: any[] = [];
+    const eventRepository = {
+      count: jest.fn().mockResolvedValue(1),
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => {
+        saved.push(value);
+        return value;
+      }),
+    };
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        if (entity === ParcelTrackingEvent) return eventRepository;
+        return { findOne: jest.fn().mockResolvedValue(null) };
+      }),
+    };
+    const subscriber = Object.create(
+      ParcelTrackingSubscriber.prototype,
+    ) as ParcelTrackingSubscriber;
+
+    await subscriber.afterUpdate({
+      entity: {
+        id: 'parcel-1',
+        status: ParcelStatus.CANCELLED,
+        customer_address: 'Updated address',
+      },
+      databaseEntity: {
+        id: 'parcel-1',
+        status: ParcelStatus.PENDING,
+        customer_address: 'Original address',
+      },
+      updatedColumns: [],
+      manager,
+    } as any);
+
+    expect(saved.map((event) => event.event_type)).toEqual([
+      ParcelTrackingEventType.CANCELLED,
+      ParcelTrackingEventType.PARCEL_DETAILS_UPDATED,
+    ]);
+  });
+
+  it('backfills a return parcel with its actual initial hub status', async () => {
+    const saved: any[] = [];
+    const eventRepository = {
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => {
+        saved.push(value);
+        return value;
+      }),
+    };
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        if (entity === ParcelTrackingEvent) return eventRepository;
+        return { findOne: jest.fn().mockResolvedValue(null) };
+      }),
+    };
+    const subscriber = Object.create(
+      ParcelTrackingSubscriber.prototype,
+    ) as ParcelTrackingSubscriber;
+    const createdAt = date('2026-01-01T08:00:00Z');
+
+    await subscriber.afterUpdate({
+      entity: {
+        id: 'return-1',
+        status: ParcelStatus.IN_HUB,
+        is_return_parcel: true,
+        created_at: createdAt,
+        customer_name: 'Updated Merchant',
+      },
+      databaseEntity: {
+        id: 'return-1',
+        status: ParcelStatus.IN_HUB,
+        is_return_parcel: true,
+        created_at: createdAt,
+        customer_name: 'Merchant',
+      },
+      updatedColumns: [],
+      manager,
+    } as any);
+
+    expect(saved).toContainEqual(
+      expect.objectContaining({
+        event_type: ParcelTrackingEventType.RETURN_PARCEL_CREATED,
+        to_status: ParcelStatus.IN_HUB,
+        source: 'LEGACY_BACKFILL',
+      }),
+    );
+  });
+
   it('moves every linked parcel into the pickup lifecycle without changing delivery assignment', async () => {
     const service = Object.create(
       PickupRequestsService.prototype,
@@ -316,8 +481,12 @@ describe('parcel lifecycle tracking', () => {
     const detail = toParcelDetail(parcel);
 
     expect(detail.tracking.is_terminal).toBe(true);
+    expect(detail.tracking.is_journey_complete).toBe(false);
     expect(detail.tracking.is_returning).toBe(true);
     expect(detail.tracking.is_return_completed).toBe(false);
+    expect(detail.tracking.linked_parcels.active_return.tracking_number).toBe(
+      'RTN-TRK-RETURN',
+    );
     expect(
       detail.tracking.lifecycle_milestones.find(
         (milestone: any) => milestone.key === 'finalized',
@@ -328,6 +497,8 @@ describe('parcel lifecycle tracking', () => {
     const completed = toParcelDetail(parcel);
     expect(completed.tracking.is_returning).toBe(false);
     expect(completed.tracking.is_return_completed).toBe(true);
+    expect(completed.tracking.is_journey_complete).toBe(true);
+    expect(completed.tracking.linked_parcels.active_return).toBeNull();
   });
 
   it('generates stable tracking numbers for chained return parcels', async () => {
