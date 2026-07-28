@@ -27,31 +27,39 @@ export class SuggestCoverageAreaDto {
 export class SuggestAddressDto {
   @IsNotEmpty()
   @IsString()
-  @MaxLength(1000)
   address!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
   fixedAddress?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(255)
+  addressStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  confidence?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  barikoiScore?: number;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
   area?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   subArea?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   thana?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  city?: string;
 }

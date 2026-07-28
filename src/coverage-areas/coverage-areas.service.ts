@@ -14,6 +14,24 @@ interface CoverageAreaWithNorms extends CoverageArea {
   _zone_norm?: string;
   _area_norm?: string;
 }
+type MatchLevel = 'CITY' | 'ZONE' | 'AREA';
+
+export interface AddressPrediction {
+  division: string;
+  city: string;
+  city_id: number;
+
+  zone: string | null;
+  zone_id: number | null;
+
+  area: string | null;
+  area_id: number | null;
+  coverage_area_uuid: string | null;
+
+  inside_dhaka_flag: boolean;
+  match_level: MatchLevel;
+  confidence: number;
+}
 
 @Injectable()
 export class CoverageAreasService {
@@ -499,312 +517,503 @@ export class CoverageAreasService {
    * Main API method: Suggests the best matching coverage area for a raw address string.
    */
 
-  async suggestArea(input: SuggestAddressDto): Promise<CoverageArea | null> {
+  async suggestArea(
+    input: SuggestAddressDto,
+  ): Promise<AddressPrediction | null> {
     const allAreas = await this.coverageAreaRepository.find();
 
-    const areasWithNorms: CoverageAreaWithNorms[] = allAreas.map(
-      (coverageArea) => ({
-        ...coverageArea,
-        _city_norm: this.normalizeText(coverageArea.city),
-        _zone_norm: this.normalizeText(coverageArea.zone),
-        _area_norm: this.normalizeText(coverageArea.area),
-      }),
+    const normalizedAreas: CoverageAreaWithNorms[] = allAreas.map((row) => ({
+      ...row,
+      _city_norm: this.normalizeText(row.city),
+      _zone_norm: this.normalizeText(row.zone),
+      _area_norm: this.normalizeText(row.area),
+    }));
+
+    // Always test the original customer address.
+    const rawPrediction = this.findBestCoveragePrediction(
+      input.address,
+      normalizedAreas,
     );
 
-    const enrichedAddress = this.buildAddressSearchText(input);
+    // Test Barikoi's corrected text separately.
+    const fixedPrediction = input.fixedAddress?.trim()
+      ? this.findBestCoveragePrediction(input.fixedAddress, normalizedAreas)
+      : null;
 
-    this.logger.debug(`[ADDRESS SUGGEST] Search value: ${enrichedAddress}`);
+    let prediction = this.pickBetterPrediction(rawPrediction, fixedPrediction);
 
-    return this.findBestCoverageAreaFromAddress(
-      enrichedAddress,
-      areasWithNorms,
-    );
+    const barikoiReliable =
+      Boolean(input.fixedAddress?.trim()) &&
+      input.addressStatus?.toLowerCase() !== 'incomplete' &&
+      (input.confidence ?? 0) >= 60 &&
+      (input.barikoiScore ?? 0) > 0;
+
+    // Use Barikoi's structured fields only when the response is reliable.
+    if (barikoiReliable) {
+      const structuredText = [
+        input.fixedAddress,
+        input.subArea,
+        input.area,
+        input.thana,
+        input.city,
+      ]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join(', ');
+
+      const structuredPrediction = this.findBestCoveragePrediction(
+        structuredText,
+        normalizedAreas,
+      );
+
+      prediction = this.pickBetterPrediction(prediction, structuredPrediction);
+    }
+
+    return prediction;
   }
 
   // ===========================================================================
   // PRIVATE HELPER METHODS
   // ===========================================================================
 
-  private buildAddressSearchText(
-  input: SuggestAddressDto,
-): string {
-  /*
-   * The matching algorithm checks comma-separated segments
-   * from right to left.
-   *
-   * Therefore:
-   * city is last,
-   * sub-area is checked before area,
-   * area is checked before thana.
-   */
-  const segments = [
-    input.address,
-    input.fixedAddress,
-    input.thana,
-    input.area,
-    input.subArea,
-    input.city,
-  ];
+  private buildAddressSearchText(input: SuggestAddressDto): string {
+    /*
+     * The matching algorithm checks comma-separated segments
+     * from right to left.
+     *
+     * Therefore:
+     * city is last,
+     * sub-area is checked before area,
+     * area is checked before thana.
+     */
+    const segments = [
+      input.address,
+      input.fixedAddress,
+      input.thana,
+      input.area,
+      input.subArea,
+      input.city,
+    ];
 
-  const normalizedSegments = new Set<string>();
+    const normalizedSegments = new Set<string>();
 
-  return segments
-    .map((segment) => segment?.trim())
-    .filter((segment): segment is string => Boolean(segment))
-    .filter((segment) => {
-      const normalized = this.normalizeText(segment);
+    return segments
+      .map((segment) => segment?.trim())
+      .filter((segment): segment is string => Boolean(segment))
+      .filter((segment) => {
+        const normalized = this.normalizeText(segment);
 
-      if (!normalized || normalizedSegments.has(normalized)) {
-        return false;
-      }
+        if (!normalized || normalizedSegments.has(normalized)) {
+          return false;
+        }
 
-      normalizedSegments.add(normalized);
-      return true;
-    })
-    .join(", ");
-}
+        normalizedSegments.add(normalized);
+        return true;
+      })
+      .join(', ');
+  }
 
-  private findBestCoverageAreaFromAddress(
+  private findBestCoveragePrediction(
     rawAddress: string,
     coverageAreas: CoverageAreaWithNorms[],
-  ): CoverageArea | null {
-    const addrNorm = this.normalizeText(rawAddress);
-    const addrNormWS = ` ${addrNorm} `;
-    const addrTokens = this.tokenizeAddress(rawAddress);
+  ): AddressPrediction | null {
+    const addressNorm = this.normalizeText(rawAddress);
 
-    // --------------------------------
-    // Build city map once from passed areas
-    // --------------------------------
-    const cityMap = new Map<string, CoverageAreaWithNorms[]>();
-    for (const c of coverageAreas) {
-      const cn = c._city_norm;
-      if (!cn) continue;
-      const list = cityMap.get(cn) || [];
-      list.push(c);
-      cityMap.set(cn, list);
-    }
-    const cityKeys = Array.from(cityMap.keys());
-
-    // --------------------------------
-    // 1. Split into comma parts and normalize
-    // --------------------------------
-    const partsRaw = rawAddress
-      .split(',')
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
-    const partsNorm = partsRaw.map((p) => this.normalizeText(p));
-
-    // --------------------------------
-    // 2. CITY DETECTION (right to left)
-    //    Typically last part is division/city ("Dhaka", "Sylhet", "Narayanganj")
-    // --------------------------------
-    let cityIndex: number | null = null;
-    let candidateCities: string[] = [];
-
-    for (let i = partsNorm.length - 1; i >= 0; i--) {
-      const segment = partsNorm[i];
-      if (!segment) continue;
-
-      let bestCityKey = '';
-      let bestSim = 0;
-
-      for (const cityKey of cityKeys) {
-        if (!cityKey) continue;
-        const sim = this.similarity(segment, cityKey);
-        if (sim > bestSim) {
-          bestSim = sim;
-          bestCityKey = cityKey;
-        }
-      }
-
-      // strict for city
-      if (bestSim >= 0.8) {
-        candidateCities = [bestCityKey];
-        cityIndex = i;
-        break;
-      }
+    if (!addressNorm) {
+      return null;
     }
 
-    // fallback: old full-address gating if no city found from parts
-    if (candidateCities.length === 0) {
-      const matchedCityKeys = cityKeys.filter(
-        (k) => k && addrNormWS.includes(` ${k} `),
+    // ---------------------------------------------------------
+    // 1. Find the city
+    // ---------------------------------------------------------
+
+    const cityGroups = new Map<number, CoverageAreaWithNorms[]>();
+
+    for (const row of coverageAreas) {
+      const rows = cityGroups.get(row.city_id) ?? [];
+      rows.push(row);
+      cityGroups.set(row.city_id, rows);
+    }
+
+    let bestCityRows: CoverageAreaWithNorms[] | null = null;
+    let bestCityScore = 0;
+
+    for (const rows of cityGroups.values()) {
+      const cityScore = this.scoreLocationName(
+        addressNorm,
+        rows[0]._city_norm ?? '',
       );
-      if (matchedCityKeys.length > 0) {
-        candidateCities = matchedCityKeys;
+
+      if (cityScore > bestCityScore) {
+        bestCityScore = cityScore;
+        bestCityRows = rows;
       }
     }
 
-    let candidates: CoverageAreaWithNorms[] = coverageAreas;
-    if (candidateCities.length > 0) {
-      candidates = candidateCities.flatMap((key) => cityMap.get(key) || []);
+    // Use the matched city when reliable. Otherwise, zone matching may
+    // still identify the city.
+    const cityCandidates =
+      bestCityRows && bestCityScore >= 0.72 ? bestCityRows : coverageAreas;
+
+    // ---------------------------------------------------------
+    // 2. Find zones first
+    // ---------------------------------------------------------
+
+    const zoneGroups = new Map<string, CoverageAreaWithNorms[]>();
+
+    for (const row of cityCandidates) {
+      const key = `${row.city_id}:${row.zone_id}`;
+      const rows = zoneGroups.get(key) ?? [];
+      rows.push(row);
+      zoneGroups.set(key, rows);
     }
 
-    // --------------------------------
-    // 3. ZONE / AREA DETECTION from parts (right to left)
-    // --------------------------------
-    let bestZoneCandidate: CoverageAreaWithNorms | null = null;
-    let bestZoneSim = 0;
+    const rankedZones: Array<{
+      rows: CoverageAreaWithNorms[];
+      zoneScore: number;
+      areaMatch: {
+        row: CoverageAreaWithNorms;
+        score: number;
+      } | null;
+      totalScore: number;
+    }> = [];
 
-    for (let i = partsNorm.length - 1; i >= 0; i--) {
-      if (cityIndex !== null && i === cityIndex) continue; // skip the city segment
+    for (const rows of zoneGroups.values()) {
+      const representative = rows[0];
 
-      const segment = partsNorm[i];
-      if (!segment || segment.length < 3) continue;
+      const fullZone = representative._zone_norm ?? '';
+      const baseZone = this.getZoneBase(representative.zone);
 
-      for (const c of candidates) {
-        const zoneNorm = c._zone_norm || '';
-        const areaNorm = c._area_norm || '';
-
-        const simZone = zoneNorm ? this.similarity(segment, zoneNorm) : 0;
-        const simArea = areaNorm ? this.similarity(segment, areaNorm) : 0;
-        const sim = Math.max(simZone, simArea);
-
-        if (sim > bestZoneSim) {
-          bestZoneSim = sim;
-          bestZoneCandidate = c;
-        }
-      }
-
-      // If this part clearly matches a zone/area (e.g. "bashundhora r a", "mirpur 10")
-      if (bestZoneSim >= 0.8 && bestZoneCandidate) {
-        return bestZoneCandidate;
-      }
-    }
-
-    const zoneBackup =
-      bestZoneCandidate && bestZoneSim >= 0.7 ? bestZoneCandidate : null;
-
-    // --------------------------------
-    // 4. OLD LOGIC: exact zone phrase, keyword+number, Jaccard
-    // --------------------------------
-
-    // 4.1 Exact zone phrase: "gulshan 1", "banani"
-    const zonesSeen = new Map<string, CoverageAreaWithNorms>();
-    for (const c of candidates) {
-      if (!c._zone_norm) continue;
-      if (!zonesSeen.has(c._zone_norm)) zonesSeen.set(c._zone_norm, c);
-    }
-
-    const exactZoneNorms: string[] = [];
-    for (const [zn] of zonesSeen.entries()) {
-      if (!zn) continue;
-      if (addrNormWS.includes(` ${zn} `)) {
-        exactZoneNorms.push(zn);
-      }
-    }
-
-    if (exactZoneNorms.length > 0) {
-      const exactCandidates = candidates.filter((c) =>
-        exactZoneNorms.includes(c._zone_norm || ''),
+      const zoneScore = Math.max(
+        this.scoreLocationName(addressNorm, fullZone),
+        this.scoreLocationName(addressNorm, baseZone),
       );
-      // Prefer "Inside Dhaka" if multiple matches (business logic preference)
-      const insideDhaka = exactCandidates.filter(
-        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
+
+      // Important: an area such as "Block A" cannot select a zone
+      // when the zone itself did not match.
+      if (zoneScore < 0.55) {
+        continue;
+      }
+
+      const areaMatch = this.findBestAreaInsideZone(
+        addressNorm,
+        rows,
+        baseZone,
       );
-      const picked = insideDhaka[0] || exactCandidates[0];
-      return picked;
+
+      const strongAreaScore =
+        areaMatch && areaMatch.score >= 0.76 ? areaMatch.score : 0;
+
+      rankedZones.push({
+        rows,
+        zoneScore,
+        areaMatch,
+        totalScore: zoneScore * 0.72 + strongAreaScore * 0.28,
+      });
     }
 
-    // 4.2 keyword+number: "sector 14", "mirpur 10", "gulshan 1"
-    const patternRegex = /([a-zA-Zঅ-হ]+)\s*(\d+)/g;
-    const keywordNumPairs: { word: string; num: string }[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = patternRegex.exec(addrNorm)) !== null) {
-      keywordNumPairs.push({ word: m[1], num: m[2] });
-    }
+    rankedZones.sort((a, b) => b.totalScore - a.totalScore);
 
-    // 4.2.a exact "word num" phrase inside zone
-    const strongMatches: CoverageAreaWithNorms[] = [];
-    for (const { word, num } of keywordNumPairs) {
-      const phrase = `${word} ${num}`;
-      const phraseWS = ` ${phrase} `;
-      for (const c of candidates) {
-        const zn = c._zone_norm || '';
-        if (!zn) continue;
-        if (` ${zn} `.includes(phraseWS)) {
-          strongMatches.push(c);
-        }
+    const bestZone = rankedZones[0];
+    const secondZone = rankedZones[1];
+
+    if (bestZone) {
+      const bestRow = bestZone.rows[0];
+
+      const zoneIsDistinct =
+        !secondZone ||
+        bestZone.totalScore - secondZone.totalScore >= 0.05 ||
+        (bestZone.areaMatch?.score ?? 0) - (secondZone.areaMatch?.score ?? 0) >=
+          0.15;
+
+      if (zoneIsDistinct) {
+        const areaMatch =
+          bestZone.areaMatch && bestZone.areaMatch.score >= 0.76
+            ? bestZone.areaMatch
+            : null;
+
+        return {
+          division: bestRow.division,
+          city: bestRow.city,
+          city_id: bestRow.city_id,
+
+          zone: bestRow.zone,
+          zone_id: bestRow.zone_id,
+
+          area: areaMatch?.row.area ?? null,
+          area_id: areaMatch?.row.area_id ?? null,
+          coverage_area_uuid: areaMatch?.row.id ?? null,
+
+          inside_dhaka_flag: bestRow.inside_dhaka_flag,
+          match_level: areaMatch ? 'AREA' : 'ZONE',
+          confidence: Number(
+            (areaMatch?.score ?? bestZone.zoneScore).toFixed(3),
+          ),
+        };
       }
     }
 
-    if (strongMatches.length > 0) {
-      const insideDhaka = strongMatches.filter(
-        (c) => String(c.inside_dhaka_flag).toUpperCase() === 'TRUE',
-      );
-      return insideDhaka[0] || strongMatches[0];
+    // ---------------------------------------------------------
+    // 3. City-only fallback
+    // ---------------------------------------------------------
+
+    if (bestCityRows && bestCityScore >= 0.72) {
+      const row = bestCityRows[0];
+
+      return {
+        division: row.division,
+        city: row.city,
+        city_id: row.city_id,
+
+        zone: null,
+        zone_id: null,
+
+        area: null,
+        area_id: null,
+        coverage_area_uuid: null,
+
+        inside_dhaka_flag: row.inside_dhaka_flag,
+        match_level: 'CITY',
+        confidence: Number(bestCityScore.toFixed(3)),
+      };
     }
 
-    // 4.2.b fuzzy keyword+number: "golshan 1" -> "gulshan 1"
-    const fuzzyMatches: { area: CoverageAreaWithNorms; score: number }[] = [];
-    for (const { word, num } of keywordNumPairs) {
-      for (const c of candidates) {
-        const zn = c._zone_norm || '';
-        if (!zn) continue;
-        // require same number inside zone
-        if (!` ${zn} `.includes(` ${num} `)) continue;
+    return null;
+  }
 
-        const mainZoneText = this.normalizeText(
-          (zn || '').replace(/\d+/g, '').trim(),
+  private findBestAreaInsideZone(
+    addressNorm: string,
+    zoneRows: CoverageAreaWithNorms[],
+    baseZone: string,
+  ): {
+    row: CoverageAreaWithNorms;
+    score: number;
+  } | null {
+    let best: {
+      row: CoverageAreaWithNorms;
+      score: number;
+    } | null = null;
+
+    const baseZoneTokens = new Set(this.tokenizeAddress(baseZone));
+
+    for (const row of zoneRows) {
+      const areaNorm = row._area_norm ?? '';
+
+      if (!areaNorm) {
+        continue;
+      }
+
+      let score = this.scoreLocationName(addressNorm, areaNorm);
+
+      const areaTokens = this.tokenizeAddress(areaNorm);
+
+      // Prevent an area that simply repeats the zone from winning.
+      // Example:
+      // Zone: Uttara Sector 4
+      // Area: Sector 4
+      const repeatsZone =
+        areaTokens.length > 0 &&
+        areaTokens.every((token) => baseZoneTokens.has(token));
+
+      if (repeatsZone) {
+        score *= 0.55;
+      }
+
+      if (!best || score > best.score) {
+        best = { row, score };
+      }
+    }
+
+    return best;
+  }
+
+  private getZoneBase(zone: string): string {
+    // Banasree (Block A-G) becomes Banasree.
+    const withoutDetails = zone.split('(')[0];
+
+    return this.normalizeText(withoutDetails);
+  }
+
+  private scoreLocationName(
+    addressNorm: string,
+    candidateNorm: string,
+  ): number {
+    if (!addressNorm || !candidateNorm) {
+      return 0;
+    }
+
+    const addressWithSpaces = ` ${addressNorm} `;
+    const candidateWithSpaces = ` ${candidateNorm} `;
+
+    // Exact phrase is strongest.
+    if (addressWithSpaces.includes(candidateWithSpaces)) {
+      return 1;
+    }
+
+    const addressTokens = this.tokenizeAddress(addressNorm);
+    const candidateTokens = this.tokenizeAddress(candidateNorm);
+
+    if (candidateTokens.length === 0) {
+      return 0;
+    }
+
+    const addressTokenSet = new Set(addressTokens);
+
+    // Reject number conflicts.
+    // "Sector 3" must not match an address containing "Sector 4".
+    const candidateNumbers = candidateTokens.filter((token) =>
+      /^\d+[a-z]?$/.test(token),
+    );
+
+    if (candidateNumbers.some((number) => !addressTokenSet.has(number))) {
+      return 0;
+    }
+
+    let matchedScore = 0;
+
+    for (const candidateToken of candidateTokens) {
+      if (addressTokenSet.has(candidateToken)) {
+        matchedScore += 1;
+        continue;
+      }
+
+      let bestSimilarity = 0;
+
+      for (const addressToken of addressTokens) {
+        bestSimilarity = Math.max(
+          bestSimilarity,
+          this.similarity(candidateToken, addressToken),
         );
-        const mainWords = mainZoneText.split(' ').filter(Boolean);
-        const mainKeyword = mainWords[0] || mainZoneText;
+      }
 
-        const sim = this.similarity(word, mainKeyword);
-        if (sim >= 0.7) {
-          fuzzyMatches.push({ area: c, score: sim });
-        }
+      if (bestSimilarity >= 0.86) {
+        matchedScore += 0.75;
       }
     }
 
-    if (fuzzyMatches.length > 0) {
-      fuzzyMatches.sort((a, b) => b.score - a.score);
-      return fuzzyMatches[0].area;
+    const coverage = matchedScore / candidateTokens.length;
+
+    // Do not accept a weak partial match.
+    if (candidateTokens.length === 1) {
+      return coverage >= 0.75 ? coverage : 0;
     }
 
-    // 4.3 Jaccard fallback
-    let best: CoverageAreaWithNorms | null = null;
-    let bestScore = 0;
+    return coverage >= 0.6 ? coverage * 0.9 : 0;
+  }
 
-    for (const c of candidates) {
-      const score = this.scoreCoverageForAddress(addrTokens, c);
-      if (score > bestScore) {
-        bestScore = score;
-        best = c;
-      }
+  private pickBetterPrediction(
+    first: AddressPrediction | null,
+    second: AddressPrediction | null,
+  ): AddressPrediction | null {
+    if (!first) return second;
+    if (!second) return first;
+
+    // Raw and Barikoi disagree about city: keep the first result.
+    if (first.city_id && second.city_id && first.city_id !== second.city_id) {
+      return first;
     }
 
-    if (best) return best;
+    // Raw already found a zone and Barikoi found another zone:
+    // do not allow Barikoi to overwrite it.
+    if (first.zone_id && second.zone_id && first.zone_id !== second.zone_id) {
+      return first;
+    }
 
-    // last fallback: any zone candidate from parts
-    return zoneBackup;
+    const rank: Record<MatchLevel, number> = {
+      CITY: 1,
+      ZONE: 2,
+      AREA: 3,
+    };
+
+    if (rank[second.match_level] > rank[first.match_level]) {
+      return second;
+    }
+
+    if (
+      rank[second.match_level] === rank[first.match_level] &&
+      second.confidence > first.confidence + 0.08
+    ) {
+      return second;
+    }
+
+    return first;
   }
 
   // --- TEXT NORMALIZATION HELPERS ---
 
   private normalizeText(input?: string | null): string {
     if (!input) return '';
-    return input
+
+    const banglaDigits: Record<string, string> = {
+      '০': '0',
+      '১': '1',
+      '২': '2',
+      '৩': '3',
+      '৪': '4',
+      '৫': '5',
+      '৬': '6',
+      '৭': '7',
+      '৮': '8',
+      '৯': '9',
+    };
+
+    let value = input
+      .normalize('NFKC')
       .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, ' ') // keep letters & digits (Bangla + English)
+      .replace(/[০-৯]/g, (digit) => banglaDigits[digit]);
+
+    value = value
+      // Known spelling variants
+      .replace(/\bkarnaphuli\b/g, 'karnafuli')
+      .replace(/\bchittagong\b/g, 'chattogram')
+      .replace(/\bbashundhora\b/g, 'bashundhara')
+      .replace(/\bbashundhra\b/g, 'bashundhara')
+      .replace(/\bbasundhara\b/g, 'bashundhara')
+
+      // Important location patterns
+      .replace(/\broad\s*(?:no\.?|number)?\s*(\d+[a-z]?)\b/g, 'road $1')
+      .replace(/\bsector\s*(?:no\.?|number)?\s*(\d+[a-z]?)\b/g, 'sector $1')
+      .replace(/\bblock\s*(?:no\.?|number)?\s*([a-z0-9]+)\b/g, 'block $1')
+
+      // Generic administrative words
+      .replace(/\b(?:thana|upazila|police station)\b/g, ' ')
+      .replace(/থানা/g, ' ')
+
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+    return value;
   }
 
-  /**
-   * Tokenize address.
-   * - keeps numbers (10, 14, 32 etc.)
-   * - drops tiny noise words like rd, h, r, no, etc.
-   */
   private tokenizeAddress(input?: string | null): string[] {
-    const norm = this.normalizeText(input);
-    if (!norm) return [];
-    return norm
+    const normalized = this.normalizeText(input);
+
+    if (!normalized) {
+      return [];
+    }
+
+    const ignoredWords = new Set([
+      'house',
+      'holding',
+      'flat',
+      'floor',
+      'no',
+      'number',
+      'বাসা',
+      'বাড়ি',
+      'ফ্ল্যাট',
+    ]);
+
+    return normalized
       .split(' ')
-      .filter((t) => t.length >= 3 || /^\d+$/.test(t))
+      .filter(Boolean)
       .filter(
-        (t) => !['road', 'rd', 'house', 'flat', 'h', 'r', 'no'].includes(t),
-      );
+        (token) =>
+          token.length >= 2 ||
+          /^\d+[a-z]?$/.test(token) ||
+          /^[a-z]$/.test(token),
+      )
+      .filter((token) => !ignoredWords.has(token));
   }
 
   // --- SIMILARITY HELPERS ---

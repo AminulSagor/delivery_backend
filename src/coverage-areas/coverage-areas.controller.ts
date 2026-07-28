@@ -105,25 +105,29 @@ export class CoverageAreasController {
   @Post('address/suggest')
   @HttpCode(HttpStatus.OK)
   async suggestAddress(@Body() dto: SuggestAddressDto) {
-    const suggestion = await this.coverageAreasService.suggestArea(dto);
-    // suggestion should be: CoverageArea | null
+    const prediction = await this.coverageAreasService.suggestArea(dto);
 
     return {
-      status: suggestion ? 'SUCCESS' : 'FAILED',
+      status: prediction ? 'SUCCESS' : 'FAILED',
 
-      suggested_division: suggestion?.division ?? null,
+      suggested_division: prediction?.division ?? null,
 
-      suggested_city: suggestion?.city ?? null,
-      suggested_city_id: suggestion?.city_id ?? null,
+      suggested_city: prediction?.city ?? null,
+      suggested_city_id: prediction?.city_id ?? null,
 
-      suggested_zone: suggestion?.zone ?? null,
-      suggested_zone_id: suggestion?.zone_id ?? null,
+      suggested_zone: prediction?.zone ?? null,
+      suggested_zone_id: prediction?.zone_id ?? null,
 
-      suggested_area: suggestion?.area ?? null,
-      suggested_area_id: suggestion?.area_id ?? null,
-      coverage_area_uuid: suggestion?.id ?? null,
+      suggested_area: prediction?.area ?? null,
+      suggested_area_id: prediction?.area_id ?? null,
 
-      inside_dhaka_flag: suggestion?.inside_dhaka_flag ?? null,
+      coverage_area_uuid: prediction?.coverage_area_uuid ?? null,
+
+      inside_dhaka_flag: prediction?.inside_dhaka_flag ?? null,
+
+      match_level: prediction?.match_level ?? null,
+
+      confidence: prediction?.confidence ?? 0,
     };
   }
 
