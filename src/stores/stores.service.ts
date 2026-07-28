@@ -157,9 +157,7 @@ export class StoresService {
     // Save store with plain address
     await this.storesRepository.save(store);
 
-    this.logger.log(
-      `Store ${store.id} created with plain address.`,
-    );
+    this.logger.log(`Store ${store.id} created with plain address.`);
 
     console.log(
       `[STORE CREATED] Merchant ${merchant.id} created store: ${store.business_name} (${store.id})`,
@@ -485,7 +483,9 @@ export class StoresService {
     store.status = StoreStatus.DISABLED;
     await this.storesRepository.save(store);
 
-    console.log(`[STORE DISABLED] Store ${store.id} disabled by user ${userId}`);
+    console.log(
+      `[STORE DISABLED] Store ${store.id} disabled by user ${userId}`,
+    );
 
     return store;
   }

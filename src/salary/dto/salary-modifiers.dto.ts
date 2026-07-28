@@ -1,9 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-  IsNumber,
-  IsOptional,
-  Min,
-} from 'class-validator';
+import { IsNumber, IsOptional, Min } from 'class-validator';
 
 export class SalaryIncrementModifiersDto {
   @Type(() => Number)

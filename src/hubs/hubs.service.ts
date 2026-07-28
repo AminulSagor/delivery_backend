@@ -2835,7 +2835,15 @@ export class HubsService {
   }
 
   // 3. All Expenses (Paginated)
-  async getAllExpensesForAdmin(query: PaginationDto & { hubId?: string; category?: string; status?: string; startDate?: string; endDate?: string }) {
+  async getAllExpensesForAdmin(
+    query: PaginationDto & {
+      hubId?: string;
+      category?: string;
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  ) {
     const {
       page = 1,
       limit = 20,
@@ -2886,15 +2894,21 @@ export class HubsService {
     }
 
     if (category?.trim()) {
-      qb.andWhere('expense.category::text = :category', { category: category.trim() });
+      qb.andWhere('expense.category::text = :category', {
+        category: category.trim(),
+      });
     }
 
     if (statusFilter?.trim()) {
-      qb.andWhere('expense.status::text = :status', { status: statusFilter.trim() });
+      qb.andWhere('expense.status::text = :status', {
+        status: statusFilter.trim(),
+      });
     }
 
     if (startDate?.trim()) {
-      qb.andWhere('expense.created_at >= :startDate', { startDate: new Date(startDate.trim()) });
+      qb.andWhere('expense.created_at >= :startDate', {
+        startDate: new Date(startDate.trim()),
+      });
     }
 
     if (endDate?.trim()) {

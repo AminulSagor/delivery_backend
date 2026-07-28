@@ -13,7 +13,10 @@ import { Staff } from './staff.entity';
 import { PayoutTransaction } from '../../merchant/entities/payout-transaction.entity';
 import { PayoutMethodType } from '../../common/enums/payout-method-type.enum';
 import { PayoutMethodStatus } from '../../common/enums/payout-method-status.enum';
-import { BkashAccountType, NagadAccountType } from '../../common/enums/account-type.enum';
+import {
+  BkashAccountType,
+  NagadAccountType,
+} from '../../common/enums/account-type.enum';
 
 @Entity('staff_payout_methods')
 @Index(['staff_id', 'method_type'])

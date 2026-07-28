@@ -28,7 +28,9 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
-    const userRole = String(user.role || '').trim().toUpperCase();
+    const userRole = String(user.role || '')
+      .trim()
+      .toUpperCase();
     const normalizedRequiredRoles = requiredRoles.map((role) =>
       String(role).trim().toUpperCase(),
     );

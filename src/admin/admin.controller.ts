@@ -179,7 +179,15 @@ export class AdminController {
    * Admin: Hub Collections list (for HUB Cash Collection UI)
    */
   @Get('hub-collections')
-  async getHubCollections(@Query() query: PaginationDto & { search?: string; area?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) {
+  async getHubCollections(
+    @Query()
+    query: PaginationDto & {
+      search?: string;
+      area?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+    },
+  ) {
     const result = await this.adminService.getHubCollections(query);
     return {
       success: true,
@@ -195,9 +203,15 @@ export class AdminController {
    * Admin: Export hub collections to CSV
    */
   @Get('hub-collections/export')
-  async exportHubCollections(@Query() query: PaginationDto & { search?: string; area?: string }) {
+  async exportHubCollections(
+    @Query() query: PaginationDto & { search?: string; area?: string },
+  ) {
     // Get all hubs (no pagination) by setting a large limit
-    const result = await this.adminService.getHubCollections({ ...(query as any), page: 1, limit: 10000 });
+    const result = await this.adminService.getHubCollections({
+      ...(query as any),
+      page: 1,
+      limit: 10000,
+    });
 
     // Build CSV
     const rows = result.items.map((h) => ({
@@ -210,11 +224,21 @@ export class AdminController {
       lifetime_collection: h.lifetime_collection,
       hub_expenses: h.hub_expenses,
       pending_amount: h.pending_amount,
-      last_received_at: h.last_received_at ? new Date(h.last_received_at).toISOString() : '',
+      last_received_at: h.last_received_at
+        ? new Date(h.last_received_at).toISOString()
+        : '',
     }));
 
     const header = Object.keys(rows[0] || {}).join(',') + '\n';
-    const csv = header + rows.map((r) => Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csv =
+      header +
+      rows
+        .map((r) =>
+          Object.values(r)
+            .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+            .join(','),
+        )
+        .join('\n');
 
     return { success: true, data: { csv }, message: 'CSV exported' };
   }
@@ -234,7 +258,15 @@ export class AdminController {
   @Get('hub-collections/:id')
   async getHubDetail(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query() query: PaginationDto & { search?: string; status?: string; merchantId?: string; riderId?: string; sortBy?: string; order?: 'ASC' | 'DESC' },
+    @Query()
+    query: PaginationDto & {
+      search?: string;
+      status?: string;
+      merchantId?: string;
+      riderId?: string;
+      sortBy?: string;
+      order?: 'ASC' | 'DESC';
+    },
   ) {
     const data = await this.adminService.getHubDetail(id, query);
     return {

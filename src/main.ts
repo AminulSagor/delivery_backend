@@ -216,8 +216,6 @@ async function bootstrap() {
     abortOnError: false,
   });
 
-
-
   app.enableCors({
     origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

@@ -6,6 +6,7 @@ import {
   Max,
   IsNumber,
   Min,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -13,7 +14,7 @@ export class SuggestCoverageAreaDto {
   @IsNotEmpty()
   @IsString()
   @MinLength(1)
-  q: string;
+  q!: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -26,5 +27,31 @@ export class SuggestCoverageAreaDto {
 export class SuggestAddressDto {
   @IsNotEmpty()
   @IsString()
-  address: string;
+  @MaxLength(1000)
+  address!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  fixedAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  subArea?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  thana?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  city?: string;
 }

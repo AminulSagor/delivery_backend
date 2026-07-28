@@ -248,9 +248,8 @@ export class ParcelsController {
   @Get('tracking/:trackingNumber')
   @HttpCode(HttpStatus.OK)
   async findByTrackingNumber(@Param('trackingNumber') trackingNumber: string) {
-    const parcel = await this.parcelsService.findOneByTrackingNumber(
-      trackingNumber,
-    );
+    const parcel =
+      await this.parcelsService.findOneByTrackingNumber(trackingNumber);
 
     return {
       parcel: toParcelDetail(parcel),

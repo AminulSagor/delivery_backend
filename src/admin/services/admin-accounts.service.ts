@@ -907,11 +907,11 @@ export class AdminAccountsService {
       )
       .where('parcel.status IN (:...statuses)', { statuses: revenueStatuses })
       .andWhere(
-        "COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) >= :yearStart",
+        'COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) >= :yearStart',
         { yearStart },
       )
       .andWhere(
-        "COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) < :yearEnd",
+        'COALESCE(parcel.delivered_at, parcel.updated_at, parcel.created_at) < :yearEnd',
         { yearEnd },
       )
       .andWhere(parcelDateFilter, { start, end })
@@ -1072,9 +1072,7 @@ export class AdminAccountsService {
         merchant_payment: this.roundMoney(
           Number(merchantPaymentRow?.total || 0),
         ),
-        pending_payment: this.roundMoney(
-          Number(pendingPaymentRow?.total || 0),
-        ),
+        pending_payment: this.roundMoney(Number(pendingPaymentRow?.total || 0)),
       },
       revenue_sources: [
         {
@@ -1155,15 +1153,44 @@ export class AdminAccountsService {
   }
 
   private getStartOfDay(date: Date) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      0,
+      0,
+      0,
+      0,
+    );
   }
 
   private getEndOfDay(date: Date) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
   }
 
   private getMonthLabels() {
-    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
   }
 
   private roundMoney(value: number) {

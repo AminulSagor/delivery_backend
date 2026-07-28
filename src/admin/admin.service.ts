@@ -313,7 +313,10 @@ export class AdminService {
     };
 
     const sortField = sortFieldMap[sortBy] || 'parcel.created_at';
-    queryBuilder.orderBy(sortField, order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
+    queryBuilder.orderBy(
+      sortField,
+      order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
+    );
 
     queryBuilder.skip(skip).take(limit);
 
@@ -405,7 +408,10 @@ export class AdminService {
     }
 
     for (const [hubId, ids] of hubToParcelIds.entries()) {
-      const hubResult = await this.parcelsService.bulkMarkAsReceived(ids, hubId);
+      const hubResult = await this.parcelsService.bulkMarkAsReceived(
+        ids,
+        hubId,
+      );
 
       for (const item of hubResult.results) {
         if (item.success) {
@@ -539,7 +545,6 @@ export class AdminService {
     return admin;
   }
 
-
   /**
    * Admin: List hubs with finance summary for hub cash collection UI
    */
@@ -551,10 +556,19 @@ export class AdminService {
     sortBy?: string;
     order?: 'ASC' | 'DESC';
   }) {
-    const { page = 1, limit = 20, search, area, sortBy = 'branch_name', order = 'DESC' } = query;
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      area,
+      sortBy = 'branch_name',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
 
-    const qb = this.hubRepository.createQueryBuilder('hub').leftJoinAndSelect('hub.manager_user', 'managerUser');
+    const qb = this.hubRepository
+      .createQueryBuilder('hub')
+      .leftJoinAndSelect('hub.manager_user', 'managerUser');
 
     if (area?.trim()) {
       qb.andWhere('hub.area ILIKE :area', { area: `%${area.trim()}%` });
@@ -562,7 +576,10 @@ export class AdminService {
 
     if (search?.trim()) {
       const kw = `%${search.trim()}%`;
-      qb.andWhere('(hub.branch_name ILIKE :kw OR hub.hub_code ILIKE :kw OR managerUser.full_name ILIKE :kw OR managerUser.phone ILIKE :kw)', { kw });
+      qb.andWhere(
+        '(hub.branch_name ILIKE :kw OR hub.hub_code ILIKE :kw OR managerUser.full_name ILIKE :kw OR managerUser.phone ILIKE :kw)',
+        { kw },
+      );
     }
 
     const sortFieldMap: Record<string, string> = {
@@ -583,17 +600,24 @@ export class AdminService {
 
     for (const hub of hubs) {
       // Find hub manager record
-      const manager = await this.hubManagerRepository.findOne({ where: { hub_id: hub.id }, relations: ['user'] });
+      const manager = await this.hubManagerRepository.findOne({
+        where: { hub_id: hub.id },
+        relations: ['user'],
+      });
 
       // Finance snapshot
-      const finance = await this.hubManagerFinanceRepository.findOne({ where: { hub_id: hub.id } });
+      const finance = await this.hubManagerFinanceRepository.findOne({
+        where: { hub_id: hub.id },
+      });
 
       // Lifetime expenses (APPROVED)
       const expenseResult = await this.hubExpenseRepository
         .createQueryBuilder('e')
         .select('COALESCE(SUM(e.amount), 0)', 'total')
         .where('e.hub_id = :hubId', { hubId: hub.id })
-        .andWhere('e.status = :status', { status: TransferRecordStatus.APPROVED })
+        .andWhere('e.status = :status', {
+          status: TransferRecordStatus.APPROVED,
+        })
         .getRawOne();
 
       // Pending transfers
@@ -601,7 +625,12 @@ export class AdminService {
         .createQueryBuilder('t')
         .select('COALESCE(SUM(t.transferred_amount), 0)', 'total')
         .where('t.hub_id = :hubId', { hubId: hub.id })
-        .andWhere('t.status IN (:...statuses)', { statuses: [TransferRecordStatus.PENDING, TransferRecordStatus.IN_REVIEW] })
+        .andWhere('t.status IN (:...statuses)', {
+          statuses: [
+            TransferRecordStatus.PENDING,
+            TransferRecordStatus.IN_REVIEW,
+          ],
+        })
         .getRawOne();
 
       mapped.push({
@@ -610,7 +639,13 @@ export class AdminService {
         branch_name: hub.branch_name,
         area: hub.area,
         address: hub.address,
-        manager: manager?.user ? { id: manager.id, name: manager.user.full_name, phone: manager.user.phone } : { name: hub.manager_name, phone: hub.manager_phone },
+        manager: manager?.user
+          ? {
+              id: manager.id,
+              name: manager.user.full_name,
+              phone: manager.user.phone,
+            }
+          : { name: hub.manager_name, phone: hub.manager_phone },
         lifetime_collection: Number(finance?.total_collected_from_riders || 0),
         hub_expenses: Number(expenseResult?.total || 0),
         pending_amount: Number(pendingResult?.total || 0),
@@ -640,9 +675,15 @@ export class AdminService {
 
     // For now, just log and return timestamp. Integrate notification provider later.
     const notifiedAt = new Date();
-    console.log(`[ADMIN NOTIFY HUB] Hub ${hub.branch_name} (${hub.id}) notified. Message: ${message || 'n/a'}`);
+    console.log(
+      `[ADMIN NOTIFY HUB] Hub ${hub.branch_name} (${hub.id}) notified. Message: ${message || 'n/a'}`,
+    );
 
-    return { hub_id: hub.id, notified_at: notifiedAt, message: message || null };
+    return {
+      hub_id: hub.id,
+      notified_at: notifiedAt,
+      message: message || null,
+    };
   }
 
   /**
@@ -714,7 +755,16 @@ export class AdminService {
     };
 
     // Get parcels
-    const { page = 1, limit = 20, search, status, merchantId, riderId, sortBy = 'created_at', order = 'DESC' } = query;
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      status,
+      merchantId,
+      riderId,
+      sortBy = 'created_at',
+      order = 'DESC',
+    } = query;
     const skip = (page - 1) * limit;
 
     const qb = this.parcelRepository
@@ -727,7 +777,9 @@ export class AdminService {
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
       .leftJoinAndSelect('assignedRider.user', 'riderUser')
-      .where('(parcel.current_hub_id = :hubId OR store.hub_id = :hubId)', { hubId });
+      .where('(parcel.current_hub_id = :hubId OR store.hub_id = :hubId)', {
+        hubId,
+      });
 
     if (status) {
       qb.andWhere('parcel.status = :status', { status });
@@ -778,7 +830,12 @@ export class AdminService {
       const weightCharge = Number(p.weight_charge || 0);
       const codCharge = Number(p.cod_charge || 0);
       const totalCharge = Number(p.total_charge || 0);
-      const discount = Math.max(0, Math.round((deliveryCharge + weightCharge + codCharge - totalCharge) * 100) / 100);
+      const discount = Math.max(
+        0,
+        Math.round(
+          (deliveryCharge + weightCharge + codCharge - totalCharge) * 100,
+        ) / 100,
+      );
 
       return {
         id: p.id,
@@ -798,7 +855,10 @@ export class AdminService {
         cod_charge: codCharge,
         weight_charge: weightCharge,
         discount,
-        age_days: Math.floor((new Date().getTime() - p.created_at.getTime()) / (1000 * 60 * 60 * 24)),
+        age_days: Math.floor(
+          (new Date().getTime() - p.created_at.getTime()) /
+            (1000 * 60 * 60 * 24),
+        ),
         created_at: p.created_at,
         updated_at: p.updated_at,
       };

@@ -65,11 +65,11 @@ export class CarrybeeService {
     storeName: string,
   ): string | undefined {
     const storeInfo = `[ Store : ${storeName} ]`;
-    
+
     if (!instructions || instructions.trim() === '') {
       return storeInfo;
     }
-    
+
     const combined = `${instructions} ${storeInfo}`;
     // Carrybee limit is 256 characters - truncate if necessary
     return combined.length > 256 ? combined.substring(0, 256) : combined;
@@ -510,14 +510,13 @@ export class CarrybeeService {
       throw new BadRequestException('Parcel is already assigned to Carrybee');
     }
 
-    const provider =
-      dto.provider_id
-        ? await this.providerRepository.findOne({
-            where: { id: dto.provider_id, is_active: true },
-          })
-        : await this.providerRepository.findOne({
-            where: { provider_code: 'CARRYBEE', is_active: true },
-          });
+    const provider = dto.provider_id
+      ? await this.providerRepository.findOne({
+          where: { id: dto.provider_id, is_active: true },
+        })
+      : await this.providerRepository.findOne({
+          where: { provider_code: 'CARRYBEE', is_active: true },
+        });
 
     if (!provider || provider.provider_code !== 'CARRYBEE') {
       throw new BadRequestException('Invalid or inactive provider');
@@ -616,7 +615,8 @@ export class CarrybeeService {
     );
 
     try {
-      const carrybeeOrder = await this.carrybeeApiService.createOrder(orderData);
+      const carrybeeOrder =
+        await this.carrybeeApiService.createOrder(orderData);
 
       parcel.delivery_provider = DeliveryProvider.CARRYBEE;
       parcel.third_party_provider_id = provider.id;

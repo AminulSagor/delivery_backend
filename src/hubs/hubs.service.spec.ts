@@ -6,7 +6,8 @@ describe('HubsService.getHubDashboardSummary', () => {
       find: jest.fn().mockResolvedValue([{ id: 'store-1' }]),
     };
     const parcelRepository = {
-      count: jest.fn()
+      count: jest
+        .fn()
         .mockResolvedValueOnce(30) // parcels to process
         .mockResolvedValueOnce(18) // today's parcels
         .mockResolvedValueOnce(8), // last 3h change

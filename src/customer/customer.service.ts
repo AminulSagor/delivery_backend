@@ -15,7 +15,10 @@ import {
   DeliveryAddressDto,
 } from './dto/check-customer-phone.dto';
 import { PaginationDto, PaginatedResponse } from '../common/dto/pagination.dto';
-import { CustomerFraud, CustomerFraudStatus } from './entities/customer-fraud.entity';
+import {
+  CustomerFraud,
+  CustomerFraudStatus,
+} from './entities/customer-fraud.entity';
 import { Parcel, ParcelStatus } from 'src/parcels/entities/parcel.entity';
 import { CoverageArea } from 'src/coverage-areas/entities/coverage-area.entity';
 

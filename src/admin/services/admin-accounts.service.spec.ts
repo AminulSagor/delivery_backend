@@ -27,7 +27,10 @@ describe('AdminAccountsService.normalizeAnalyticsRange', () => {
     );
 
     const now = new Date();
-    const range = (service as any).normalizeAnalyticsRange(undefined, undefined);
+    const range = (service as any).normalizeAnalyticsRange(
+      undefined,
+      undefined,
+    );
 
     expect(range.start.getTime()).toBeLessThanOrEqual(now.getTime());
     expect(range.end.getTime()).toBeGreaterThanOrEqual(now.getTime());

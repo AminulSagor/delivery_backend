@@ -129,10 +129,7 @@ export class StoresController {
   @Roles(UserRole.MERCHANT, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @Get()
-  async findAll(
-    @CurrentUser() user: any,
-    @Query('status') status?: string,
-  ) {
+  async findAll(@CurrentUser() user: any, @Query('status') status?: string) {
     const stores = await this.storesService.findAllByMerchant(
       user.userId,
       status,

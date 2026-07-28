@@ -381,7 +381,10 @@ export class MerchantService {
           'COALESCE(SUM(parcel.cod_collected_amount), 0)',
           'collected_amount',
         )
-        .addSelect('COALESCE(SUM(parcel.delivery_charge), 0)', 'delivery_charge')
+        .addSelect(
+          'COALESCE(SUM(parcel.delivery_charge), 0)',
+          'delivery_charge',
+        )
         .addSelect('COALESCE(SUM(parcel.paid_amount), 0)', 'total_paid')
         .where('parcel.merchant_id IN (:...merchantIds)', { merchantIds })
         .groupBy('parcel.merchant_id')

@@ -24,12 +24,17 @@ export class CreateAdvancePaymentDto {
 
   @IsNotEmpty()
   @IsNumber()
-  @Transform(({ obj, value }) => obj.collectable_amount ?? obj.collectableAmount ?? value)
+  @Transform(
+    ({ obj, value }) =>
+      obj.collectable_amount ?? obj.collectableAmount ?? value,
+  )
   total_collectable_amount: number;
 
   @IsNotEmpty()
   @IsNumber()
-  @Transform(({ obj, value }) => obj.delivery_charge ?? obj.deliveryFee ?? value)
+  @Transform(
+    ({ obj, value }) => obj.delivery_charge ?? obj.deliveryFee ?? value,
+  )
   delivery_fee: number;
 
   @IsNotEmpty()
@@ -39,12 +44,21 @@ export class CreateAdvancePaymentDto {
 
   @IsNotEmpty()
   @IsNumber()
-  @Transform(({ obj, value }) => obj.prev_weight_charge ?? obj.previous_weight_charge ?? obj.previousWeightCharge ?? value)
+  @Transform(
+    ({ obj, value }) =>
+      obj.prev_weight_charge ??
+      obj.previous_weight_charge ??
+      obj.previousWeightCharge ??
+      value,
+  )
   previous_weight_charge: number;
 
   @IsNotEmpty()
   @IsNumber()
-  @Transform(({ obj, value }) => obj.return_charge ?? obj.return_amount ?? obj.returnAmount ?? value)
+  @Transform(
+    ({ obj, value }) =>
+      obj.return_charge ?? obj.return_amount ?? obj.returnAmount ?? value,
+  )
   return_amount: number;
 
   @IsOptional()

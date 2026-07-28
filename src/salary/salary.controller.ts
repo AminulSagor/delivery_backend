@@ -26,11 +26,11 @@ export class SalaryController {
   constructor(private readonly salaryService: SalaryService) {}
 
   @Get('create-list')
-  getCreateList(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.salaryService.getCreateList(Number(page) || 1, Number(limit) || 10);
+  getCreateList(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.salaryService.getCreateList(
+      Number(page) || 1,
+      Number(limit) || 10,
+    );
   }
 
   @Get('staff/:id/create-details')
@@ -44,11 +44,11 @@ export class SalaryController {
   }
 
   @Get('pay-list')
-  getPayList(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.salaryService.getPayList(Number(page) || 1, Number(limit) || 10);
+  getPayList(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.salaryService.getPayList(
+      Number(page) || 1,
+      Number(limit) || 10,
+    );
   }
 
   @Get('staff/:id/payment-details')
@@ -69,8 +69,15 @@ export class SalaryController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: FinalizePayoutDto,
   ) {
-    const processedAt = dto.processed_at ? new Date(dto.processed_at) : undefined;
-    return this.salaryService.finalizePayout(id, dto.status, processedAt, dto.failure_reason);
+    const processedAt = dto.processed_at
+      ? new Date(dto.processed_at)
+      : undefined;
+    return this.salaryService.finalizePayout(
+      id,
+      dto.status,
+      processedAt,
+      dto.failure_reason,
+    );
   }
 
   @Get('staff/:id/payouts')
@@ -79,6 +86,10 @@ export class SalaryController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.salaryService.getPayouts(id, Number(page) || 1, Number(limit) || 20);
+    return this.salaryService.getPayouts(
+      id,
+      Number(page) || 1,
+      Number(limit) || 20,
+    );
   }
 }

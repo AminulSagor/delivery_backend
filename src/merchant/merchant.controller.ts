@@ -356,7 +356,10 @@ export class MerchantController {
       id,
       'trade_license',
     );
-    return { ...result, message: 'Trade license document rejected successfully' };
+    return {
+      ...result,
+      message: 'Trade license document rejected successfully',
+    };
   }
 
   @Roles(UserRole.ADMIN)

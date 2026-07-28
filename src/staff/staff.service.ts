@@ -130,7 +130,8 @@ export class StaffService {
 
     try {
       // Hash password (generate a secure random one when admin doesn't provide)
-      const rawPassword = createStaffDto.password ?? this.generateRandomPassword(12);
+      const rawPassword =
+        createStaffDto.password ?? this.generateRandomPassword(12);
       const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
       // Create user
@@ -177,7 +178,9 @@ export class StaffService {
       const savedStaff = await queryRunner.manager.save(Staff, staff);
 
       // ALWAYS create a staff payout method record with bank account
-      const StaffPayoutMethod = (await import('./entities/staff-payout-method.entity')).StaffPayoutMethod;
+      const StaffPayoutMethod = (
+        await import('./entities/staff-payout-method.entity')
+      ).StaffPayoutMethod;
       const payoutRepo = queryRunner.manager.getRepository(StaffPayoutMethod);
 
       const payoutMethod = payoutRepo.create({
@@ -664,8 +667,11 @@ export class StaffService {
     amount: number,
     initiatedBy?: string | null,
   ): Promise<any> {
-    const staff = await this.staffRepository.findOne({ where: { id: staffId } });
-    if (!staff) throw new NotFoundException(`Staff with ID "${staffId}" not found`);
+    const staff = await this.staffRepository.findOne({
+      where: { id: staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff with ID "${staffId}" not found`);
 
     const tx = this.payoutRepository.create({
       staff_id: staffId,

@@ -1361,7 +1361,8 @@ export class MerchantInvoiceService {
       customer_info: {
         customer_id: parcel.customer_id || customer?.id || null,
         customer_name: parcel.customer_name || customer?.customer_name || 'N/A',
-        customer_phone: parcel.customer_phone || customer?.phone_number || 'N/A',
+        customer_phone:
+          parcel.customer_phone || customer?.phone_number || 'N/A',
         customer_address:
           parcel.customer_address || customer?.customer_address || 'N/A',
       },

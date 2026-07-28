@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CoverageArea } from './entities/coverage-area.entity';
 import { SearchCoverageAreaDto } from './dto/search-coverage-area.dto';
-import { SuggestCoverageAreaDto } from './dto/suggest-coverage-area.dto';
+import {
+  SuggestAddressDto,
+  SuggestCoverageAreaDto,
+} from './dto/suggest-coverage-area.dto';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 
 interface CoverageAreaWithNorms extends CoverageArea {
@@ -496,25 +499,70 @@ export class CoverageAreasService {
    * Main API method: Suggests the best matching coverage area for a raw address string.
    */
 
-  async suggestArea(rawAddress: string): Promise<CoverageArea | null> {
-    // 1. Fetch all areas (In production, you should CACHE this result for performance)
+  async suggestArea(input: SuggestAddressDto): Promise<CoverageArea | null> {
     const allAreas = await this.coverageAreaRepository.find();
 
-    // 2. Pre-calculate normalized strings once for the whole batch
-    const areasWithNorms: CoverageAreaWithNorms[] = allAreas.map((c) => ({
-      ...c,
-      _city_norm: this.normalizeText(c.city),
-      _zone_norm: this.normalizeText(c.zone),
-      _area_norm: this.normalizeText(c.area),
-    }));
+    const areasWithNorms: CoverageAreaWithNorms[] = allAreas.map(
+      (coverageArea) => ({
+        ...coverageArea,
+        _city_norm: this.normalizeText(coverageArea.city),
+        _zone_norm: this.normalizeText(coverageArea.zone),
+        _area_norm: this.normalizeText(coverageArea.area),
+      }),
+    );
 
-    // 3. Run the heuristic matching logic
-    return this.findBestCoverageAreaFromAddress(rawAddress, areasWithNorms);
+    const enrichedAddress = this.buildAddressSearchText(input);
+
+    this.logger.debug(`[ADDRESS SUGGEST] Search value: ${enrichedAddress}`);
+
+    return this.findBestCoverageAreaFromAddress(
+      enrichedAddress,
+      areasWithNorms,
+    );
   }
 
   // ===========================================================================
   // PRIVATE HELPER METHODS
   // ===========================================================================
+
+  private buildAddressSearchText(
+  input: SuggestAddressDto,
+): string {
+  /*
+   * The matching algorithm checks comma-separated segments
+   * from right to left.
+   *
+   * Therefore:
+   * city is last,
+   * sub-area is checked before area,
+   * area is checked before thana.
+   */
+  const segments = [
+    input.address,
+    input.fixedAddress,
+    input.thana,
+    input.area,
+    input.subArea,
+    input.city,
+  ];
+
+  const normalizedSegments = new Set<string>();
+
+  return segments
+    .map((segment) => segment?.trim())
+    .filter((segment): segment is string => Boolean(segment))
+    .filter((segment) => {
+      const normalized = this.normalizeText(segment);
+
+      if (!normalized || normalizedSegments.has(normalized)) {
+        return false;
+      }
+
+      normalizedSegments.add(normalized);
+      return true;
+    })
+    .join(", ");
+}
 
   private findBestCoverageAreaFromAddress(
     rawAddress: string,

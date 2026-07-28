@@ -423,7 +423,9 @@ export class RiderFinanceService {
       .where('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.delivered_at BETWEEN :start AND :end', { start, end })
       // Exclude parcels with price changed since they shouldn't count toward delivered cash for this endpoint
-      .andWhere('(parcel.is_price_changed IS NULL OR parcel.is_price_changed = false)')
+      .andWhere(
+        '(parcel.is_price_changed IS NULL OR parcel.is_price_changed = false)',
+      )
       .getRawOne();
 
     return Number(total) || 0;

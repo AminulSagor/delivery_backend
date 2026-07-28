@@ -18,9 +18,7 @@ import { SmsPreferencesService } from '../services/sms-preferences.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminSmsPreferencesController {
-  constructor(
-    private readonly smsPreferencesService: SmsPreferencesService,
-  ) {}
+  constructor(private readonly smsPreferencesService: SmsPreferencesService) {}
 
   @Get()
   getPreferences() {

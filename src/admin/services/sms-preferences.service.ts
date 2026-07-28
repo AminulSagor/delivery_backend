@@ -45,14 +45,8 @@ export class SmsPreferencesService {
     const preferences = await this.ensureDefaults();
 
     return {
-      customer: this.buildSection(
-        SmsPreferenceRecipient.CUSTOMER,
-        preferences,
-      ),
-      merchant: this.buildSection(
-        SmsPreferenceRecipient.MERCHANT,
-        preferences,
-      ),
+      customer: this.buildSection(SmsPreferenceRecipient.CUSTOMER, preferences),
+      merchant: this.buildSection(SmsPreferenceRecipient.MERCHANT, preferences),
     };
   }
 

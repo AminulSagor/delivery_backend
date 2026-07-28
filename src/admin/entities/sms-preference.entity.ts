@@ -29,22 +29,16 @@ export enum SmsPreferenceEvent {
   PARCEL_CANCELLED = 'PARCEL_CANCELLED',
 }
 
-export const SMS_PREFERENCE_EVENT_LABELS: Record<
-  SmsPreferenceEvent,
-  string
-> = {
+export const SMS_PREFERENCE_EVENT_LABELS: Record<SmsPreferenceEvent, string> = {
   [SmsPreferenceEvent.PARCEL_CREATED]: 'Parcel Created',
   [SmsPreferenceEvent.PICKUP_MAN_ASSIGNED]: 'Pickup Man Assigned',
-  [SmsPreferenceEvent.PARCEL_PICKUP_RESCHEDULED]:
-    'Parcel Pickup Re-scheduled',
+  [SmsPreferenceEvent.PARCEL_PICKUP_RESCHEDULED]: 'Parcel Pickup Re-scheduled',
   [SmsPreferenceEvent.PARCEL_RECEIVED_BY_PICKUP_MAN]:
     'Parcel Received By Pickup Man',
-  [SmsPreferenceEvent.PARCEL_RECEIVED_TO_BRANCH]:
-    'Parcel Received To Branch',
+  [SmsPreferenceEvent.PARCEL_RECEIVED_TO_BRANCH]: 'Parcel Received To Branch',
   [SmsPreferenceEvent.PARCEL_TRANSFERRED_TO_BRANCH_ASSIGNED]:
     'Parcel Transferred To Branch Assigned',
-  [SmsPreferenceEvent.PARCEL_RECEIVED_BY_BRANCH]:
-    'Parcel Received By Branch',
+  [SmsPreferenceEvent.PARCEL_RECEIVED_BY_BRANCH]: 'Parcel Received By Branch',
   [SmsPreferenceEvent.DELIVERY_MAN_ASSIGNED]: 'Delivery Man Assigned',
   [SmsPreferenceEvent.PARCEL_DELIVERY_RESCHEDULED]:
     'Parcel Delivery Re-scheduled',

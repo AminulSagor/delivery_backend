@@ -105,7 +105,7 @@ export class CoverageAreasController {
   @Post('address/suggest')
   @HttpCode(HttpStatus.OK)
   async suggestAddress(@Body() dto: SuggestAddressDto) {
-    const suggestion = await this.coverageAreasService.suggestArea(dto.address);
+    const suggestion = await this.coverageAreasService.suggestArea(dto);
     // suggestion should be: CoverageArea | null
 
     return {

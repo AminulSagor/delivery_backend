@@ -267,7 +267,9 @@ export class AdvancePaymentsService {
       await this.assertAdvancePaymentsEnabled(nextMerchantId);
 
       if (dto.merchant_id && dto.merchant_id !== advance.merchant_id) {
-        throw new BadRequestException('Merchant cannot be changed during review');
+        throw new BadRequestException(
+          'Merchant cannot be changed during review',
+        );
       }
 
       Object.assign(advance, dto);
@@ -555,8 +557,7 @@ export class AdvancePaymentsService {
       .map((row) => {
         const store = storeByMerchant.get(row.merchant_id);
         const parcelStats = parcelStatsByMerchant.get(row.merchant_id);
-        const merchantName =
-          store?.business_name || row.merchant_name || 'N/A';
+        const merchantName = store?.business_name || row.merchant_name || 'N/A';
 
         return {
           merchant_id: row.merchant_id,
@@ -572,9 +573,7 @@ export class AdvancePaymentsService {
               }
             : null,
           total_advance_invoices: Number(row.total_advance_invoices || 0),
-          successful_parcels: Number(
-            parcelStats?.successful_parcels || 0,
-          ),
+          successful_parcels: Number(parcelStats?.successful_parcels || 0),
           total_transactions: this.roundMoney(
             Number(parcelStats?.total_transactions || 0),
           ),
@@ -598,7 +597,9 @@ export class AdvancePaymentsService {
     );
     const topMerchantPaid =
       sortedMerchants.length > 0
-        ? [...sortedMerchants].sort((a, b) => b.advance_paid - a.advance_paid)[0]
+        ? [...sortedMerchants].sort(
+            (a, b) => b.advance_paid - a.advance_paid,
+          )[0]
         : null;
 
     return {
@@ -700,11 +701,7 @@ export class AdvancePaymentsService {
       advance_paid: number;
       successful_parcels: number;
     },
-  >(
-    rows: T[],
-    sortBy: string,
-    sortOrder: 'ASC' | 'DESC',
-  ) {
+  >(rows: T[], sortBy: string, sortOrder: 'ASC' | 'DESC') {
     const direction = sortOrder === 'ASC' ? 1 : -1;
     const numericFields = new Set([
       'total_transactions',
