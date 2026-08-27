@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+
 import {
   IsOptional,
   IsEnum,
@@ -9,7 +10,9 @@ import {
   IsIn,
   IsString,
   IsNumber,
+  IsDateString,
 } from 'class-validator';
+
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { ParcelStatus, PaymentStatus } from '../entities/parcel.entity';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
@@ -29,6 +32,14 @@ export class ParcelQueryDto extends PaginationDto {
   @Min(1, { message: 'Days must be at least 1' })
   @Max(365, { message: 'Days cannot exceed 365' })
   days?: number;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid start date' })
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid end date' })
+  endDate?: string;
 
   @IsOptional()
   @IsEnum(PaymentStatus, { message: 'Invalid payment status' })

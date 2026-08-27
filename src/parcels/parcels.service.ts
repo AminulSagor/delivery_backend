@@ -554,22 +554,18 @@ export class ParcelsService {
     startDate?: string,
     endDate?: string,
   ): Promise<{
-    summary: {
-      new_parcels: { count: number; amount: number };
-      pickup: { count: number; amount: number };
-      in_transit: { count: number; amount: number };
-      assigned: { count: number; amount: number };
-      out_for_delivery: { count: number; amount: number };
-      delivered: { count: number; amount: number };
-      delivery_rescheduled: { count: number; amount: number };
-      returned: { count: number; amount: number };
-      cancelled: { count: number; amount: number };
-    };
-    total: { count: number; amount: number };
+    total_parcel: { count: number; amount: number };
+    delivered: { count: number; amount: number };
+    partially_delivered: { count: number; amount: number };
+    paid_return: { count: number; amount: number };
+    exchange: { count: number; amount: number };
+    pending_delivery: { count: number; amount: number };
+    return_percentage: number;
+    pending_return: { count: number; amount: number };
+    return_to_merchant: { count: number; amount: number };
   }> {
     const dateRange = this.resolveLifetimeSummaryDateRange(startDate, endDate);
 
-    // Helper function to calculate count and amount
     const calculateStats = async (
       whereCondition: FindOptionsWhere<Parcel> | FindOptionsWhere<Parcel>[],
     ): Promise<{ count: number; amount: number }> => {
@@ -581,44 +577,84 @@ export class ParcelsService {
       return {
         count: parcels.length,
         amount: parcels.reduce(
-          (sum, p) => sum + (Number(p.cod_amount) || 0),
+          (sum, parcel) => sum + (Number(parcel.cod_amount) || 0),
           0,
         ),
       };
     };
 
-    // 1. New Parcels (PENDING)
-    const newParcels = await calculateStats(
+    // 1. Total Parcel
+    const totalParcel = await calculateStats(
       this.applyCreatedAtDateRange(
         {
           merchant_id: merchantId,
-          status: ParcelStatus.PENDING,
         },
         dateRange,
       ),
     );
 
-    // 2. Pickup (PICKED_UP, OUT_FOR_PICKUP)
-    const pickup = await calculateStats(
+    // 2. Delivered
+    const delivered = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.DELIVERED,
+        },
+        dateRange,
+      ),
+    );
+
+    // 3. Partially Delivered
+    const partiallyDelivered = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.PARTIAL_DELIVERY,
+        },
+        dateRange,
+      ),
+    );
+
+    // 4. Paid Return
+    const paidReturn = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.PAID_RETURN,
+        },
+        dateRange,
+      ),
+    );
+
+    // 5. Exchange
+    const exchange = await calculateStats(
+      this.applyCreatedAtDateRange(
+        {
+          merchant_id: merchantId,
+          status: ParcelStatus.EXCHANGE,
+        },
+        dateRange,
+      ),
+    );
+
+    // 6. Pending Delivery
+    // Parcels that are still moving through the delivery flow
+    // and have not reached a final delivery/return state.
+    const pendingDelivery = await calculateStats(
       this.applyCreatedAtDateRange(
         [
           {
             merchant_id: merchantId,
-            status: ParcelStatus.PICKED_UP,
+            status: ParcelStatus.PENDING,
           },
           {
             merchant_id: merchantId,
             status: ParcelStatus.OUT_FOR_PICKUP,
           },
-        ],
-        dateRange,
-      ),
-    );
-
-    // 3. In Transit (IN_TRANSIT, IN_HUB)
-    const inTransit = await calculateStats(
-      this.applyCreatedAtDateRange(
-        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PICKED_UP,
+          },
           {
             merchant_id: merchantId,
             status: ParcelStatus.IN_TRANSIT,
@@ -627,15 +663,6 @@ export class ParcelsService {
             merchant_id: merchantId,
             status: ParcelStatus.IN_HUB,
           },
-        ],
-        dateRange,
-      ),
-    );
-
-    // 4. Assigned (ASSIGNED_TO_RIDER, ASSIGNED_TO_THIRD_PARTY)
-    const assigned = await calculateStats(
-      this.applyCreatedAtDateRange(
-        [
           {
             merchant_id: merchantId,
             status: ParcelStatus.ASSIGNED_TO_RIDER,
@@ -644,73 +671,28 @@ export class ParcelsService {
             merchant_id: merchantId,
             status: ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
           },
-        ],
-        dateRange,
-      ),
-    );
-
-    // 5. Out for Delivery
-    const outForDelivery = await calculateStats(
-      this.applyCreatedAtDateRange(
-        {
-          merchant_id: merchantId,
-          status: ParcelStatus.OUT_FOR_DELIVERY,
-        },
-        dateRange,
-      ),
-    );
-
-    // 6. Delivered (DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN)
-    const delivered = await calculateStats(
-      this.applyCreatedAtDateRange(
-        [
           {
             merchant_id: merchantId,
-            status: ParcelStatus.DELIVERED,
+            status: ParcelStatus.OUT_FOR_DELIVERY,
           },
           {
             merchant_id: merchantId,
-            status: ParcelStatus.PARTIAL_DELIVERY,
-          },
-          {
-            merchant_id: merchantId,
-            status: ParcelStatus.EXCHANGE,
-          },
-          {
-            merchant_id: merchantId,
-            status: ParcelStatus.PAID_RETURN,
+            status: ParcelStatus.DELIVERY_RESCHEDULED,
           },
         ],
         dateRange,
       ),
     );
 
-    // 7. Delivery Rescheduled
-    const deliveryRescheduled = await calculateStats(
-      this.applyCreatedAtDateRange(
-        {
-          merchant_id: merchantId,
-          status: ParcelStatus.DELIVERY_RESCHEDULED,
-        },
-        dateRange,
-      ),
-    );
-
-    // 8. Returned (RETURNED, PAID_RETURN, RETURN_TO_MERCHANT, RETURNED_TO_HUB)
-    const returned = await calculateStats(
+    // 7. Pending Return
+    // Return has started, but the parcel has not yet been
+    // completed as RETURN_TO_MERCHANT.
+    const pendingReturn = await calculateStats(
       this.applyCreatedAtDateRange(
         [
           {
             merchant_id: merchantId,
             status: ParcelStatus.RETURNED,
-          },
-          {
-            merchant_id: merchantId,
-            status: ParcelStatus.PAID_RETURN,
-          },
-          {
-            merchant_id: merchantId,
-            status: ParcelStatus.RETURN_TO_MERCHANT,
           },
           {
             merchant_id: merchantId,
@@ -721,40 +703,69 @@ export class ParcelsService {
       ),
     );
 
-    // 9. Cancelled
-    const cancelled = await calculateStats(
+    // 8. Return To Merchant
+    const returnToMerchant = await calculateStats(
       this.applyCreatedAtDateRange(
         {
           merchant_id: merchantId,
-          status: ParcelStatus.CANCELLED,
+          status: ParcelStatus.RETURN_TO_MERCHANT,
         },
         dateRange,
       ),
     );
 
-    // Calculate total (all parcels)
-    const total = await calculateStats(
+    // 9. Return Percentage
+    //
+    // Returned outcomes include:
+    // - RETURNED
+    // - RETURNED_TO_HUB
+    // - RETURN_TO_MERCHANT
+    // - PAID_RETURN
+    //
+    // Percentage = returned parcels / total parcels * 100
+    const returnedForPercentage = await calculateStats(
       this.applyCreatedAtDateRange(
-        {
-          merchant_id: merchantId,
-        },
+        [
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURNED,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURNED_TO_HUB,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.RETURN_TO_MERCHANT,
+          },
+          {
+            merchant_id: merchantId,
+            status: ParcelStatus.PAID_RETURN,
+          },
+        ],
         dateRange,
       ),
     );
+
+    const returnPercentage =
+      totalParcel.count > 0
+        ? Number(
+            ((returnedForPercentage.count / totalParcel.count) * 100).toFixed(
+              2,
+            ),
+          )
+        : 0;
 
     return {
-      summary: {
-        new_parcels: newParcels,
-        pickup: pickup,
-        in_transit: inTransit,
-        assigned: assigned,
-        out_for_delivery: outForDelivery,
-        delivered: delivered,
-        delivery_rescheduled: deliveryRescheduled,
-        returned: returned,
-        cancelled: cancelled,
-      },
-      total: total,
+      total_parcel: totalParcel,
+      delivered,
+      partially_delivered: partiallyDelivered,
+      paid_return: paidReturn,
+      exchange,
+      pending_delivery: pendingDelivery,
+      return_percentage: returnPercentage,
+      pending_return: pendingReturn,
+      return_to_merchant: returnToMerchant,
     };
   }
 
@@ -1955,6 +1966,8 @@ export class ParcelsService {
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
+    startDate?: string,
+    endDate?: string,
     paymentStatus?: PaymentStatus,
     search?: string,
     customerName?: string,
@@ -1966,7 +1979,9 @@ export class ParcelsService {
     deliveryType?: DeliveryType,
   ): Promise<PaginatedResponse<Parcel>> {
     try {
-      if (!merchantId) throw new ForbiddenException('Merchant ID is required');
+      if (!merchantId) {
+        throw new ForbiddenException('Merchant ID is required');
+      }
 
       const queryBuilder = this.parcelRepository
         .createQueryBuilder('parcel')
@@ -1995,16 +2010,45 @@ export class ParcelsService {
         queryBuilder.andWhere('parcel.status = :status', { status });
       }
 
-      if (days) {
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        startDate.setDate(startDate.getDate() - (days - 1));
-        startDate.setHours(0, 0, 0, 0);
+      if (startDate || endDate) {
+        if (!startDate || !endDate) {
+          throw new BadRequestException(
+            'startDate and endDate must be provided together',
+          );
+        }
+
+        const parsedStartDate = this.parseDateOnlyAsUtc(startDate, 'startDate');
+
+        const parsedEndDate = this.parseDateOnlyAsUtc(endDate, 'endDate');
+
+        if (parsedStartDate > parsedEndDate) {
+          throw new BadRequestException(
+            'startDate must be less than or equal to endDate',
+          );
+        }
+
+        parsedEndDate.setUTCHours(23, 59, 59, 999);
+
         queryBuilder.andWhere(
           'parcel.created_at BETWEEN :startDate AND :endDate',
           {
-            startDate,
-            endDate,
+            startDate: parsedStartDate,
+            endDate: parsedEndDate,
+          },
+        );
+      } else if (days) {
+        const daysEndDate = new Date();
+        const daysStartDate = new Date(daysEndDate);
+
+        daysStartDate.setDate(daysStartDate.getDate() - (days - 1));
+
+        daysStartDate.setHours(0, 0, 0, 0);
+
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate: daysStartDate,
+            endDate: daysEndDate,
           },
         );
       }
@@ -2023,6 +2067,7 @@ export class ParcelsService {
       });
 
       this.applyParcelListSorting(queryBuilder, sortBy, order);
+
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [items, total] = await queryBuilder.getManyAndCount();
@@ -2042,10 +2087,20 @@ export class ParcelsService {
         `Retrieved ${items.length} parcels for merchant ${merchantId}`,
       );
 
-      return { items, pagination };
+      return {
+        items,
+        pagination,
+      };
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
       this.logger.error(`[FIND PARCELS ERROR] ${error.message}`, error.stack);
+
       throw new InternalServerErrorException(
         'Failed to retrieve parcels. Please try again.',
       );
@@ -2462,6 +2517,8 @@ export class ParcelsService {
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
+    startDate?: string,
+    endDate?: string,
     paymentStatus?: PaymentStatus,
     search?: string,
     customerName?: string,
@@ -2501,16 +2558,45 @@ export class ParcelsService {
         queryBuilder.andWhere('parcel.status = :status', { status });
       }
 
-      if (days) {
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        startDate.setDate(startDate.getDate() - (days - 1));
-        startDate.setHours(0, 0, 0, 0);
+      if (startDate || endDate) {
+        if (!startDate || !endDate) {
+          throw new BadRequestException(
+            'startDate and endDate must be provided together',
+          );
+        }
+
+        const parsedStartDate = this.parseDateOnlyAsUtc(startDate, 'startDate');
+
+        const parsedEndDate = this.parseDateOnlyAsUtc(endDate, 'endDate');
+
+        if (parsedStartDate > parsedEndDate) {
+          throw new BadRequestException(
+            'startDate must be less than or equal to endDate',
+          );
+        }
+
+        parsedEndDate.setUTCHours(23, 59, 59, 999);
+
         queryBuilder.andWhere(
           'parcel.created_at BETWEEN :startDate AND :endDate',
           {
-            startDate,
-            endDate,
+            startDate: parsedStartDate,
+            endDate: parsedEndDate,
+          },
+        );
+      } else if (days) {
+        const daysEndDate = new Date();
+        const daysStartDate = new Date(daysEndDate);
+
+        daysStartDate.setDate(daysStartDate.getDate() - (days - 1));
+
+        daysStartDate.setHours(0, 0, 0, 0);
+
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate: daysStartDate,
+            endDate: daysEndDate,
           },
         );
       }
@@ -2534,6 +2620,7 @@ export class ParcelsService {
       });
 
       this.applyParcelListSorting(queryBuilder, sortBy, order);
+
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [items, total] = await queryBuilder.getManyAndCount();
@@ -2551,12 +2638,20 @@ export class ParcelsService {
 
       this.logger.log(`Retrieved ${items.length} parcels (Admin view)`);
 
-      return { items, pagination };
+      return {
+        items,
+        pagination,
+      };
     } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
       this.logger.error(
         `[FIND ALL PARCELS ERROR] ${error.message}`,
         error.stack,
       );
+
       throw new InternalServerErrorException(
         'Failed to retrieve parcels. Please try again.',
       );
@@ -2575,6 +2670,8 @@ export class ParcelsService {
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
     days?: number,
+    startDate?: string,
+    endDate?: string,
     paymentStatus?: PaymentStatus,
     search?: string,
     merchantId?: string,
@@ -2589,7 +2686,6 @@ export class ParcelsService {
     isReceiptQueue: boolean = false,
   ): Promise<PaginatedResponse<any>> {
     try {
-      // Get all stores assigned to this hub
       const stores = await this.storeRepository.find({
         where: { hub_id: hubId },
         select: ['id'],
@@ -2598,7 +2694,6 @@ export class ParcelsService {
       const storeIds = stores.map((store) => store.id);
 
       if (storeIds.length === 0) {
-        // No stores assigned to this hub
         return {
           items: [],
           pagination: {
@@ -2638,23 +2733,50 @@ export class ParcelsService {
       } else if (status) {
         queryBuilder.andWhere('parcel.status = :status', { status });
       } else if (isReceiptQueue) {
-        // Default receipt queue behavior
         queryBuilder.andWhere('parcel.status IN (:...defaultStatuses)', {
           defaultStatuses: [ParcelStatus.PENDING, ParcelStatus.PICKED_UP],
         });
       }
-      // If no status and not a receipt queue, we show ALL parcels.
 
-      if (days) {
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        startDate.setDate(startDate.getDate() - (days - 1));
-        startDate.setHours(0, 0, 0, 0);
+      if (startDate || endDate) {
+        if (!startDate || !endDate) {
+          throw new BadRequestException(
+            'startDate and endDate must be provided together',
+          );
+        }
+
+        const parsedStartDate = this.parseDateOnlyAsUtc(startDate, 'startDate');
+
+        const parsedEndDate = this.parseDateOnlyAsUtc(endDate, 'endDate');
+
+        if (parsedStartDate > parsedEndDate) {
+          throw new BadRequestException(
+            'startDate must be less than or equal to endDate',
+          );
+        }
+
+        parsedEndDate.setUTCHours(23, 59, 59, 999);
+
         queryBuilder.andWhere(
           'parcel.created_at BETWEEN :startDate AND :endDate',
           {
-            startDate,
-            endDate,
+            startDate: parsedStartDate,
+            endDate: parsedEndDate,
+          },
+        );
+      } else if (days) {
+        const daysEndDate = new Date();
+        const daysStartDate = new Date(daysEndDate);
+
+        daysStartDate.setDate(daysStartDate.getDate() - (days - 1));
+
+        daysStartDate.setHours(0, 0, 0, 0);
+
+        queryBuilder.andWhere(
+          'parcel.created_at BETWEEN :startDate AND :endDate',
+          {
+            startDate: daysStartDate,
+            endDate: daysEndDate,
           },
         );
       }
@@ -2674,6 +2796,7 @@ export class ParcelsService {
       });
 
       this.applyParcelListSorting(queryBuilder, sortBy, order);
+
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [parcels, total] = await queryBuilder.getManyAndCount();
@@ -2693,12 +2816,20 @@ export class ParcelsService {
 
       this.logger.log(`Retrieved ${items.length} parcels for hub ${hubId}`);
 
-      return { items, pagination };
+      return {
+        items,
+        pagination,
+      };
     } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
       this.logger.error(
         `[FIND PARCELS FOR HUB ERROR] ${error.message}`,
         error.stack,
       );
+
       throw new InternalServerErrorException(
         'Failed to retrieve parcels for hub. Please try again.',
       );
