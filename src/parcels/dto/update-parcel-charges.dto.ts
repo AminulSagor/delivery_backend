@@ -6,9 +6,9 @@ export class UpdateParcelChargesDto {
     { message: 'Product weight must be a number' },
   )
   @Min(0)
-  @IsOptional()
-  product_weight?: number;
+  product_weight: number;
 
+  /** @deprecated Accepted for older clients but ignored by the service. */
   @IsNumber(
     { maxDecimalPlaces: 2 },
     { message: 'Delivery charge must be a number' },
@@ -17,6 +17,7 @@ export class UpdateParcelChargesDto {
   @IsOptional()
   delivery_charge?: number;
 
+  /** @deprecated Accepted for older clients but ignored by the service. */
   @IsNumber(
     { maxDecimalPlaces: 2 },
     { message: 'Weight charge must be a number' },

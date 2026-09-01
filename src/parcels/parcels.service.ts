@@ -1277,6 +1277,53 @@ export class ParcelsService {
     };
   }
 
+  /**
+   * Rebuild aggregate amounts from the persisted charge components.
+   *
+   * Parcels do not have a discount column, so derive the discount that was
+   * fixed at entry time before replacing an individual charge. This prevents
+   * later pricing configuration changes from silently changing old parcels.
+   */
+  private applyChargeComponentUpdate(
+    parcel: Parcel,
+    updates: { codCharge?: number; weightCharge?: number },
+  ): void {
+    const deliveryCharge = Number(parcel.delivery_charge) || 0;
+    const previousWeightCharge = Number(parcel.weight_charge) || 0;
+    const previousCodCharge = Number(parcel.cod_charge) || 0;
+    const previousTotalCharge = Number(parcel.total_charge) || 0;
+    const fixedDiscount = Math.max(
+      0,
+      Math.round(
+        (deliveryCharge +
+          previousWeightCharge +
+          previousCodCharge -
+          previousTotalCharge) *
+          100,
+      ) / 100,
+    );
+
+    if (updates.weightCharge !== undefined) {
+      parcel.weight_charge = updates.weightCharge;
+    }
+    if (updates.codCharge !== undefined) {
+      parcel.cod_charge = updates.codCharge;
+    }
+
+    const totalCharge =
+      Math.round(
+        (deliveryCharge +
+          Number(parcel.weight_charge || 0) +
+          Number(parcel.cod_charge || 0) -
+          fixedDiscount) *
+          100,
+      ) / 100;
+
+    parcel.total_charge = totalCharge;
+    parcel.receivable_amount =
+      Math.round((Number(parcel.cod_amount || 0) - totalCharge) * 100) / 100;
+  }
+
   async create(
     createParcelDto: CreateParcelDto,
     userId: string,
@@ -3657,6 +3704,7 @@ export class ParcelsService {
       }
       // Capture previous product price before applying updates so we can detect changes
       const prevProductPrice = Number(parcel.product_price || 0);
+      const previousCodAmount = Number(parcel.cod_amount || 0);
       Object.assign(parcel, updateParcelDto);
 
       parcel.tracking_context = {
@@ -3687,11 +3735,33 @@ export class ParcelsService {
         parcel.product_price = newPrice;
         parcel.cod_amount = newPrice;
         parcel.is_cod = newPrice > 0;
-        parcel.receivable_amount =
-          Math.round(
-            (Number(parcel.cod_amount) - Number(parcel.total_charge || 0)) *
-              100,
-          ) / 100;
+
+        // Collect amount is the only input that may change the COD charge.
+        // Keep the entry-time delivery/weight charges and discount fixed.
+        // Preserve the effective COD percentage captured at parcel entry. If
+        // this parcel changes from non-COD to COD, there is no stored rate to
+        // infer, so resolve it from the merchant's pricing configuration once.
+        let newCodCharge: number;
+        if (previousCodAmount > 0) {
+          newCodCharge =
+            Math.round(
+              ((Number(parcel.cod_charge) || 0) / previousCodAmount) *
+                newPrice *
+                100,
+            ) / 100;
+        } else {
+          const recalculatedCharges = await this.calculateCharges(
+            parcel.merchant_id,
+            parcel.delivery_coverage_area_id || null,
+            Number(parcel.product_weight) || 0,
+            parcel.is_cod,
+            newPrice,
+          );
+          newCodCharge = recalculatedCharges.cod_charge;
+        }
+        this.applyChargeComponentUpdate(parcel, {
+          codCharge: newCodCharge,
+        });
       }
 
       let updatedParcel;
@@ -7399,9 +7469,9 @@ export class ParcelsService {
   }
 
   /**
-   * Hub Manager manually override delivery_charge and/or weight_charge for a received parcel
-   * Only allowed when parcel is IN_HUB at the hub manager's hub.
-   * Recalculates total_charge and receivable_amount using the existing formula:
+   * Recalculate the weight charge from the actual received weight.
+   * Hub managers use this while the parcel is in their receipt queue.
+   * Delivery and COD charges remain fixed. Recalculates aggregate amounts using:
    *   total_charge = delivery_charge + weight_charge + cod_charge - discount
    *   receivable_amount = cod_amount - total_charge
    */
@@ -7463,37 +7533,35 @@ export class ParcelsService {
       throw new BadRequestException(
         role === UserRole.ADMIN
           ? `Hub/Admin can edit only before rider starts delivery. Current status: ${parcel.status}`
-          : `Hub manager can edit weight/delivery charge only before parcel is received. Current status: ${parcel.status}`,
+          : `Hub manager can confirm actual weight only before parcel is received. Current status: ${parcel.status}`,
       );
     }
 
-    // Apply overrides (only fields provided in the DTO)
-    if (dto.product_weight !== undefined) {
+    if (dto.product_weight === undefined) {
+      throw new BadRequestException(
+        'product_weight is required to recalculate the weight charge',
+      );
+    }
+
+    // Do not accept stage-specific charge calculations from the UI. The
+    // actual weight is the source of truth and uses the same backend pricing
+    // rule as merchant entry. An unchanged weight must be a financial no-op.
+    const hasWeightChanged =
+      Math.abs(dto.product_weight - Number(parcel.product_weight || 0)) > 0.009;
+    if (hasWeightChanged) {
+      const recalculatedCharges = await this.calculateCharges(
+        parcel.merchant_id,
+        parcel.delivery_coverage_area_id || null,
+        dto.product_weight,
+        Number(parcel.cod_amount || 0) > 0,
+        Number(parcel.cod_amount || 0),
+      );
+
       parcel.product_weight = dto.product_weight;
+      this.applyChargeComponentUpdate(parcel, {
+        weightCharge: recalculatedCharges.weight_charge,
+      });
     }
-    if (dto.delivery_charge !== undefined) {
-      parcel.delivery_charge = dto.delivery_charge;
-    }
-    if (dto.weight_charge !== undefined) {
-      parcel.weight_charge = dto.weight_charge;
-    }
-
-    // Recalculate total_charge and receivable_amount using existing formula:
-    // total_charge = delivery_charge + weight_charge + cod_charge
-    const newTotalCharge =
-      Math.round(
-        (Number(parcel.delivery_charge) +
-          Number(parcel.weight_charge) +
-          Number(parcel.cod_charge)) *
-          100,
-      ) / 100;
-
-    // receivable_amount = cod_amount - total_charge
-    const newReceivableAmount =
-      Math.round((Number(parcel.cod_amount) - newTotalCharge) * 100) / 100;
-
-    parcel.total_charge = newTotalCharge;
-    parcel.receivable_amount = newReceivableAmount;
     parcel.tracking_context = {
       actor_type:
         role === UserRole.ADMIN
@@ -7506,7 +7574,7 @@ export class ParcelsService {
     const updated = await this.parcelRepository.save(parcel);
 
     this.logger.log(
-      `[HUB CHARGE OVERRIDE] Parcel: ${parcelId}, ` +
+      `[RECEIVED WEIGHT CONFIRMED] Parcel: ${parcelId}, ` +
         `Delivery: ${updated.delivery_charge}, Weight: ${updated.weight_charge}, ` +
         `COD: ${updated.cod_charge}, Total: ${updated.total_charge}, Receivable: ${updated.receivable_amount}`,
     );

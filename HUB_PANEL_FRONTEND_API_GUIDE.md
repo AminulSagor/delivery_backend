@@ -244,19 +244,17 @@ Success response:
 ```
 
 
-## 2.4 Update Hub Charges (Weight/Delivery Override)
+## 2.4 Confirm Actual Weight (Weight Charge Recalculation)
 PATCH /parcels/:id/hub-charges
 
 Access:
 - HUB_MANAGER
 - ADMIN
 
-Body (all optional; send only what you want to override):
+Body:
 ```json
 {
-  "product_weight": 1.5,
-  "delivery_charge": 110,
-  "weight_charge": 35
+  "product_weight": 1.5
 }
 ```
 
@@ -277,8 +275,12 @@ Business behavior:
   - IN_HUB
   - ASSIGNED_TO_RIDER
   - ASSIGNED_TO_THIRD_PARTY
+- `product_weight` is the source of truth. The backend calculates the weight charge; the UI must not calculate charges.
+- If the weight is unchanged, all charges remain unchanged.
+- If the weight changes, only `weight_charge` is replaced. The entry-time `delivery_charge`, `cod_charge`, and discount remain fixed.
+- For compatibility, older clients may still send `delivery_charge` and `weight_charge`, but those values are ignored.
 - Backend recalculates:
-  - total_charge = delivery_charge + weight_charge + cod_charge
+  - total_charge = delivery_charge + weight_charge + cod_charge - entry-time discount
   - receivable_amount = cod_amount - total_charge
 - Returns full updated parcel in response.
 
