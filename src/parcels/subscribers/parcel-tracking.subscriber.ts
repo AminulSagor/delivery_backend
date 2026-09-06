@@ -4,13 +4,24 @@ import {
   EntityManager,
   EntitySubscriberInterface,
   EventSubscriber,
+  In,
   InsertEvent,
   UpdateEvent,
 } from 'typeorm';
 import { DeliveryProvider } from '../../common/enums/delivery-provider.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { Hub } from '../../hubs/entities/hub.entity';
+import { HubManager } from '../../hubs/entities/hub-manager.entity';
+import { Merchant } from '../../merchant/entities/merchant.entity';
+import { Notification } from '../../notifications/entities/notification.entity';
+import {
+  NotificationCategory,
+  NotificationEntityType,
+} from '../../notifications/notification.types';
 import { Rider } from '../../riders/entities/rider.entity';
+import { Store } from '../../stores/entities/store.entity';
 import { ThirdPartyProvider } from '../../third-party-providers/entities/third-party-provider.entity';
+import { User } from '../../users/entities/user.entity';
 import { ParcelTrackingEvent } from '../entities/parcel-tracking-event.entity';
 import { Parcel, ParcelStatus } from '../entities/parcel.entity';
 import {
@@ -50,6 +61,47 @@ const TRACKED_DETAIL_FIELDS = [
   'special_instructions',
   'admin_notes',
 ] as const;
+
+const RIDER_NOTIFICATION_EVENTS = new Set<ParcelTrackingEventType>([
+  ParcelTrackingEventType.RIDER_ASSIGNED,
+  ParcelTrackingEventType.RIDER_TRANSFERRED,
+  ParcelTrackingEventType.RIDER_UNASSIGNED,
+]);
+
+const HUB_NOTIFICATION_EVENTS = new Set<ParcelTrackingEventType>([
+  ParcelTrackingEventType.PARCEL_CREATED,
+  ParcelTrackingEventType.PICKUP_REQUEST_LINKED,
+  ParcelTrackingEventType.HUB_TRANSFER_STARTED,
+  ParcelTrackingEventType.HUB_TRANSFER_RECEIVED,
+  ParcelTrackingEventType.RIDER_ACCEPTED,
+  ParcelTrackingEventType.OUT_FOR_DELIVERY,
+  ParcelTrackingEventType.DELIVERY_COMPLETED,
+  ParcelTrackingEventType.PARTIAL_DELIVERY,
+  ParcelTrackingEventType.EXCHANGE_COMPLETED,
+  ParcelTrackingEventType.DELIVERY_FAILED,
+  ParcelTrackingEventType.DELIVERY_RESCHEDULED,
+  ParcelTrackingEventType.RETURN_INITIATED,
+  ParcelTrackingEventType.PAID_RETURN_INITIATED,
+  ParcelTrackingEventType.RETURNED_TO_HUB,
+  ParcelTrackingEventType.ISSUE_REPORTED,
+  ParcelTrackingEventType.ISSUE_REOPENED,
+]);
+
+const ADMIN_NOTIFICATION_EVENTS = new Set<ParcelTrackingEventType>([
+  ParcelTrackingEventType.DELIVERY_FAILED,
+  ParcelTrackingEventType.PARTIAL_DELIVERY,
+  ParcelTrackingEventType.DELIVERY_RESCHEDULED,
+  ParcelTrackingEventType.RETURN_INITIATED,
+  ParcelTrackingEventType.PAID_RETURN_INITIATED,
+  ParcelTrackingEventType.ISSUE_REPORTED,
+  ParcelTrackingEventType.ISSUE_REOPENED,
+  ParcelTrackingEventType.CANCELLED,
+]);
+
+const MERCHANT_IGNORED_NOTIFICATION_EVENTS = new Set<ParcelTrackingEventType>([
+  ParcelTrackingEventType.PARCEL_CREATED,
+  ParcelTrackingEventType.PICKUP_REQUEST_LINKED,
+]);
 
 @Injectable()
 @EventSubscriber()
@@ -731,8 +783,159 @@ export class ParcelTrackingSubscriber
         occurred_at: draft.occurred_at || new Date(),
         dedupe_key: draft.dedupe_key || null,
       });
-      await repository.save(entity);
+      const savedEvent = await repository.save(entity);
+      await this.createInAppNotifications(
+        manager,
+        parcel,
+        savedEvent,
+        actorType,
+        actorId || null,
+      );
     }
+  }
+
+  /** Fan out parcel events to the four application panels. */
+  private async createInAppNotifications(
+    manager: EntityManager,
+    parcel: Parcel,
+    event: ParcelTrackingEvent,
+    actorType: ParcelTrackingActorType,
+    actorId: string | null,
+  ): Promise<void> {
+    try {
+      if (event.source === 'LEGACY_BACKFILL') return;
+      const recipients = new Map<string, { userId: string; role: UserRole }>();
+      const addRecipient = (
+        userId: string | null | undefined,
+        role: UserRole,
+      ) => {
+        if (userId) recipients.set(userId, { userId, role });
+      };
+
+      if (
+        !MERCHANT_IGNORED_NOTIFICATION_EVENTS.has(event.event_type) &&
+        actorType !== ParcelTrackingActorType.MERCHANT
+      ) {
+        const merchant = await manager.getRepository(Merchant).findOne({
+          where: { id: parcel.merchant_id },
+          select: { id: true, user_id: true },
+        });
+        addRecipient(merchant?.user_id, UserRole.MERCHANT);
+      }
+
+      if (RIDER_NOTIFICATION_EVENTS.has(event.event_type)) {
+        const riderId = event.rider_id || parcel.assigned_rider_id;
+        if (riderId) {
+          const rider = await manager.getRepository(Rider).findOne({
+            where: { id: riderId },
+            select: { id: true, user_id: true },
+          });
+          if (
+            !(
+              actorType === ParcelTrackingActorType.RIDER && actorId === riderId
+            )
+          ) {
+            addRecipient(rider?.user_id, UserRole.RIDER);
+          }
+        }
+      }
+
+      if (HUB_NOTIFICATION_EVENTS.has(event.event_type)) {
+        const hubIds = await this.notificationHubIds(manager, parcel, event);
+        const externalHubIds = hubIds.filter(
+          (hubId) =>
+            !(actorType === ParcelTrackingActorType.HUB && actorId === hubId),
+        );
+        if (externalHubIds.length > 0) {
+          const managers = await manager.getRepository(HubManager).find({
+            where: { hub_id: In(externalHubIds) },
+            select: { id: true, user_id: true, hub_id: true },
+          });
+          for (const hubManager of managers) {
+            addRecipient(hubManager.user_id, UserRole.HUB_MANAGER);
+          }
+        }
+      }
+
+      if (ADMIN_NOTIFICATION_EVENTS.has(event.event_type)) {
+        const admins = await manager.getRepository(User).find({
+          where: { role: UserRole.ADMIN, is_active: true },
+          select: { id: true, role: true },
+        });
+        for (const admin of admins) {
+          if (
+            actorType !== ParcelTrackingActorType.ADMIN ||
+            actorId !== admin.id
+          ) {
+            addRecipient(admin.id, UserRole.ADMIN);
+          }
+        }
+      }
+
+      if (recipients.size === 0) return;
+      const tracking =
+        parcel.tracking_number || parcel.parcel_tx_id || parcel.id;
+      const message = `Parcel ${tracking}: ${event.description || event.title}`;
+      const values = [...recipients.values()].map((recipient) => ({
+        recipient_user_id: recipient.userId,
+        recipient_role: recipient.role,
+        type: event.event_type,
+        category: NotificationCategory.PARCEL,
+        title: event.title,
+        message,
+        entity_type: NotificationEntityType.PARCEL,
+        entity_id: parcel.id,
+        action_url: `/parcels/${parcel.id}`,
+        metadata: {
+          tracking_number: parcel.tracking_number,
+          parcel_tx_id: parcel.parcel_tx_id,
+          from_status: event.from_status,
+          to_status: event.to_status,
+          hub_id: event.hub_id,
+          rider_id: event.rider_id,
+        },
+        is_read: false,
+        read_at: null,
+        dedupe_key: `${event.id}:${recipient.userId}`,
+      }));
+
+      await manager
+        .getRepository(Notification)
+        .createQueryBuilder()
+        .insert()
+        .into(Notification)
+        .values(values as any)
+        .orIgnore()
+        .execute();
+    } catch (error: any) {
+      this.logger?.error(
+        `Failed to create notifications for parcel event ${event.id}: ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  private async notificationHubIds(
+    manager: EntityManager,
+    parcel: Parcel,
+    event: ParcelTrackingEvent,
+  ): Promise<string[]> {
+    if (event.event_type === ParcelTrackingEventType.HUB_TRANSFER_STARTED) {
+      return event.to_hub_id ? [event.to_hub_id] : [];
+    }
+    if (event.event_type === ParcelTrackingEventType.HUB_TRANSFER_RECEIVED) {
+      return event.from_hub_id ? [event.from_hub_id] : [];
+    }
+
+    const hubId = event.hub_id || parcel.current_hub_id;
+    if (hubId) return [hubId];
+    if (!parcel.store_id) return [];
+
+    const store = await manager.getRepository(Store).findOne({
+      where: { id: parcel.store_id },
+      select: { id: true, hub_id: true },
+    });
+    return store?.hub_id ? [store.hub_id] : [];
   }
 
   private async enrichNames(

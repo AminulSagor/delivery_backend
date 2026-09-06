@@ -4,7 +4,9 @@ import {
   IsOptional,
   IsUUID,
   ArrayMinSize,
+  ArrayMaxSize,
   ValidateNested,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -13,6 +15,11 @@ import { Type } from 'class-transformer';
  * during the bulk import review step.
  */
 export class BulkOrderItemDto {
+  /** Stable frontend row identifier used to map results back to table rows. */
+  @IsOptional()
+  @IsString()
+  row_id?: string;
+
   @IsOptional()
   @IsUUID()
   store_id?: string;
@@ -33,9 +40,49 @@ export class BulkOrderItemDto {
   @IsString()
   customer_address: string;
 
-  @IsNotEmpty()
+  // Same frontend-provided Barikoi contract used by POST /coverage/address/suggest.
+  // `address` may be omitted because customer_address is used as the raw fallback.
+  @IsOptional()
   @IsString()
-  delivery_area: string;
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  fixedAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  addressStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  confidence?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  barikoiScore?: number;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  subArea?: string;
+
+  @IsOptional()
+  @IsString()
+  thana?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_area?: string;
 
   @IsOptional()
   @IsUUID()
@@ -83,6 +130,7 @@ export class BulkOrderItemDto {
  */
 export class BulkSuggestDto {
   @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
   @ValidateNested({ each: true })
   @Type(() => BulkOrderItemDto)
   items: BulkOrderItemDto[];

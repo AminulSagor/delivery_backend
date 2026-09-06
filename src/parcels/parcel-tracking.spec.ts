@@ -9,12 +9,121 @@ import {
 import { ParcelTrackingService } from './services/parcel-tracking.service';
 import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscriber';
 import { Hub } from '../hubs/entities/hub.entity';
+import { HubManager } from '../hubs/entities/hub-manager.entity';
+import { Merchant } from '../merchant/entities/merchant.entity';
+import { Notification } from '../notifications/entities/notification.entity';
+import { Rider } from '../riders/entities/rider.entity';
+import { User } from '../users/entities/user.entity';
+import { UserRole } from '../common/enums/user-role.enum';
 import { PickupRequestsService } from '../pickup-requests/pickup-requests.service';
 import { ParcelsService } from './parcels.service';
 
 const date = (value: string) => new Date(value);
 
 describe('parcel lifecycle tracking', () => {
+  it('fans out in-app notifications across admin, merchant, hub, and rider panels', async () => {
+    const inserted: any[][] = [];
+    const notificationBuilder: any = {
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn((values) => {
+        inserted.push(values);
+        return notificationBuilder;
+      }),
+      orIgnore: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({}),
+    };
+    const manager: any = {
+      getRepository: jest.fn((entity) => {
+        if (entity === Merchant) {
+          return {
+            findOne: jest.fn().mockResolvedValue({ user_id: 'merchant-user' }),
+          };
+        }
+        if (entity === Rider) {
+          return {
+            findOne: jest.fn().mockResolvedValue({ user_id: 'rider-user' }),
+          };
+        }
+        if (entity === HubManager) {
+          return {
+            find: jest.fn().mockResolvedValue([
+              {
+                user_id: 'hub-user',
+                hub_id: 'hub-1',
+              },
+            ]),
+          };
+        }
+        if (entity === User) {
+          return {
+            find: jest
+              .fn()
+              .mockResolvedValue([{ id: 'admin-user', role: UserRole.ADMIN }]),
+          };
+        }
+        if (entity === Notification) {
+          return { createQueryBuilder: jest.fn(() => notificationBuilder) };
+        }
+        return { findOne: jest.fn().mockResolvedValue(null) };
+      }),
+    };
+    const subscriber = Object.create(
+      ParcelTrackingSubscriber.prototype,
+    ) as ParcelTrackingSubscriber;
+    const parcel: any = {
+      id: '9709e313-9cf0-4d02-a217-c040283e86bf',
+      merchant_id: 'merchant-1',
+      tracking_number: 'TRK-1',
+      parcel_tx_id: '#1',
+      current_hub_id: 'hub-1',
+      assigned_rider_id: 'rider-1',
+    };
+
+    await (subscriber as any).createInAppNotifications(
+      manager,
+      parcel,
+      {
+        id: 'event-issue',
+        event_type: ParcelTrackingEventType.ISSUE_REPORTED,
+        title: 'Issue reported',
+        description: 'COD mismatch',
+        hub_id: 'hub-1',
+        source: 'PARCEL_SERVICE',
+      },
+      ParcelTrackingActorType.RIDER,
+      'rider-1',
+    );
+    await (subscriber as any).createInAppNotifications(
+      manager,
+      parcel,
+      {
+        id: 'event-assigned',
+        event_type: ParcelTrackingEventType.RIDER_ASSIGNED,
+        title: 'Assigned to rider',
+        description: 'Ready for delivery',
+        hub_id: 'hub-1',
+        rider_id: 'rider-1',
+        source: 'PARCEL_SERVICE',
+      },
+      ParcelTrackingActorType.HUB,
+      'hub-1',
+    );
+
+    const roles = inserted
+      .flat()
+      .map((value) => value.recipient_role)
+      .sort();
+    expect(new Set(roles)).toEqual(
+      new Set([
+        UserRole.ADMIN,
+        UserRole.MERCHANT,
+        UserRole.HUB_MANAGER,
+        UserRole.RIDER,
+      ]),
+    );
+  });
+
   it('has a public lifecycle event mapping for every parcel status', () => {
     expect(Object.keys(PARCEL_STATUS_EVENT).sort()).toEqual(
       Object.values(ParcelStatus).sort(),

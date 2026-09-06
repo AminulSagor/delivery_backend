@@ -34,6 +34,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import { BulkReceiveParcelsDto } from '../hubs/dto/bulk-receive-parcels.dto';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -243,12 +244,18 @@ export class AdminController {
     return { success: true, data: { csv }, message: 'CSV exported' };
   }
 
-  /**
-   * Admin: Send notification to hub (placeholder)
-   */
+  /** Admin: Send a persistent in-app notification to a Hub Manager. */
   @Post('hub-collections/:id/notify')
-  async notifyHub(@Param('id') id: string, @Body() body: { message?: string }) {
-    const result = await this.adminService.notifyHub(id, body?.message);
+  async notifyHub(
+    @Param('id') id: string,
+    @Body() body: { message?: string },
+    @CurrentUser('userId') adminUserId: string,
+  ) {
+    const result = await this.adminService.notifyHub(
+      id,
+      body?.message,
+      adminUserId,
+    );
     return { success: true, data: result, message: 'Hub notified' };
   }
 

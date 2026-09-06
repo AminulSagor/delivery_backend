@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -90,12 +91,33 @@ export class CustomerFraudService {
     if (customerId) {
       customer = await this.customerRepo.findOne({ where: { id: customerId } });
     } else if (phoneNumber) {
+      const normalizedPhone = phoneNumber.trim();
+      if (!normalizedPhone) {
+        throw new BadRequestException('Phone number is required');
+      }
+
+      // A number may be another customer's secondary number. Always prefer an
+      // exact primary-number match so the result cannot depend on database row
+      // order when both records match.
       customer = await this.customerRepo.findOne({
-        where: [
-          { phone_number: phoneNumber },
-          { secondary_number: phoneNumber },
-        ],
+        where: { phone_number: normalizedPhone },
       });
+
+      if (!customer) {
+        const secondaryMatches = await this.customerRepo.find({
+          where: { secondary_number: normalizedPhone },
+          order: { created_at: 'ASC' },
+          take: 2,
+        });
+
+        if (secondaryMatches.length > 1) {
+          throw new ConflictException(
+            'Multiple customers use this secondary phone number. Use the primary phone number instead.',
+          );
+        }
+
+        customer = secondaryMatches[0] ?? null;
+      }
     }
 
     if (!customer) {

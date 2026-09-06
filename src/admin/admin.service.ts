@@ -33,6 +33,11 @@ import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
 import { ParcelsService } from '../parcels/parcels.service';
 import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationCategory,
+  NotificationEntityType,
+} from '../notifications/notification.types';
 
 @Injectable()
 export class AdminService {
@@ -58,6 +63,7 @@ export class AdminService {
     private usersService: UsersService,
     private merchantService: MerchantService,
     private parcelsService: ParcelsService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateAdminDto): Promise<User> {
@@ -666,23 +672,45 @@ export class AdminService {
     };
   }
 
-  /**
-   * Admin: Notify a hub (placeholder - may integrate SMS/email later)
-   */
-  async notifyHub(hubId: string, message?: string) {
+  /** Send a persistent in-app notification to the assigned Hub Manager. */
+  async notifyHub(hubId: string, message?: string, adminUserId?: string) {
     const hub = await this.hubRepository.findOne({ where: { id: hubId } });
     if (!hub) throw new NotFoundException('Hub not found');
 
-    // For now, just log and return timestamp. Integrate notification provider later.
+    const hubManager = await this.hubManagerRepository.findOne({
+      where: { hub_id: hubId },
+      select: { id: true, user_id: true, hub_id: true },
+    });
+    if (!hubManager) {
+      throw new NotFoundException('No Hub Manager is assigned to this Hub');
+    }
+
     const notifiedAt = new Date();
-    console.log(
-      `[ADMIN NOTIFY HUB] Hub ${hub.branch_name} (${hub.id}) notified. Message: ${message || 'n/a'}`,
-    );
+    const notificationMessage =
+      message || `Admin sent a notification to ${hub.branch_name}.`;
+    await this.notificationsService.create({
+      recipient_user_id: hubManager.user_id,
+      recipient_role: UserRole.HUB_MANAGER,
+      type: 'ADMIN_MESSAGE',
+      category: NotificationCategory.SYSTEM,
+      title: 'Message from admin',
+      message: notificationMessage,
+      entity_type: NotificationEntityType.HUB,
+      entity_id: hub.id,
+      action_url: `/hubs/${hub.id}`,
+      metadata: {
+        hub_id: hub.id,
+        hub_name: hub.branch_name,
+        sent_by_admin_user_id: adminUserId || null,
+      },
+      dedupe_key: null,
+    });
 
     return {
       hub_id: hub.id,
+      recipient_user_id: hubManager.user_id,
       notified_at: notifiedAt,
-      message: message || null,
+      message: notificationMessage,
     };
   }
 

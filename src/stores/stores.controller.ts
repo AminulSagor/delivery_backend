@@ -14,6 +14,7 @@ import {
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
+import { UpdateStoreAvailabilityDto } from './dto/update-store-availability.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -191,6 +192,28 @@ export class StoresController {
     return {
       store: toStoreDetail(store),
       message: 'Store set as default successfully',
+    };
+  }
+
+  /** Merchant store-availability toggle used by the store card switch. */
+  @Roles(UserRole.MERCHANT)
+  @HttpCode(HttpStatus.OK)
+  @Patch(':id/availability')
+  async setAvailability(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: UpdateStoreAvailabilityDto,
+  ) {
+    const store = await this.storesService.setAvailability(
+      id,
+      user.userId,
+      dto.is_active,
+    );
+    return {
+      store: toStoreDetail(store),
+      message: dto.is_active
+        ? 'Store activated successfully'
+        : 'Store deactivated successfully',
     };
   }
 

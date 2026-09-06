@@ -13,7 +13,7 @@ import { PickupRequest } from './entities/pickup-request.entity';
 import { CreatePickupRequestDto } from './dto/create-pickup-request.dto';
 import { UpdatePickupRequestDto } from './dto/update-pickup-request.dto';
 import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum';
-import { Store } from '../stores/entities/store.entity';
+import { Store, StoreStatus } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Rider } from '../riders/entities/rider.entity';
 import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
@@ -159,6 +159,12 @@ export class PickupRequestsService {
       );
     }
 
+    if (store.status !== StoreStatus.APPROVED) {
+      throw new BadRequestException(
+        'Pickup requests are unavailable because this store is not active',
+      );
+    }
+
     // Verify store has hub assigned
     if (!store.hub_id) {
       throw new BadRequestException(
@@ -245,6 +251,34 @@ export class PickupRequestsService {
       `[findOrCreateActiveForStore] Starting for store: ${storeId}, merchant: ${merchantId}`,
     );
 
+    // Validate availability before incrementing an existing request. This prevents
+    // an inactive store from creating or adding parcels to pickup work.
+    const store = await this.storeRepository.findOne({
+      where: { id: storeId, merchant_id: merchantId },
+    });
+
+    this.logger.log(
+      `[findOrCreateActiveForStore] Store lookup result: ${store ? `found (hub_id: ${store.hub_id})` : 'NOT FOUND'}`,
+    );
+
+    if (!store) {
+      throw new BadRequestException(
+        `Store not found for id: ${storeId} and merchant: ${merchantId}`,
+      );
+    }
+
+    if (store.status !== StoreStatus.APPROVED) {
+      throw new BadRequestException(
+        'Pickup requests are unavailable because this store is not active',
+      );
+    }
+
+    if (!store.hub_id) {
+      throw new BadRequestException(
+        `Store ${store.business_name} is not assigned to a hub`,
+      );
+    }
+
     // Check for existing pickup request TODAY (using UTC for consistency)
     const now = new Date();
     const today = new Date(
@@ -277,27 +311,6 @@ export class PickupRequestsService {
         `[findOrCreateActiveForStore] Incremented pickup_count to ${updated.estimated_parcels} for request: ${existingToday.id}`,
       );
       return updated;
-    }
-
-    // Get store to get hub_id
-    const store = await this.storeRepository.findOne({
-      where: { id: storeId, merchant_id: merchantId },
-    });
-
-    this.logger.log(
-      `[findOrCreateActiveForStore] Store lookup result: ${store ? `found (hub_id: ${store.hub_id})` : 'NOT FOUND'}`,
-    );
-
-    if (!store) {
-      throw new BadRequestException(
-        `Store not found for id: ${storeId} and merchant: ${merchantId}`,
-      );
-    }
-
-    if (!store.hub_id) {
-      throw new BadRequestException(
-        `Store ${store.business_name} is not assigned to a hub`,
-      );
     }
 
     // Create new pickup request with pickup_count = 1 and auto-generated request_code

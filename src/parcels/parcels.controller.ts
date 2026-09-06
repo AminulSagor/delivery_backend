@@ -15,7 +15,9 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   BulkImportRowResult,
   ParcelCreationResult,
@@ -40,6 +42,12 @@ import { ParcelQueryDto } from './dto/parcel-query.dto';
 import { BulkSuggestDto } from './dto/bulk-suggest.dto';
 import { BulkImportDefaultsDto } from './dto/bulk-import.dto';
 import { ParcelImportParserService } from './services/parcel-import-parser.service';
+import { ShippingLabelService } from './services/shipping-label.service';
+import {
+  BulkShippingLabelDto,
+  ShippingLabelLayout,
+  ShippingLabelQueryDto,
+} from './dto/shipping-label.dto';
 import { TodaySummaryQueryDto } from './dto/todays-summary-query-dto';
 import { LifetimeSummaryQueryDto } from './dto/lifetime-summary-query.dto';
 import {
@@ -53,6 +61,7 @@ export class ParcelsController {
   constructor(
     private readonly parcelsService: ParcelsService,
     private readonly parcelImportParser: ParcelImportParserService,
+    private readonly shippingLabelService: ShippingLabelService,
   ) {}
 
   @Post('calculate-pricing')
@@ -412,6 +421,74 @@ export class ParcelsController {
     };
   }
 
+  @Get(':id/label')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async downloadShippingLabel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ShippingLabelQueryDto,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('merchantId') merchantId: string,
+    @CurrentUser('hubId') hubId: string,
+    @Res() response: Response,
+  ) {
+    const parcels = await this.parcelsService.findForShippingLabels(
+      [id],
+      role === UserRole.MERCHANT ? merchantId : null,
+      role === UserRole.ADMIN,
+      role === UserRole.HUB_MANAGER ? hubId : null,
+    );
+    const pdf = await this.shippingLabelService.generate(
+      parcels,
+      query.layout || ShippingLabelLayout.THERMAL,
+    );
+
+    this.sendPdf(
+      response,
+      pdf,
+      `meghswar-label-${parcels[0].tracking_number}.pdf`,
+    );
+  }
+
+  @Post('labels')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
+  async downloadBulkShippingLabels(
+    @Body() dto: BulkShippingLabelDto,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('merchantId') merchantId: string,
+    @CurrentUser('hubId') hubId: string,
+    @Res() response: Response,
+  ) {
+    const parcels = await this.parcelsService.findForShippingLabels(
+      dto.parcel_ids,
+      role === UserRole.MERCHANT ? merchantId : null,
+      role === UserRole.ADMIN,
+      role === UserRole.HUB_MANAGER ? hubId : null,
+    );
+    const pdf = await this.shippingLabelService.generate(
+      parcels,
+      dto.layout || ShippingLabelLayout.A4,
+    );
+
+    this.sendPdf(
+      response,
+      pdf,
+      `meghswar-shipping-labels-${new Date().toISOString().slice(0, 10)}.pdf`,
+    );
+  }
+
+  private sendPdf(response: Response, pdf: Buffer, filename: string): void {
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    response.setHeader('Content-Length', pdf.length);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.send(pdf);
+  }
+
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.HUB_MANAGER)
@@ -577,7 +654,16 @@ export class ParcelsController {
   async bulkSuggest(
     @Body() bulkSuggestDto: BulkSuggestDto,
     @CurrentUser('merchantId') merchantId: string,
-  ): Promise<{ message: string; results: SuggestionResult[] }> {
+  ): Promise<{
+    message: string;
+    summary: {
+      total: number;
+      success: number;
+      resolved: number;
+      failed: number;
+    };
+    results: SuggestionResult[];
+  }> {
     if (!merchantId)
       throw new ForbiddenException('Merchant ID missing in auth token');
 
@@ -588,6 +674,13 @@ export class ParcelsController {
 
     return {
       message: 'Address and pricing suggestions generated successfully.',
+      summary: {
+        total: suggestions.length,
+        success: suggestions.filter((item) => item.status === 'SUCCESS').length,
+        resolved: suggestions.filter((item) => item.status === 'RESOLVED')
+          .length,
+        failed: suggestions.filter((item) => item.status === 'FAILED').length,
+      },
       results: suggestions,
     };
   }

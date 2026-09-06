@@ -521,7 +521,6 @@ export class CoverageAreasService {
     input: SuggestAddressDto,
   ): Promise<AddressPrediction | null> {
     const allAreas = await this.coverageAreaRepository.find();
-
     const normalizedAreas: CoverageAreaWithNorms[] = allAreas.map((row) => ({
       ...row,
       _city_norm: this.normalizeText(row.city),
@@ -529,6 +528,35 @@ export class CoverageAreasService {
       _area_norm: this.normalizeText(row.area),
     }));
 
+    return this.resolveAddressSuggestion(input, normalizedAreas);
+  }
+
+  /**
+   * Bulk equivalent of suggestArea. Coverage data is loaded and normalized once,
+   * while every item still uses the exact same single-address decision logic.
+   */
+  async suggestAreas(
+    inputs: SuggestAddressDto[],
+  ): Promise<Array<AddressPrediction | null>> {
+    if (inputs.length === 0) return [];
+
+    const allAreas = await this.coverageAreaRepository.find();
+    const normalizedAreas: CoverageAreaWithNorms[] = allAreas.map((row) => ({
+      ...row,
+      _city_norm: this.normalizeText(row.city),
+      _zone_norm: this.normalizeText(row.zone),
+      _area_norm: this.normalizeText(row.area),
+    }));
+
+    return inputs.map((input) =>
+      this.resolveAddressSuggestion(input, normalizedAreas),
+    );
+  }
+
+  private resolveAddressSuggestion(
+    input: SuggestAddressDto,
+    normalizedAreas: CoverageAreaWithNorms[],
+  ): AddressPrediction | null {
     // Always test the original customer address.
     const rawPrediction = this.findBestCoveragePrediction(
       input.address,

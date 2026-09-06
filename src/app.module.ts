@@ -27,6 +27,7 @@ import { AdvancePaymentsModule } from './advance-payments/advance-payments.modul
 import { StaffModule } from './staff/staff.module';
 import { SalaryModule } from './salary/salary.module';
 import { CarrybeeAssignmentWorker } from './workers/carrybee-assignment.worker';
+import { NotificationsModule } from './notifications/notifications.module';
 
 // Synchronize is ALWAYS enabled - no manual migrations needed
 // TypeORM will auto-create/update all tables based on entities
@@ -67,6 +68,7 @@ import { CarrybeeAssignmentWorker } from './workers/carrybee-assignment.worker';
     MerchantFinanceModule,
     BanksModule,
     AdvancePaymentsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, CarrybeeAssignmentWorker],

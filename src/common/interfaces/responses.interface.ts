@@ -430,6 +430,7 @@ function toFullStoreSummary(store: any, includeMerchant = true) {
     hub_id: store.hub_id ?? null,
     is_default: !!store.is_default,
     status: store.status ?? null,
+    is_active: store.status === 'APPROVED',
     district: store.district ?? null,
     thana: store.thana ?? null,
     area: store.area ?? null,

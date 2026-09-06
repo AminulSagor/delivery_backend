@@ -13,7 +13,9 @@ export class ParcelImportParserService {
   static readonly MAX_IMPORT_ROWS = 1000;
   static readonly SUPPORTED_EXTENSIONS = ['.csv', '.xlsx'];
 
-  private readonly headerAliases: Record<keyof BulkOrderItemDto, string[]> = {
+  private readonly headerAliases: Partial<
+    Record<keyof BulkOrderItemDto, string[]>
+  > = {
     store_id: ['store_id', 'store id', 'store'],
     customer_name: [
       'customer_name',

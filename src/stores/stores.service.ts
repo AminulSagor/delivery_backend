@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { Store, StoreStatus } from './entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
@@ -15,6 +15,15 @@ import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { CarrybeeApiService } from '../carrybee/carrybee-api.service';
 import { CoverageAreasService } from '../coverage-areas/coverage-areas.service';
+
+export const STORE_DEACTIVATION_FINAL_STATUSES: ParcelStatus[] = [
+  ParcelStatus.DELIVERED,
+  ParcelStatus.RETURNED,
+  ParcelStatus.PAID_RETURN,
+  ParcelStatus.PARTIAL_DELIVERY,
+  ParcelStatus.EXCHANGE,
+  ParcelStatus.RETURN_TO_MERCHANT,
+];
 
 @Injectable()
 export class StoresService {
@@ -466,27 +475,63 @@ export class StoresService {
       store = await this.findOne(id, userId);
     }
 
-    if (store.status === StoreStatus.DISABLED) {
-      throw new BadRequestException('Store is already disabled.');
+    return this.deactivateStore(store, userId);
+  }
+
+  /**
+   * Toggle pickup availability for a merchant-owned store. Reactivation is
+   * allowed only for a previously disabled (and therefore approved) store.
+   */
+  async setAvailability(
+    id: string,
+    userId: string,
+    isActive: boolean,
+  ): Promise<Store> {
+    const store = await this.findOne(id, userId);
+
+    if (isActive) {
+      if (store.status === StoreStatus.APPROVED) return store;
+      if (store.status !== StoreStatus.DISABLED) {
+        throw new BadRequestException(
+          `Cannot activate a store with status ${store.status}. Admin approval is required.`,
+        );
+      }
+
+      store.status = StoreStatus.APPROVED;
+      await this.storesRepository.save(store);
+      this.logger.log(`Store ${store.id} activated by merchant user ${userId}`);
+      return store;
     }
 
-    const parcelCount = await this.parcelRepository.count({
-      where: { store_id: id },
+    if (store.status === StoreStatus.DISABLED) return store;
+    if (store.status !== StoreStatus.APPROVED) {
+      throw new BadRequestException(
+        `Cannot deactivate a store with status ${store.status}.`,
+      );
+    }
+
+    return this.deactivateStore(store, userId);
+  }
+
+  private async deactivateStore(store: Store, userId: string): Promise<Store> {
+    if (store.status === StoreStatus.DISABLED) return store;
+
+    const unfinishedParcelCount = await this.parcelRepository.count({
+      where: {
+        store_id: store.id,
+        status: Not(In(STORE_DEACTIVATION_FINAL_STATUSES)),
+      },
     });
 
-    if (parcelCount > 0) {
+    if (unfinishedParcelCount > 0) {
       throw new BadRequestException(
-        'Cannot disable a store that already has parcels.',
+        `Cannot deactivate this store because ${unfinishedParcelCount} parcel${unfinishedParcelCount === 1 ? ' has' : 's have'} not reached a final stage.`,
       );
     }
 
     store.status = StoreStatus.DISABLED;
     await this.storesRepository.save(store);
-
-    console.log(
-      `[STORE DISABLED] Store ${store.id} disabled by user ${userId}`,
-    );
-
+    this.logger.log(`Store ${store.id} deactivated by user ${userId}`);
     return store;
   }
 

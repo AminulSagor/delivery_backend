@@ -20,6 +20,8 @@ import { ParcelImportParserService } from './services/parcel-import-parser.servi
 import { ParcelTrackingEvent } from './entities/parcel-tracking-event.entity';
 import { ParcelTrackingService } from './services/parcel-tracking.service';
 import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscriber';
+import { CoverageAreasModule } from '../coverage-areas/coverage-areas.module';
+import { ShippingLabelService } from './services/shipping-label.service';
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscrib
       ParcelTrackingEvent,
     ]),
     PricingModule,
+    CoverageAreasModule,
     CustomerModule,
     PickupRequestsModule,
     forwardRef(() => CarrybeeModule), // Circular dependency resolution
@@ -47,6 +50,7 @@ import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscrib
     SmsPreferencesService,
     ParcelTrackingService,
     ParcelTrackingSubscriber,
+    ShippingLabelService,
   ],
   exports: [ParcelsService, ParcelTrackingService],
 })

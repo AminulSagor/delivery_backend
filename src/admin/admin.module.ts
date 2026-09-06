@@ -34,6 +34,7 @@ import { Rider } from '../riders/entities/rider.entity';
 import { MerchantInvoice } from '../merchant/entities/merchant-invoice.entity';
 import { AdminDashboardController } from './controllers/admin-dashboard.controller';
 import { AdminDashboardService } from './services/admin-dashboard.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { AdminDashboardService } from './services/admin-dashboard.service';
     forwardRef(() => MerchantModule),
     ParcelsModule,
     SalaryModule,
+    NotificationsModule,
   ],
   controllers: [
     PayoutHistoryController,

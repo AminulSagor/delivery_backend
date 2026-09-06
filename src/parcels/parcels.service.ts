@@ -36,6 +36,11 @@ import { UpdateParcelDto } from './dto/update-parcel.dto';
 import { UpdateParcelChargesDto } from './dto/update-parcel-charges.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { CoverageArea } from '../coverage-areas/entities/coverage-area.entity';
+import {
+  AddressPrediction,
+  CoverageAreasService,
+} from '../coverage-areas/coverage-areas.service';
+import { SuggestAddressDto } from '../coverage-areas/dto/suggest-coverage-area.dto';
 import { Store, StoreStatus } from '../stores/entities/store.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { Hub } from '../hubs/entities/hub.entity';
@@ -60,6 +65,7 @@ import { createHash } from 'crypto';
 // --- EXPORTED TYPES (Required for Controller) ---
 export interface ParcelCreationResult {
   success: boolean;
+  row_id?: string;
   tracking?: string;
   error?: string;
 }
@@ -71,16 +77,29 @@ export interface BulkImportRowResult extends ParcelCreationResult {
 
 export interface SuggestionResult {
   original_row: BulkOrderItemDto;
+  row_id?: string;
   status: 'SUCCESS' | 'FAILED' | 'RESOLVED';
   error?: string;
 
   // Suggestion fields
   suggested_area_id?: string;
+  suggested_division?: string;
   suggested_city?: string;
-  suggested_zone?: string;
+  suggested_city_id?: number;
+  suggested_zone?: string | null;
+  suggested_zone_id?: number | null;
+  suggested_area?: string | null;
+  suggested_carrybee_area_id?: number | null;
+  coverage_area_uuid?: string | null;
+  inside_dhaka_flag?: boolean;
+  match_level?: 'CITY' | 'ZONE' | 'AREA';
+  confidence?: number;
   total_charge?: number;
   delivery_charge?: number;
+  weight_charge?: number;
   cod_charge?: number;
+  discount?: number;
+  receivable_amount?: number;
 }
 
 interface AddressComponents {
@@ -173,6 +192,7 @@ export class ParcelsService {
     private smsPreferencesService: SmsPreferencesService,
     private dataSource: DataSource,
     private parcelTrackingService: ParcelTrackingService,
+    private coverageAreasService: CoverageAreasService,
   ) {}
 
   private readonly parcelDetailRelations = [
@@ -2243,6 +2263,47 @@ export class ParcelsService {
         'Failed to retrieve parcel details. Please try again.',
       );
     }
+  }
+
+  async findForShippingLabels(
+    parcelIds: string[],
+    merchantId: string | null,
+    isAdmin: boolean,
+    hubId: string | null,
+  ): Promise<Parcel[]> {
+    const uniqueIds = Array.from(new Set(parcelIds));
+    const parcels = await this.parcelRepository.find({
+      where: { id: In(uniqueIds) },
+      relations: this.parcelDetailRelations,
+    });
+    const parcelsById = new Map(parcels.map((parcel) => [parcel.id, parcel]));
+
+    for (const parcelId of uniqueIds) {
+      if (!parcelsById.has(parcelId)) {
+        throw new NotFoundException(`Parcel with ID ${parcelId} not found`);
+      }
+    }
+
+    if (!isAdmin && !merchantId && !hubId) {
+      throw new ForbiddenException(
+        'You do not have permission to print shipping labels',
+      );
+    }
+
+    for (const parcel of parcels) {
+      if (merchantId && parcel.merchant_id !== merchantId) {
+        throw new ForbiddenException(
+          'One or more parcels do not belong to this merchant',
+        );
+      }
+      if (hubId && parcel.current_hub_id !== hubId) {
+        throw new ForbiddenException(
+          'One or more parcels are not currently assigned to this hub',
+        );
+      }
+    }
+
+    return uniqueIds.map((parcelId) => parcelsById.get(parcelId)!);
   }
 
   async calculatePricing(
@@ -6881,105 +6942,187 @@ export class ParcelsService {
     items: BulkOrderItemDto[],
     merchantId: string,
   ): Promise<SuggestionResult[]> {
-    const results: SuggestionResult[] = [];
+    const storeIds = Array.from(
+      new Set(
+        items
+          .map((item) => item.store_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const stores =
+      storeIds.length === 0
+        ? []
+        : await this.storeRepository.find({
+            where: { id: In(storeIds), merchant_id: merchantId },
+          });
+    const storesById = new Map(stores.map((store) => [store.id, store]));
 
-    // Load & normalize coverage areas ONCE for the whole batch
-    const rawAreas = await this.coverageAreaRepository.find();
-    const coverageAreas: CoverageAreaWithNorms[] = rawAreas.map((c) => ({
-      ...c,
-      _zone_norm: this.normalizeText(c.zone),
-      _city_norm: this.normalizeText(c.city),
-      _area_norm: this.normalizeText(c.area),
+    const confirmedCoverageIds = Array.from(
+      new Set(
+        items
+          .map((item) => item.delivery_coverage_area_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const confirmedCoverageAreas =
+      confirmedCoverageIds.length === 0
+        ? []
+        : await this.coverageAreaRepository.find({
+            where: { id: In(confirmedCoverageIds) },
+          });
+    const confirmedCoverageById = new Map(
+      confirmedCoverageAreas.map((area) => [area.id, area]),
+    );
+
+    const addressInputs: SuggestAddressDto[] = items.map((item) => ({
+      address: item.address?.trim() || item.customer_address,
+      fixedAddress: item.fixedAddress,
+      addressStatus: item.addressStatus,
+      confidence: item.confidence,
+      barikoiScore: item.barikoiScore,
+      city: item.city,
+      area: item.area,
+      subArea: item.subArea,
+      thana: item.thana,
     }));
+    const predictions =
+      await this.coverageAreasService.suggestAreas(addressInputs);
 
-    for (const item of items) {
-      const result: SuggestionResult = {
-        original_row: item,
-        status: 'FAILED',
-      };
+    const results: SuggestionResult[] = [];
+    const pricingConcurrency = 20;
 
-      try {
-        // 1. Basic validation
-        if (
-          !item.customer_phone ||
-          !item.customer_name ||
-          !item.delivery_area ||
-          !item.customer_address
-        ) {
-          throw new Error(
-            'Missing mandatory fields (phone, name, pickup address, delivery address).',
-          );
-        }
+    for (let offset = 0; offset < items.length; offset += pricingConcurrency) {
+      const chunk = items.slice(offset, offset + pricingConcurrency);
+      const chunkResults = await Promise.all(
+        chunk.map(async (item, chunkIndex): Promise<SuggestionResult> => {
+          const index = offset + chunkIndex;
+          const result: SuggestionResult = {
+            original_row: item,
+            row_id: item.row_id,
+            status: 'FAILED',
+          };
 
-        // 2. Heuristic: choose best coverage area
-        const coverageArea = item.delivery_coverage_area_id
-          ? coverageAreas.find(
-              (area) => area.id === item.delivery_coverage_area_id,
-            ) || null
-          : this.findBestCoverageAreaFromAddress(
-              item.customer_address,
-              coverageAreas,
+          try {
+            if (
+              !item.customer_phone ||
+              !item.customer_name ||
+              !item.customer_address
+            ) {
+              throw new Error(
+                'Missing mandatory fields (phone, name, delivery address).',
+              );
+            }
+
+            if (!/^01[0-9]{9}$/.test(item.customer_phone)) {
+              throw new Error(
+                'Customer phone must be a valid Bangladesh number (01XXXXXXXXX).',
+              );
+            }
+
+            const store = item.store_id
+              ? storesById.get(item.store_id) || null
+              : null;
+            if (item.store_id && !store) {
+              throw new Error(
+                'Store not found or does not belong to this merchant.',
+              );
+            }
+            if (store && store.status !== StoreStatus.APPROVED) {
+              throw new Error(
+                `Store must be APPROVED to create parcels. Current status: ${store.status}`,
+              );
+            }
+            if (
+              !item.delivery_area?.trim() &&
+              !store?.business_address?.trim()
+            ) {
+              throw new Error(
+                'Pickup address is required when no store address is available.',
+              );
+            }
+
+            let prediction: AddressPrediction | null = predictions[index];
+            if (item.delivery_coverage_area_id) {
+              const confirmedArea = confirmedCoverageById.get(
+                item.delivery_coverage_area_id,
+              );
+              if (!confirmedArea) {
+                throw new Error(
+                  'The supplied delivery coverage area was not found.',
+                );
+              }
+              prediction = {
+                division: confirmedArea.division,
+                city: confirmedArea.city,
+                city_id: confirmedArea.city_id,
+                zone: confirmedArea.zone,
+                zone_id: confirmedArea.zone_id,
+                area: confirmedArea.area,
+                area_id: confirmedArea.area_id,
+                coverage_area_uuid: confirmedArea.id,
+                inside_dhaka_flag: confirmedArea.inside_dhaka_flag,
+                match_level: 'AREA',
+                confidence: 1,
+              };
+            }
+
+            if (!prediction) {
+              throw new Error(
+                'No suitable coverage area found from customer address.',
+              );
+            }
+
+            result.suggested_division = prediction.division;
+            result.suggested_city = prediction.city;
+            result.suggested_city_id = prediction.city_id;
+            result.suggested_zone = prediction.zone;
+            result.suggested_zone_id = prediction.zone_id;
+            result.suggested_area = prediction.area;
+            result.suggested_carrybee_area_id = prediction.area_id;
+            result.suggested_area_id =
+              prediction.coverage_area_uuid ?? undefined;
+            result.coverage_area_uuid = prediction.coverage_area_uuid;
+            result.inside_dhaka_flag = prediction.inside_dhaka_flag;
+            result.match_level = prediction.match_level;
+            result.confidence = prediction.confidence;
+
+            if (!prediction.coverage_area_uuid) {
+              result.status = 'RESOLVED';
+              result.error = `Address matched only to ${prediction.match_level}. Select a recipient area before confirming.`;
+              return result;
+            }
+
+            const weight = this.parseRawNumeric(item.product_weight_raw);
+            const price = this.parseRawNumeric(item.product_price_raw);
+            // Match the normal parcel-entry rule: any positive collect amount is COD.
+            const isCod = price > 0;
+            const codAmount = isCod ? price : 0;
+            const charges = await this.calculateCharges(
+              merchantId,
+              prediction.coverage_area_uuid,
+              weight,
+              isCod,
+              codAmount,
             );
 
-        if (!coverageArea) {
-          throw new NotFoundException(
-            item.delivery_coverage_area_id
-              ? 'The supplied delivery coverage area was not found.'
-              : 'No suitable coverage area found from customer address.',
-          );
-        }
+            result.total_charge = charges.total_charge;
+            result.delivery_charge = charges.delivery_charge;
+            result.weight_charge = charges.weight_charge;
+            result.cod_charge = charges.cod_charge;
+            result.discount = charges.discount;
+            result.receivable_amount = charges.receivable_amount;
+            result.status = 'SUCCESS';
+          } catch (error: any) {
+            if (!result.error) {
+              result.error = `Processing Error: ${error.message || 'Unknown error'}`;
+            }
+            result.status = 'FAILED';
+          }
 
-        // set suggestions immediately (even if numeric fails later)
-        result.suggested_area_id = coverageArea.id;
-        result.suggested_city = coverageArea.city;
-        result.suggested_zone = coverageArea.zone;
-
-        // 3. Numeric parsing (non-fatal for suggestions)
-        let numericError: string | null = null;
-        let isCod = false;
-        let weight = 0;
-        let price = 0;
-        let codAmount = 0;
-
-        try {
-          isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
-          weight = this.parseRawNumeric(item.product_weight_raw);
-          price = this.parseRawNumeric(item.product_price_raw);
-          codAmount = isCod ? price : 0;
-        } catch (e: any) {
-          numericError = e?.message || 'Invalid numeric value';
-          // keep zeros so we can still return address suggestion
-          weight = 0;
-          price = 0;
-          codAmount = 0;
-        }
-
-        // 4. Charge calculation only if numerics are valid
-        if (!numericError) {
-          const charges = await this.calculateCharges(
-            merchantId,
-            coverageArea.id,
-            weight,
-            isCod,
-            codAmount,
-          );
-
-          result.total_charge = charges.total_charge;
-          result.delivery_charge = charges.delivery_charge;
-          result.cod_charge = charges.cod_charge;
-          result.status = 'SUCCESS';
-        } else {
-          result.status = 'FAILED'; // or 'RESOLVED' if you want a separate state
-          result.error = `Numeric error: ${numericError}`;
-        }
-      } catch (error: any) {
-        if (!result.error) {
-          result.error = `Processing Error: ${error.message || 'Unknown error'}`;
-        }
-        result.status = result.status || 'FAILED';
-      }
-
-      results.push(result);
+          return result;
+        }),
+      );
+      results.push(...chunkResults);
     }
 
     return results;
@@ -7093,6 +7236,21 @@ export class ParcelsService {
     let successCount = 0;
     const totalRows = items.length;
 
+    const storeIds = Array.from(
+      new Set(
+        items
+          .map((item) => item.store_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const stores =
+      storeIds.length === 0
+        ? []
+        : await this.storeRepository.find({
+            where: { id: In(storeIds), merchant_id: merchantId },
+          });
+    const storesById = new Map(stores.map((store) => [store.id, store]));
+
     for (const item of items) {
       try {
         // 1. Final Validation & Mapping
@@ -7100,10 +7258,10 @@ export class ParcelsService {
           throw new Error('Missing confirmed delivery_coverage_area_id.');
         }
 
-        const isCod = item.is_cod_raw?.toUpperCase() === 'TRUE';
-        const isExchange = item.is_exchange_raw?.toUpperCase() === 'TRUE';
         const weight = this.parseRawNumeric(item.product_weight_raw);
         const price = this.parseRawNumeric(item.product_price_raw);
+        const isCod = price > 0;
+        const isExchange = item.is_exchange_raw?.toUpperCase() === 'TRUE';
         const codAmount = isCod ? price : 0;
         const parcelType = item.parcel_type_raw
           ? parseInt(item.parcel_type_raw, 10)
@@ -7111,6 +7269,15 @@ export class ParcelsService {
         const deliveryType = item.delivery_type_raw
           ? parseInt(item.delivery_type_raw, 10)
           : undefined;
+        const store = item.store_id
+          ? storesById.get(item.store_id) || null
+          : null;
+
+        if (item.store_id && !store) {
+          throw new Error(
+            'Store not found or does not belong to this merchant.',
+          );
+        }
 
         if (parcelType !== undefined && ![1, 2, 3].includes(parcelType)) {
           throw new Error('Parcel type must be 1, 2, or 3.');
@@ -7127,7 +7294,8 @@ export class ParcelsService {
           customer_phone: item.customer_phone,
           customer_secondary_phone: item.customer_secondary_phone || undefined,
           customer_address: item.customer_address,
-          delivery_area: item.delivery_area,
+          delivery_area:
+            item.delivery_area?.trim() || store?.business_address?.trim() || '',
 
           // Numerics
           product_weight: weight,
@@ -7152,12 +7320,14 @@ export class ParcelsService {
 
         creationResults.push({
           success: true,
+          row_id: item.row_id,
           tracking: newParcel.tracking_number,
         });
       } catch (error: any) {
         // Failsafe: Catch any validation or DB errors during final creation
         creationResults.push({
           success: false,
+          row_id: item.row_id,
           error: `Creation failed: ${error.message}`,
         });
       }

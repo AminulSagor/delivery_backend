@@ -1,6 +1,7 @@
 import { ParcelsService } from './parcels.service';
 import { ParcelStatus } from './entities/parcel.entity';
 import { UserRole } from '../common/enums/user-role.enum';
+import { StoreStatus } from '../stores/entities/store.entity';
 
 describe('ParcelsService.bulkImportRows', () => {
   it('creates valid rows and preserves failures with spreadsheet row numbers', async () => {
@@ -89,6 +90,194 @@ describe('ParcelsService.bulkImportRows', () => {
         error: 'Processing Error: No suitable coverage area found.',
       },
     ]);
+  });
+});
+
+describe('ParcelsService.getBulkSuggestions', () => {
+  function createService(prediction: any) {
+    const service = Object.create(ParcelsService.prototype) as ParcelsService;
+    (service as any).storeRepository = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: '9709e313-9cf0-4d02-a217-c040283e86bf',
+          merchant_id: 'merchant-1',
+          business_address: 'Merchant pickup address',
+          status: StoreStatus.APPROVED,
+        },
+      ]),
+    };
+    (service as any).coverageAreaRepository = { find: jest.fn() };
+    (service as any).coverageAreasService = {
+      suggestAreas: jest.fn().mockResolvedValue([prediction]),
+    };
+    (service as any).calculateCharges = jest.fn().mockResolvedValue({
+      delivery_charge: 60,
+      weight_charge: 10,
+      cod_charge: 10,
+      discount: 5,
+      total_charge: 75,
+      receivable_amount: 925,
+    });
+    return service;
+  }
+
+  const item = {
+    row_id: 'row-1',
+    store_id: '9709e313-9cf0-4d02-a217-c040283e86bf',
+    customer_name: 'Customer',
+    customer_phone: '01712345678',
+    customer_address: 'Raw recipient address',
+    address: 'Raw recipient address',
+    fixedAddress: 'Corrected Barikoi address',
+    addressStatus: 'complete',
+    confidence: 82,
+    barikoiScore: 1,
+    city: 'Dhaka',
+    area: 'Uttara',
+    subArea: 'Sector 7',
+    thana: 'Uttara',
+    product_price_raw: '1000',
+    product_weight_raw: '1',
+    parcel_type_raw: '1',
+    delivery_type_raw: '1',
+  };
+
+  it('uses the single-address payload and returns a full row result', async () => {
+    const service = createService({
+      division: 'Dhaka',
+      city: 'Dhaka',
+      city_id: 1,
+      zone: 'Uttara',
+      zone_id: 10,
+      area: 'Sector 7',
+      area_id: 100,
+      coverage_area_uuid: '91b49d21-5fa2-4140-9d9f-4efefdef3ba1',
+      inside_dhaka_flag: true,
+      match_level: 'AREA',
+      confidence: 1,
+    });
+
+    const result = await service.getBulkSuggestions([item], 'merchant-1');
+
+    expect(
+      (service as any).coverageAreasService.suggestAreas,
+    ).toHaveBeenCalledWith([
+      {
+        address: 'Raw recipient address',
+        fixedAddress: 'Corrected Barikoi address',
+        addressStatus: 'complete',
+        confidence: 82,
+        barikoiScore: 1,
+        city: 'Dhaka',
+        area: 'Uttara',
+        subArea: 'Sector 7',
+        thana: 'Uttara',
+      },
+    ]);
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        row_id: 'row-1',
+        status: 'SUCCESS',
+        coverage_area_uuid: '91b49d21-5fa2-4140-9d9f-4efefdef3ba1',
+        suggested_city_id: 1,
+        suggested_zone_id: 10,
+        suggested_carrybee_area_id: 100,
+        match_level: 'AREA',
+        confidence: 1,
+        delivery_charge: 60,
+        weight_charge: 10,
+        cod_charge: 10,
+        discount: 5,
+        total_charge: 75,
+        receivable_amount: 925,
+      }),
+    );
+    expect((service as any).calculateCharges).toHaveBeenCalledWith(
+      'merchant-1',
+      '91b49d21-5fa2-4140-9d9f-4efefdef3ba1',
+      1,
+      true,
+      1000,
+    );
+  });
+
+  it('returns RESOLVED without pricing when the algorithm finds only a zone', async () => {
+    const service = createService({
+      division: 'Dhaka',
+      city: 'Dhaka',
+      city_id: 1,
+      zone: 'Uttara',
+      zone_id: 10,
+      area: null,
+      area_id: null,
+      coverage_area_uuid: null,
+      inside_dhaka_flag: true,
+      match_level: 'ZONE',
+      confidence: 0.9,
+    });
+
+    const result = await service.getBulkSuggestions([item], 'merchant-1');
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        row_id: 'row-1',
+        status: 'RESOLVED',
+        match_level: 'ZONE',
+        coverage_area_uuid: null,
+      }),
+    );
+    expect((service as any).calculateCharges).not.toHaveBeenCalled();
+  });
+});
+
+describe('ParcelsService.bulkCreateConfirmedBatch', () => {
+  it('keeps row_id and uses the selected store address as pickup address', async () => {
+    const service = Object.create(ParcelsService.prototype) as ParcelsService;
+    (service as any).storeRepository = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: '9709e313-9cf0-4d02-a217-c040283e86bf',
+          merchant_id: 'merchant-1',
+          business_address: 'Merchant pickup address',
+        },
+      ]),
+    };
+    service.create = jest.fn().mockResolvedValue({
+      tracking_number: 'TRK-1',
+    });
+
+    const result = await service.bulkCreateConfirmedBatch(
+      [
+        {
+          row_id: 'row-1',
+          store_id: '9709e313-9cf0-4d02-a217-c040283e86bf',
+          delivery_coverage_area_id: '91b49d21-5fa2-4140-9d9f-4efefdef3ba1',
+          customer_name: 'Customer',
+          customer_phone: '01712345678',
+          customer_address: 'Recipient address',
+          product_price_raw: '1000',
+          product_weight_raw: '1',
+          parcel_type_raw: '1',
+          delivery_type_raw: '1',
+        },
+      ],
+      'user-1',
+      'merchant-1',
+    );
+
+    expect(service.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery_area: 'Merchant pickup address',
+        product_price: 1000,
+        product_weight: 1,
+      }),
+      'user-1',
+      'merchant-1',
+    );
+    expect(result).toEqual({
+      summary: { total: 1, success: 1, failed: 0 },
+      results: [{ success: true, row_id: 'row-1', tracking: 'TRK-1' }],
+    });
   });
 });
 
