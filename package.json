@@ -20,6 +20,7 @@
     "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/data-source.ts",
     "typeorm:prod": "echo 'Migrations run automatically on app start via migrationsRun option'",
     "typeorm:migrate": "npm run build && npm run typeorm migration:run",
+    "migration:received-at": "node dist/src/scripts/run-received-at-migration.js",
     "typeorm:migrate:prod": "echo 'Migrations run automatically on app start via migrationsRun option'",
     "typeorm:revert": "npm run build && npm run typeorm migration:revert",
     "typeorm:generate": "npm run typeorm migration:generate",
