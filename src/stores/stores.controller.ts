@@ -15,6 +15,7 @@ import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { UpdateStoreAvailabilityDto } from './dto/update-store-availability.dto';
+import { HubStoreQueryDto } from './dto/hub-store-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -107,8 +108,14 @@ export class StoresController {
   @Roles(UserRole.HUB_MANAGER)
   @HttpCode(HttpStatus.OK)
   @Get('hub-manager/my-stores')
-  async getMyAssignedStores(@CurrentUser() user: any) {
-    const stores = await this.storesService.findStoresByHubManager(user.userId);
+  async getMyAssignedStores(
+    @CurrentUser() user: any,
+    @Query() query: HubStoreQueryDto,
+  ) {
+    const stores = await this.storesService.findStoresByHubManager(
+      user.userId,
+      query.status,
+    );
     return {
       stores: stores.map(toStoreListItem),
       message: 'Assigned stores retrieved successfully',

@@ -770,7 +770,7 @@ export class HubDashboardService {
       .createQueryBuilder('parcel')
       .leftJoin('parcel.store', 'store')
       .select(
-        'SUM(CASE WHEN COALESCE(parcel.received_at_destination_hub, parcel.picked_up_at, parcel.created_at) >= :rangeStart AND COALESCE(parcel.received_at_destination_hub, parcel.picked_up_at, parcel.created_at) < :rangeEnd THEN 1 ELSE 0 END)',
+        'SUM(CASE WHEN COALESCE(parcel.received_at, parcel.received_at_destination_hub, parcel.picked_up_at, parcel.created_at) >= :rangeStart AND COALESCE(parcel.received_at, parcel.received_at_destination_hub, parcel.picked_up_at, parcel.created_at) < :rangeEnd THEN 1 ELSE 0 END)',
         'received_count',
       )
       .addSelect(

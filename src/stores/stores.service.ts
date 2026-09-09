@@ -733,7 +733,10 @@ export class StoresService {
   }
 
   // Hub Manager methods
-  async findStoresByHubManager(userId: string): Promise<any[]> {
+  async findStoresByHubManager(
+    userId: string,
+    status?: StoreStatus,
+  ): Promise<any[]> {
     // Find hub manager record by user_id
     const hubManager = await this.hubManagerRepository.findOne({
       where: { user_id: userId },
@@ -750,7 +753,10 @@ export class StoresService {
 
     // Find all stores assigned to this hub - include hub relation
     const stores = await this.storesRepository.find({
-      where: { hub_id: hubManager.hub_id },
+      where: {
+        hub_id: hubManager.hub_id,
+        ...(status ? { status } : {}),
+      },
       relations: ['merchant', 'merchant.user', 'hub'],
       order: { created_at: 'DESC' },
     });

@@ -551,6 +551,7 @@ export class ParcelTrackingSubscriber
       'assigned_rider_id',
       'third_party_provider_id',
       'delivery_provider',
+      'received_at',
       'picked_up_at',
       'rider_accepted_at',
       'out_for_delivery_at',
@@ -640,6 +641,7 @@ export class ParcelTrackingSubscriber
 
     if (parcel.current_hub_id) {
       const receivedAt =
+        parcel.received_at ||
         parcel.received_at_destination_hub ||
         parcel.picked_up_at ||
         parcel.updated_at;

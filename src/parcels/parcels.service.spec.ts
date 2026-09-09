@@ -2,6 +2,7 @@ import { ParcelsService } from './parcels.service';
 import { ParcelStatus } from './entities/parcel.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { StoreStatus } from '../stores/entities/store.entity';
+import { ForbiddenException } from '@nestjs/common';
 
 describe('ParcelsService.bulkImportRows', () => {
   it('creates valid rows and preserves failures with spreadsheet row numbers', async () => {
@@ -278,6 +279,101 @@ describe('ParcelsService.bulkCreateConfirmedBatch', () => {
       summary: { total: 1, success: 1, failed: 0 },
       results: [{ success: true, row_id: 'row-1', tracking: 'TRK-1' }],
     });
+  });
+});
+
+describe('ParcelsService.findOne hub access', () => {
+  const parcelId = '9709e313-9cf0-4d02-a217-c040283e86bf';
+
+  function serviceWithParcel(parcel: any): ParcelsService {
+    const service = Object.create(ParcelsService.prototype) as ParcelsService;
+    (service as any).parcelRepository = {
+      findOne: jest.fn().mockResolvedValue(parcel),
+    };
+    (service as any).parcelTrackingService = {
+      enrichParcel: jest.fn().mockImplementation(async (value) => value),
+    };
+    (service as any).logger = { error: jest.fn() };
+    return service;
+  }
+
+  it('allows a hub manager to view a parcel belonging to a store in their hub', async () => {
+    const parcel = {
+      id: parcelId,
+      current_hub_id: null,
+      store: { hub_id: 'hub-1' },
+    };
+    const service = serviceWithParcel(parcel);
+
+    await expect(
+      service.findOne(parcelId, null, false, null, 'hub-1'),
+    ).resolves.toBe(parcel);
+  });
+
+  it('rejects a parcel that is neither at nor owned by the manager hub', async () => {
+    const parcel = {
+      id: parcelId,
+      current_hub_id: 'hub-2',
+      store: { hub_id: 'hub-3' },
+    };
+    const service = serviceWithParcel(parcel);
+
+    await expect(
+      service.findOne(parcelId, null, false, null, 'hub-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('ParcelsService hub receipt timestamp', () => {
+  const parcelId = '9709e313-9cf0-4d02-a217-c040283e86bf';
+
+  function serviceWithParcel(parcel: any): ParcelsService {
+    const service = Object.create(ParcelsService.prototype) as ParcelsService;
+    (service as any).parcelRepository = {
+      findOne: jest.fn().mockResolvedValue(parcel),
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    (service as any).logger = {
+      log: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    return service;
+  }
+
+  function receivableParcel() {
+    return {
+      id: parcelId,
+      tracking_number: 'TRK-1',
+      parcel_tx_id: 'PARCEL-1',
+      status: ParcelStatus.PICKED_UP,
+      current_hub_id: null,
+      origin_hub_id: null,
+      picked_up_at: new Date('2026-09-08T10:00:00.000Z'),
+      received_at: null,
+      store: { hub_id: 'hub-1', auto_assign_to_carrybee: false },
+    };
+  }
+
+  it('sets received_at when receiving a single parcel', async () => {
+    const parcel = receivableParcel();
+    const service = serviceWithParcel(parcel);
+
+    await service.markAsReceived(parcelId, 'hub-1');
+
+    expect(parcel.received_at).toBeInstanceOf(Date);
+    expect(parcel.status).toBe(ParcelStatus.IN_HUB);
+  });
+
+  it('sets received_at when bulk receiving parcels', async () => {
+    const parcel = receivableParcel();
+    const service = serviceWithParcel(parcel);
+
+    const result = await service.bulkMarkAsReceived([parcelId], 'hub-1');
+
+    expect(result.success).toBe(1);
+    expect(parcel.received_at).toBeInstanceOf(Date);
+    expect(parcel.status).toBe(ParcelStatus.IN_HUB);
   });
 });
 

@@ -228,6 +228,7 @@ export class ParcelTrackingService {
     }
 
     const hubReceivedAt =
+      parcel.received_at ||
       parcel.received_at_destination_hub ||
       ((parcel.status === ParcelStatus.IN_HUB || parcel.current_hub_id) &&
       !parcel.transferred_at

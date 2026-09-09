@@ -2229,9 +2229,12 @@ export class ParcelsService {
             'You do not have permission to view this parcel',
           );
       }
-      // Hub manager can only view parcels currently at their hub
+      // Keep detail access consistent with the hub parcel list: a parcel is in
+      // scope when it is currently at the hub or belongs to one of its stores.
       if (hubId) {
-        if (parcel.current_hub_id !== hubId)
+        const belongsToHub =
+          parcel.current_hub_id === hubId || parcel.store?.hub_id === hubId;
+        if (!belongsToHub)
           throw new ForbiddenException(
             'You do not have permission to view this parcel',
           );
@@ -3128,6 +3131,7 @@ export class ParcelsService {
       parcel.status = ParcelStatus.IN_HUB;
       parcel.current_hub_id = hubId;
       parcel.picked_up_at = parcel.picked_up_at || new Date();
+      parcel.received_at = new Date();
 
       // Set origin hub if not already set (first time receiving)
       if (!parcel.origin_hub_id) {
@@ -3294,6 +3298,7 @@ export class ParcelsService {
         parcel.status = ParcelStatus.IN_HUB;
         parcel.current_hub_id = hubId;
         parcel.picked_up_at = parcel.picked_up_at || new Date();
+        parcel.received_at = new Date();
 
         // Set origin hub if not already set (first time receiving)
         if (!parcel.origin_hub_id) {

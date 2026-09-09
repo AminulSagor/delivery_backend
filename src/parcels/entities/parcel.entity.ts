@@ -431,6 +431,9 @@ export class Parcel {
   picked_up_at: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
+  received_at: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
   delivered_at: Date | null;
 
   @CreateDateColumn()

@@ -94,3 +94,44 @@ describe('StoresService store availability', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('StoresService.findStoresByHubManager', () => {
+  function createService() {
+    const service = Object.create(StoresService.prototype) as StoresService;
+    (service as any).hubManagerRepository = {
+      findOne: jest.fn().mockResolvedValue({
+        user_id: 'manager-1',
+        hub_id: 'hub-1',
+      }),
+    };
+    (service as any).storesRepository = {
+      find: jest.fn().mockResolvedValue([]),
+    };
+    return service;
+  }
+
+  it('filters assigned stores by status when requested', async () => {
+    const service = createService();
+
+    await service.findStoresByHubManager(
+      'manager-1',
+      StoreStatus.APPROVED,
+    );
+
+    expect((service as any).storesRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { hub_id: 'hub-1', status: StoreStatus.APPROVED },
+      }),
+    );
+  });
+
+  it('returns every assigned store when status is omitted', async () => {
+    const service = createService();
+
+    await service.findStoresByHubManager('manager-1');
+
+    expect((service as any).storesRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { hub_id: 'hub-1' } }),
+    );
+  });
+});
