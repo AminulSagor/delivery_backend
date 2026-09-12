@@ -6,7 +6,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager, Not } from 'typeorm';
+import {
+  Between,
+  DataSource,
+  EntityManager,
+  In,
+  Not,
+  Repository,
+} from 'typeorm';
 import { Rider } from './entities/rider.entity';
 import { RiderPayoutMethod } from './entities/rider-payout-method.entity';
 import { User } from '../users/entities/user.entity';
@@ -28,6 +35,7 @@ import { PickupRequestStatus } from '../common/enums/pickup-request-status.enum'
 import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum';
 import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
 import * as bcrypt from 'bcrypt';
+import { getDhakaTodayRange } from '../common/utils/dhaka-date.util';
 import { CreateEmergencyDto } from './dto/create-emergency.dto';
 import { EmergencyAlert } from './entities/emergency-alert.entity';
 import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
@@ -1392,11 +1400,14 @@ export class RidersService {
       throw new NotFoundException('Rider not found');
     }
 
-    // ===== PICKUPS: Pickup requests assigned to this rider (CONFIRMED status) =====
+    const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
+
+    // ===== PICKUPS: pickup requests assigned today =====
     const pendingPickups = await this.pickupRequestRepository.count({
       where: {
         assigned_rider_id: riderId,
         status: PickupRequestStatus.CONFIRMED,
+        rider_assigned_at: Between(todayStart, todayEnd),
       },
     });
 
@@ -1406,34 +1417,48 @@ export class RidersService {
       where: {
         assigned_rider_id: riderId,
         status: ParcelStatus.ASSIGNED_TO_RIDER,
+        assigned_at: Between(todayStart, todayEnd),
+        is_return_parcel: false,
       },
     });
 
     const completedDeliveries = await this.parcelRepository.count({
-      where: [
-        { assigned_rider_id: riderId, status: ParcelStatus.DELIVERED },
-        { assigned_rider_id: riderId, status: ParcelStatus.PARTIAL_DELIVERY },
-        { assigned_rider_id: riderId, status: ParcelStatus.EXCHANGE },
-        { assigned_rider_id: riderId, status: ParcelStatus.PAID_RETURN },
-      ],
+      where: {
+        rider_action_rider_id: riderId,
+        rider_action_at: Between(todayStart, todayEnd),
+        rider_action_status: In([
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.DELIVERY_RESCHEDULED,
+        ]),
+      },
     });
 
     // ===== RETURNS: Pending (RETURNED, DELIVERY_RESCHEDULED) + Completed (RETURNED_TO_HUB, RETURN_TO_MERCHANT) =====
     const pendingReturns = await this.parcelRepository.count({
-      where: [
-        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED },
-        {
-          assigned_rider_id: riderId,
-          status: ParcelStatus.DELIVERY_RESCHEDULED,
-        },
-      ],
+      where: {
+        assigned_rider_id: riderId,
+        status: ParcelStatus.ASSIGNED_TO_RIDER,
+        assigned_at: Between(todayStart, todayEnd),
+        is_return_parcel: true,
+      },
     });
 
     const completedReturns = await this.parcelRepository.count({
-      where: [
-        { assigned_rider_id: riderId, status: ParcelStatus.RETURNED_TO_HUB },
-        { assigned_rider_id: riderId, status: ParcelStatus.RETURN_TO_MERCHANT },
-      ],
+      where: {
+        rider_action_rider_id: riderId,
+        rider_action_at: Between(todayStart, todayEnd),
+        rider_action_status: In([
+          ParcelStatus.RETURNED,
+          ParcelStatus.PAID_RETURN,
+          ParcelStatus.RETURNED_TO_HUB,
+          ParcelStatus.RETURN_TO_MERCHANT,
+        ]),
+      },
     });
 
     return {

@@ -19,6 +19,8 @@ import {
 } from './entities/delivery-verification.entity';
 import {
   Parcel,
+  CodStatus,
+  HubConfirmationStatus,
   ParcelStatus,
   PaymentStatus,
   REASON_REQUIRED_STATUSES,
@@ -243,64 +245,124 @@ export class DeliveryVerificationsService {
     }
 
     // 6. Check if a verification already exists for this parcel
-    const existingVerification = await this.deliveryVerificationRepo.findOne({
+    let existingVerification = await this.deliveryVerificationRepo.findOne({
       where: { parcel_id: parcelId },
+      order: { created_at: 'DESC' },
     });
 
     if (existingVerification) {
-      // Block re-initiation only if delivery is already completed
+      // A hub-confirmed reschedule starts a new delivery attempt. Keep the old
+      // verification as audit history and create a new record below.
       if (
         existingVerification.verification_status ===
           DeliveryVerificationStatus.OTP_VERIFIED ||
         existingVerification.verification_status ===
           DeliveryVerificationStatus.COMPLETED
       ) {
-        throw new BadRequestException(
-          'Delivery has already been completed for this parcel',
-        );
+        const isConfirmedNewAttempt =
+          parcel.status === ParcelStatus.ASSIGNED_TO_RIDER &&
+          parcel.hub_confirmation_status === HubConfirmationStatus.CONFIRMED;
+
+        if (isConfirmedNewAttempt) {
+          existingVerification = null;
+        } else {
+          throw new BadRequestException(
+            'Delivery has already been completed for this parcel',
+          );
+        }
       }
 
-      // Retry scenario: rider could not obtain the OTP — update existing record and resend
-      existingVerification.selected_status = selectedStatus;
-      existingVerification.expected_cod_amount = expectedAmount;
-      existingVerification.collected_amount = collectedAmount;
-      existingVerification.has_amount_difference = hasDifference;
-      existingVerification.difference_reason = reason || null;
-      existingVerification.otp_recipient_type = otpRecipientType;
-      existingVerification.otp_sent_to_phone = otpPhone;
-      existingVerification.merchant_phone_used =
-        parcel.store?.merchant?.user?.phone || null;
-      existingVerification.customer_phone_used = parcel.customer_phone || null;
-      existingVerification.requires_otp_verification = !skipOtpVerification;
-      existingVerification.otp_attempts = 0;
-      existingVerification.delivery_attempted_at = new Date();
-      this.resetOtpBypassRequestState(existingVerification);
+      if (!existingVerification) {
+        // Continue to the new-verification branch below.
+      } else {
+        // Retry scenario: rider could not obtain the OTP — update existing record and resend
+        existingVerification.selected_status = selectedStatus;
+        existingVerification.expected_cod_amount = expectedAmount;
+        existingVerification.collected_amount = collectedAmount;
+        existingVerification.has_amount_difference = hasDifference;
+        existingVerification.difference_reason = reason || null;
+        existingVerification.otp_recipient_type = otpRecipientType;
+        existingVerification.otp_sent_to_phone = otpPhone;
+        existingVerification.merchant_phone_used =
+          parcel.store?.merchant?.user?.phone || null;
+        existingVerification.customer_phone_used =
+          parcel.customer_phone || null;
+        existingVerification.requires_otp_verification = !skipOtpVerification;
+        existingVerification.otp_attempts = 0;
+        existingVerification.delivery_attempted_at = new Date();
+        this.resetOtpBypassRequestState(existingVerification);
 
-      parcel.admin_notes = reason || null;
-      parcel.tracking_context = {
-        actor_type: ParcelTrackingActorType.RIDER,
-        actor_id: riderId,
-        source: 'DELIVERY_VERIFICATION',
-      };
-      await this.parcelRepo.save(parcel);
+        parcel.admin_notes = reason || null;
+        parcel.tracking_context = {
+          actor_type: ParcelTrackingActorType.RIDER,
+          actor_id: riderId,
+          source: 'DELIVERY_VERIFICATION',
+        };
+        await this.parcelRepo.save(parcel);
 
-      if (skipOtpVerification) {
-        existingVerification.otp_code = null;
-        existingVerification.otp_sent_at = null;
-        existingVerification.otp_expires_at = null;
-        existingVerification.otp_verified_at = null;
-        existingVerification.otp_verified_by = null;
-        existingVerification.merchant_approved = false;
-        existingVerification.merchant_approved_at = null;
+        if (skipOtpVerification) {
+          existingVerification.otp_code = null;
+          existingVerification.otp_sent_at = null;
+          existingVerification.otp_expires_at = null;
+          existingVerification.otp_verified_at = null;
+          existingVerification.otp_verified_by = null;
+          existingVerification.merchant_approved = false;
+          existingVerification.merchant_approved_at = null;
+          existingVerification.verification_status =
+            DeliveryVerificationStatus.PENDING;
+
+          await this.deliveryVerificationRepo.save(existingVerification);
+          await this.completeDelivery(existingVerification.id);
+
+          this.logger.log(
+            `[DELIVERY DIRECT COMPLETE] Parcel: ${parcel.tracking_number}, Status: ${selectedStatus}, ` +
+              `Expected: ${expectedAmount}, Collected: ${collectedAmount}`,
+          );
+
+          return {
+            success: true,
+            verification_id: existingVerification.id,
+            selected_status: selectedStatus,
+            expected_amount: expectedAmount,
+            collected_amount: collectedAmount,
+            has_difference: hasDifference,
+            difference: amountDifference,
+            reason: reason || null,
+            otp_required: false,
+            message:
+              'Delivery completed successfully. OTP verification was not required.',
+          };
+        }
+
+        const retryOtp = this.generateOtp();
+        const retryHashedOtp = await bcrypt.hash(retryOtp, 10);
+        existingVerification.otp_code = retryHashedOtp;
+        existingVerification.otp_sent_at = new Date();
+        existingVerification.otp_expires_at = new Date(
+          Date.now() + 5 * 60 * 1000,
+        );
         existingVerification.verification_status =
-          DeliveryVerificationStatus.PENDING;
+          DeliveryVerificationStatus.OTP_SENT;
 
         await this.deliveryVerificationRepo.save(existingVerification);
-        await this.completeDelivery(existingVerification.id);
 
+        await this.sendOtpSms(
+          otpPhone,
+          retryOtp,
+          parcel.tracking_number,
+          selectedStatus,
+          expectedAmount,
+          collectedAmount,
+          reason,
+          otpRecipientType,
+        );
+
+        const retryRecipientLabel =
+          otpRecipientType === OtpRecipientType.CUSTOMER
+            ? 'customer'
+            : 'merchant';
         this.logger.log(
-          `[DELIVERY DIRECT COMPLETE] Parcel: ${parcel.tracking_number}, Status: ${selectedStatus}, ` +
-            `Expected: ${expectedAmount}, Collected: ${collectedAmount}`,
+          `[DELIVERY RETRY] Parcel: ${parcel.tracking_number}, re-initiated by rider. OTP resent to: ${retryRecipientLabel}`,
         );
 
         return {
@@ -312,57 +374,12 @@ export class DeliveryVerificationsService {
           has_difference: hasDifference,
           difference: amountDifference,
           reason: reason || null,
-          otp_required: false,
-          message:
-            'Delivery completed successfully. OTP verification was not required.',
+          otp_sent_to: otpRecipientType,
+          otp_phone: this.maskPhone(otpPhone),
+          otp_expires_at: existingVerification.otp_expires_at,
+          message: `OTP resent to ${retryRecipientLabel}. Please enter the 4-digit code to complete.`,
         };
       }
-
-      const retryOtp = this.generateOtp();
-      const retryHashedOtp = await bcrypt.hash(retryOtp, 10);
-      existingVerification.otp_code = retryHashedOtp;
-      existingVerification.otp_sent_at = new Date();
-      existingVerification.otp_expires_at = new Date(
-        Date.now() + 5 * 60 * 1000,
-      );
-      existingVerification.verification_status =
-        DeliveryVerificationStatus.OTP_SENT;
-
-      await this.deliveryVerificationRepo.save(existingVerification);
-
-      await this.sendOtpSms(
-        otpPhone,
-        retryOtp,
-        parcel.tracking_number,
-        selectedStatus,
-        expectedAmount,
-        collectedAmount,
-        reason,
-        otpRecipientType,
-      );
-
-      const retryRecipientLabel =
-        otpRecipientType === OtpRecipientType.CUSTOMER
-          ? 'customer'
-          : 'merchant';
-      this.logger.log(
-        `[DELIVERY RETRY] Parcel: ${parcel.tracking_number}, re-initiated by rider. OTP resent to: ${retryRecipientLabel}`,
-      );
-
-      return {
-        success: true,
-        verification_id: existingVerification.id,
-        selected_status: selectedStatus,
-        expected_amount: expectedAmount,
-        collected_amount: collectedAmount,
-        has_difference: hasDifference,
-        difference: amountDifference,
-        reason: reason || null,
-        otp_sent_to: otpRecipientType,
-        otp_phone: this.maskPhone(otpPhone),
-        otp_expires_at: existingVerification.otp_expires_at,
-        message: `OTP resent to ${retryRecipientLabel}. Please enter the 4-digit code to complete.`,
-      };
     }
 
     // 7. Create new verification record
@@ -1181,9 +1198,19 @@ export class DeliveryVerificationsService {
     const selectedStatus = verification.selected_status;
     const collectedAmount = Number(verification.collected_amount) || 0;
 
-    // Update parcel status
+    const riderActionAt = new Date();
+
+    // Update the operational status immediately so the rider task leaves Pending.
+    // Hub settlement is tracked separately and may correct this action later.
     parcel.status = selectedStatus;
-    parcel.delivered_at = new Date();
+    parcel.delivered_at = riderActionAt;
+    parcel.rider_action_status = selectedStatus;
+    parcel.rider_action_rider_id = verification.rider_id;
+    parcel.rider_action_at = riderActionAt;
+    parcel.hub_confirmation_status = HubConfirmationStatus.PENDING;
+    parcel.hub_confirmed_at = null;
+    parcel.completed_at = null;
+    parcel.cod_cleared_at = null;
     parcel.tracking_context = {
       actor_type: ParcelTrackingActorType.RIDER,
       actor_id: verification.rider_id,
@@ -1221,6 +1248,7 @@ export class DeliveryVerificationsService {
         parcel.return_charge_applicable = false;
         parcel.return_charge = 0;
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        parcel.cod_status = CodStatus.PENDING;
         break;
 
       case ParcelStatus.PARTIAL_DELIVERY:
@@ -1233,6 +1261,7 @@ export class DeliveryVerificationsService {
           ReturnStatus.PARTIAL_DELIVERY,
         );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        parcel.cod_status = CodStatus.PENDING;
         break;
 
       case ParcelStatus.EXCHANGE:
@@ -1245,6 +1274,7 @@ export class DeliveryVerificationsService {
           ReturnStatus.EXCHANGE,
         );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        parcel.cod_status = CodStatus.PENDING;
         break;
 
       case ParcelStatus.PAID_RETURN:
@@ -1257,6 +1287,7 @@ export class DeliveryVerificationsService {
           ReturnStatus.PAID_RETURN,
         );
         parcel.payment_status = PaymentStatus.COD_COLLECTED;
+        parcel.cod_status = CodStatus.PENDING;
         break;
 
       case ParcelStatus.RETURNED:
@@ -1269,16 +1300,18 @@ export class DeliveryVerificationsService {
           ReturnStatus.RETURNED,
         );
         parcel.payment_status = PaymentStatus.UNPAID; // No payment collected
+        parcel.cod_status = CodStatus.NOT_APPLICABLE;
         break;
 
       case ParcelStatus.DELIVERY_RESCHEDULED:
         // Rescheduled - no financial changes yet
-        // Note: reschedule_count is incremented when assigned to rider, not here
+        // The count is incremented only when the hub confirms this action.
         parcel.cod_collected_amount = 0;
         parcel.delivery_charge_applicable = false;
         parcel.return_charge_applicable = false;
         parcel.return_charge = 0;
         parcel.payment_status = PaymentStatus.UNPAID; // Pending delivery
+        parcel.cod_status = CodStatus.NOT_APPLICABLE;
         break;
 
       default:

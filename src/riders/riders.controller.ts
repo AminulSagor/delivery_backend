@@ -578,7 +578,8 @@ export class RidersController {
   /**
    * DELIVERY SECTION - Pending & Completed tabs
    * Pending: ASSIGNED_TO_RIDER (assigned by hub, ready to deliver)
-   * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
+   * Completed today: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN,
+   * RETURNED, RETURN_TO_MERCHANT, DELIVERY_RESCHEDULED
    *
    * Flow: Hub assigns parcel → Rider initiates delivery → OTP verification → Done
    */
@@ -626,8 +627,8 @@ export class RidersController {
 
   /**
    * RETURN SECTION - Pending & Completed tabs
-   * Pending: RETURNED, DELIVERY_RESCHEDULED (need to return to hub or reattempt)
-   * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
+   * Pending today: return parcels assigned by the hub
+   * Completed today: RETURNED, PAID_RETURN, RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   @Get('returns')
   @Roles(UserRole.RIDER)

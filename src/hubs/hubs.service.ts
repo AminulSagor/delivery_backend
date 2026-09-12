@@ -36,6 +36,8 @@ import { Rider } from '../riders/entities/rider.entity';
 import { DeliveryVerification } from '../delivery-verifications/entities/delivery-verification.entity';
 import { Store } from '../stores/entities/store.entity';
 import {
+  CodStatus,
+  HubConfirmationStatus,
   Parcel,
   ParcelStatus,
   PaymentStatus,
@@ -1986,7 +1988,9 @@ export class HubsService {
         );
       }
 
-      // Get all pending parcels for this rider (completed deliveries not yet cleared)
+      // Get the selected rider actions that are waiting for hub confirmation.
+      // Legacy successful outcomes without the new confirmation flag remain
+      // confirmable so existing production rows are not stranded.
       const successfulStatuses = [
         ParcelStatus.DELIVERED,
         ParcelStatus.PARTIAL_DELIVERY,
@@ -1994,20 +1998,65 @@ export class HubsService {
         ParcelStatus.PAID_RETURN,
       ];
 
-      const parcels = await queryRunner.manager.find(Parcel, {
-        where: {
-          assigned_rider_id: riderId,
-          current_hub_id: managerFinance.hub_id,
-          status: In(successfulStatuses),
-          payment_status: PaymentStatus.COD_COLLECTED, // Rider collected from customer
-          cod_cleared_at: IsNull(), // But hasn't cleared with hub yet
-        },
+      const zeroAmountStatuses = [
+        ParcelStatus.RETURNED,
+        ParcelStatus.DELIVERY_RESCHEDULED,
+        ParcelStatus.RETURN_TO_MERCHANT,
+        ParcelStatus.CANCELLED,
+      ];
+      const confirmableStatuses = [
+        ...successfulStatuses,
+        ...zeroAmountStatuses,
+      ];
+
+      const parcelQuery = queryRunner.manager
+        .createQueryBuilder(Parcel, 'parcel')
+        .setLock('pessimistic_write')
+        .where('parcel.assigned_rider_id = :riderId', { riderId })
+        .andWhere('parcel.current_hub_id = :hubId', {
+          hubId: managerFinance.hub_id,
+        })
+        .andWhere('parcel.cod_cleared_at IS NULL')
+        .andWhere(
+          '(parcel.hub_confirmation_status = :pending OR (parcel.hub_confirmation_status IS NULL AND parcel.status IN (:...legacyStatuses)))',
+          {
+            pending: HubConfirmationStatus.PENDING,
+            legacyStatuses: successfulStatuses,
+          },
+        );
+
+      parcelQuery.andWhere('parcel.id IN (:...parcelIds)', {
+        parcelIds: dto.parcel_ids,
       });
+
+      const parcels = await parcelQuery.getMany();
 
       if (parcels.length === 0) {
         throw new BadRequestException(
-          'No pending deliveries found for this rider',
+          'No selected rider actions are waiting for hub confirmation',
         );
+      }
+
+      if (parcels.length !== dto.parcel_ids.length) {
+        const foundIds = new Set(parcels.map((parcel) => parcel.id));
+        const unavailableIds = dto.parcel_ids.filter((id) => !foundIds.has(id));
+        throw new BadRequestException(
+          `Some parcels are not pending confirmation for this rider: ${unavailableIds.join(', ')}`,
+        );
+      }
+
+      const corrections = new Map(
+        (dto.corrections ?? []).map((correction) => [
+          correction.parcel_id,
+          correction,
+        ]),
+      );
+      for (const correctionId of corrections.keys()) {
+        if (!parcels.some((parcel) => parcel.id === correctionId)) {
+          throw new BadRequestException(
+            `Correction parcel ${correctionId} is not in parcel_ids`,
+          );
+        }
       }
 
       // 3. Calculate "Total Collectable Amount" (Expected from Rider)
@@ -2020,43 +2069,107 @@ export class HubsService {
       let exchangeCount = 0;
       let paidReturnCount = 0;
       let returnedCount = 0;
+      let rescheduledCount = 0;
+      const results: Array<{
+        parcel_id: string;
+        previous_action: ParcelStatus;
+        confirmed_action: ParcelStatus;
+        status: ParcelStatus;
+        cod_status: CodStatus;
+        reschedule_count: number;
+        automatically_reassigned: boolean;
+      }> = [];
+      const confirmedAt = new Date();
 
       for (const parcel of parcels) {
-        // Add to total
-        // We use 'cod_collected_amount' which is what the rider actually took from customer
-        totalExpectedAmount += Number(parcel.cod_collected_amount || 0);
+        const previousAction = parcel.rider_action_status || parcel.status;
+        const correction = corrections.get(parcel.id);
+        const confirmedAction = correction?.action_status || previousAction;
+
+        if (
+          !confirmableStatuses.includes(confirmedAction) &&
+          confirmedAction !== ParcelStatus.ASSIGNED_TO_RIDER
+        ) {
+          throw new BadRequestException(
+            `Status ${confirmedAction} cannot be confirmed for parcel ${parcel.id}`,
+          );
+        }
+
+        if (successfulStatuses.includes(confirmedAction)) {
+          if (correction?.cod_status !== CodStatus.REFUNDED) {
+            totalExpectedAmount += Number(parcel.cod_collected_amount || 0);
+          }
+          parcel.payment_status = PaymentStatus.COD_COLLECTED;
+          parcel.cod_status = correction?.cod_status || CodStatus.COLLECTED;
+        } else {
+          parcel.cod_collected_amount = 0;
+          parcel.payment_status = PaymentStatus.UNPAID;
+          parcel.cod_status =
+            correction?.cod_status || CodStatus.NOT_APPLICABLE;
+        }
+
         settledParcelIds.push(parcel.id);
 
         // Update Counts
-        if (parcel.status === ParcelStatus.DELIVERED) deliveredCount++;
-        else if (parcel.status === ParcelStatus.PARTIAL_DELIVERY)
+        if (confirmedAction === ParcelStatus.DELIVERED) deliveredCount++;
+        else if (confirmedAction === ParcelStatus.PARTIAL_DELIVERY)
           partialCount++;
-        else if (parcel.status === ParcelStatus.EXCHANGE) exchangeCount++;
-        else if (parcel.status === ParcelStatus.PAID_RETURN) paidReturnCount++;
-        else if (parcel.status === ParcelStatus.RETURNED) returnedCount++;
+        else if (confirmedAction === ParcelStatus.EXCHANGE) exchangeCount++;
+        else if (confirmedAction === ParcelStatus.PAID_RETURN)
+          paidReturnCount++;
+        else if (confirmedAction === ParcelStatus.RETURNED) returnedCount++;
+
+        parcel.rider_action_status =
+          confirmedAction === ParcelStatus.ASSIGNED_TO_RIDER
+            ? null
+            : confirmedAction;
+        parcel.hub_confirmation_status = HubConfirmationStatus.CONFIRMED;
+        parcel.hub_confirmed_at = confirmedAt;
+        parcel.completed_at = confirmedAt;
+        parcel.cod_cleared_at = confirmedAt;
+
+        let automaticallyReassigned = false;
+        if (confirmedAction === ParcelStatus.DELIVERY_RESCHEDULED) {
+          parcel.reschedule_count = Number(parcel.reschedule_count || 0) + 1;
+          parcel.status = ParcelStatus.ASSIGNED_TO_RIDER;
+          parcel.assigned_at = confirmedAt;
+          parcel.rider_accepted_at = null;
+          parcel.out_for_delivery_at = null;
+          automaticallyReassigned = true;
+          rescheduledCount++;
+        } else if (confirmedAction === ParcelStatus.ASSIGNED_TO_RIDER) {
+          parcel.status = ParcelStatus.ASSIGNED_TO_RIDER;
+          parcel.assigned_at = confirmedAt;
+          parcel.rider_accepted_at = null;
+          parcel.out_for_delivery_at = null;
+          parcel.cod_cleared_at = null;
+          parcel.completed_at = null;
+          parcel.cod_status = CodStatus.PENDING;
+        } else {
+          parcel.status = confirmedAction;
+        }
+
+        await queryRunner.manager.save(Parcel, parcel);
+        results.push({
+          parcel_id: parcel.id,
+          previous_action: previousAction,
+          confirmed_action: confirmedAction,
+          status: parcel.status,
+          cod_status: parcel.cod_status,
+          reschedule_count: parcel.reschedule_count,
+          automatically_reassigned: automaticallyReassigned,
+        });
       }
 
-      // 4. Financial Calculations - Only add counted amount to balance
+      // Financial Calculations - Only add counted amount to balance.
       const countedAmount = dto.counted_amount;
-      const codClearedAt = new Date();
-
-      // 5. Update Parcels Status
-      // Mark as COD cleared and set timestamp
-      await queryRunner.manager.update(
-        Parcel,
-        { id: In(settledParcelIds) },
-        {
-          payment_status: PaymentStatus.COD_COLLECTED,
-          cod_cleared_at: codClearedAt,
-        },
-      );
 
       // 6. Update Hub Finance (Add Counted Cash to Available Balance)
       managerFinance.current_balance =
         Number(managerFinance.current_balance) + countedAmount;
       managerFinance.total_collected_from_riders =
         Number(managerFinance.total_collected_from_riders) + countedAmount;
-      managerFinance.last_collection_at = codClearedAt;
+      managerFinance.last_collection_at = confirmedAt;
 
       await queryRunner.manager.save(managerFinance);
 
@@ -2065,10 +2178,21 @@ export class HubsService {
       return {
         rider_id: riderId,
         parcel_count: settledParcelIds.length,
+        parcel_ids: settledParcelIds,
+        total_expected_amount: totalExpectedAmount,
         counted_amount: countedAmount,
-        cod_cleared_at: codClearedAt,
+        hub_confirmed_at: confirmedAt,
+        action_counts: {
+          delivered: deliveredCount,
+          partial_delivery: partialCount,
+          exchange: exchangeCount,
+          paid_return: paidReturnCount,
+          returned: returnedCount,
+          delivery_rescheduled: rescheduledCount,
+        },
+        results,
         current_balance: Number(managerFinance.current_balance),
-        message: 'COD collection processed successfully',
+        message: 'Selected rider actions confirmed successfully',
       };
     } catch (err) {
       await queryRunner.rollbackTransaction();

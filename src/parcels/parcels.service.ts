@@ -61,6 +61,7 @@ import { DeliveryType } from '../common/enums/delivery-type.enum';
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
 import { createHash } from 'crypto';
+import { getDhakaTodayRange } from '../common/utils/dhaka-date.util';
 
 // --- EXPORTED TYPES (Required for Controller) ---
 export interface ParcelCreationResult {
@@ -3475,9 +3476,16 @@ export class ParcelsService {
       }
     }
 
-    // Determine statuses to include
-    const statusesToUse: any[] =
-      statuses && statuses.length > 0 ? statuses : this.activeParcelStatuses;
+    // Rider-to-rider reassignment is valid only before a rider action.
+    if (
+      statuses?.length &&
+      statuses.some((status) => status !== ParcelStatus.ASSIGNED_TO_RIDER)
+    ) {
+      throw new BadRequestException(
+        'Only ASSIGNED_TO_RIDER parcels can be transferred between riders',
+      );
+    }
+    const statusesToUse: any[] = [ParcelStatus.ASSIGNED_TO_RIDER];
 
     // Find parcels assigned to source riders with matching statuses
     const parcels = await this.parcelRepository.find({
@@ -4081,17 +4089,13 @@ export class ParcelsService {
       throw new BadRequestException('Rider must belong to your hub');
     }
 
-    // Assign parcel to rider.
-    // Increment reschedule_count if parcel was in DELIVERY_RESCHEDULED status
+    // Assign parcel to rider. Reschedule attempts are counted by hub confirmation,
+    // never by assignment or reassignment.
     const updateData: any = {
       assigned_rider_id: rider.id,
       assigned_at: new Date(),
       status: ParcelStatus.ASSIGNED_TO_RIDER,
     };
-
-    if (parcel.status === ParcelStatus.DELIVERY_RESCHEDULED) {
-      updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
-    }
 
     Object.assign(parcel, updateData);
     await this.parcelRepository.save(parcel);
@@ -4276,17 +4280,12 @@ export class ParcelsService {
           continue;
         }
 
-        // Assign parcel to rider
-        // Increment reschedule_count if parcel was in DELIVERY_RESCHEDULED status
+        // Assign parcel to rider. Reassigning never increments reschedule_count.
         const updateData: any = {
           assigned_rider_id: rider.id,
           assigned_at: new Date(),
           status: ParcelStatus.ASSIGNED_TO_RIDER,
         };
-
-        if (parcel.status === ParcelStatus.DELIVERY_RESCHEDULED) {
-          updateData.reschedule_count = (parcel.reschedule_count || 0) + 1;
-        }
 
         Object.assign(parcel, updateData);
         await this.parcelRepository.save(parcel);
@@ -4429,21 +4428,29 @@ export class ParcelsService {
    * Completed: DELIVERED, PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN
    */
   async getRiderDeliveries(riderId: string, tab: 'pending' | 'completed') {
-    const where: any = { assigned_rider_id: riderId };
+    const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
+    const where: any = {};
 
     if (tab === 'pending') {
-      // Parcels assigned to rider, ready to deliver
+      // Today's delivery assignments that still need a rider action.
+      where.assigned_rider_id = riderId;
       where.status = ParcelStatus.ASSIGNED_TO_RIDER;
+      where.assigned_at = Between(todayStart, todayEnd);
+      where.is_return_parcel = false;
     } else {
-      // Completed includes successful delivery outcomes
-      where.status = In([
+      // Every rider action completed today appears here immediately, even
+      // before hub confirmation. Operational status may later change.
+      where.rider_action_rider_id = riderId;
+      where.rider_action_at = Between(todayStart, todayEnd);
+      where.rider_action_status = In([
         ParcelStatus.DELIVERED,
         ParcelStatus.PARTIAL_DELIVERY,
         ParcelStatus.EXCHANGE,
         ParcelStatus.PAID_RETURN,
+        ParcelStatus.RETURNED,
+        ParcelStatus.RETURN_TO_MERCHANT,
+        ParcelStatus.DELIVERY_RESCHEDULED,
       ]);
-      // Do not show parcels already cleared (COD collected by hub from rider)
-      where.cod_cleared_at = IsNull();
     }
 
     return this.parcelRepository.find({
@@ -4475,17 +4482,21 @@ export class ParcelsService {
    * Completed: RETURNED_TO_HUB, RETURN_TO_MERCHANT
    */
   async getRiderReturns(riderId: string, tab: 'pending' | 'completed') {
-    const where: any = { assigned_rider_id: riderId };
+    const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
+    const where: any = {};
 
     if (tab === 'pending') {
-      // Parcels that need to be returned to hub or rescheduled
-      where.status = In([
-        ParcelStatus.RETURNED,
-        ParcelStatus.DELIVERY_RESCHEDULED,
-      ]);
+      // Return journeys assigned by the hub today.
+      where.assigned_rider_id = riderId;
+      where.status = ParcelStatus.ASSIGNED_TO_RIDER;
+      where.assigned_at = Between(todayStart, todayEnd);
+      where.is_return_parcel = true;
     } else {
-      // Parcels returned to hub or merchant
-      where.status = In([
+      where.rider_action_rider_id = riderId;
+      where.rider_action_at = Between(todayStart, todayEnd);
+      where.rider_action_status = In([
+        ParcelStatus.RETURNED,
+        ParcelStatus.PAID_RETURN,
         ParcelStatus.RETURNED_TO_HUB,
         ParcelStatus.RETURN_TO_MERCHANT,
       ]);
@@ -4585,7 +4596,13 @@ export class ParcelsService {
       ParcelStatus.PARTIAL_DELIVERY,
       ParcelStatus.EXCHANGE,
       ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURN_TO_MERCHANT,
+      ParcelStatus.DELIVERY_RESCHEDULED,
     ];
+
+    const visibleStatus =
+      tab === 'completed' ? parcel.rider_action_status : parcel.status;
 
     const allowedStatuses =
       tab === 'pending'
@@ -4594,16 +4611,9 @@ export class ParcelsService {
           ? completedStatuses
           : [...pendingStatuses, ...completedStatuses];
 
-    if (!allowedStatuses.includes(parcel.status)) {
+    if (!visibleStatus || !allowedStatuses.includes(visibleStatus)) {
       throw new BadRequestException(
         `Parcel status ${parcel.status} is not available in ${tab} delivery tab`,
-      );
-    }
-
-    // Keep this consistent with the completed list endpoint behavior.
-    if (tab === 'completed' && parcel.cod_cleared_at) {
-      throw new BadRequestException(
-        'This parcel is already cleared and is not available in completed deliveries',
       );
     }
 
@@ -4643,14 +4653,16 @@ export class ParcelsService {
       throw new NotFoundException('Parcel not found or not assigned to you');
     }
 
-    const pendingStatuses = [
-      ParcelStatus.RETURNED,
-      ParcelStatus.DELIVERY_RESCHEDULED,
-    ];
+    const pendingStatuses = [ParcelStatus.ASSIGNED_TO_RIDER];
     const completedStatuses = [
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
       ParcelStatus.RETURNED_TO_HUB,
       ParcelStatus.RETURN_TO_MERCHANT,
     ];
+
+    const visibleStatus =
+      tab === 'completed' ? parcel.rider_action_status : parcel.status;
 
     const allowedStatuses =
       tab === 'pending'
@@ -4659,7 +4671,7 @@ export class ParcelsService {
           ? completedStatuses
           : [...pendingStatuses, ...completedStatuses];
 
-    if (!allowedStatuses.includes(parcel.status)) {
+    if (!visibleStatus || !allowedStatuses.includes(visibleStatus)) {
       throw new BadRequestException(
         `Parcel status ${parcel.status} is not available in ${tab} return tab`,
       );
@@ -5439,7 +5451,15 @@ export class ParcelsService {
       .where('parcel.origin_hub_id = :hubId', { hubId })
       .andWhere('parcel.is_inter_hub_transfer = :isTransfer', {
         isTransfer: true,
-      });
+      })
+      // This is the active assigned-transfer list, not transfer history.
+      // A parcel that was transferred in the past may still retain the transfer
+      // marker, so require the fields that describe a currently active hub leg.
+      .andWhere('parcel.status = :inTransitStatus', {
+        inTransitStatus: ParcelStatus.IN_TRANSIT,
+      })
+      .andWhere('parcel.destination_hub_id IS NOT NULL')
+      .andWhere('parcel.received_at_destination_hub IS NULL');
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -5593,7 +5613,6 @@ export class ParcelsService {
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
-
     // Calculate total collectable amount (COD collected from completed deliveries)
     const successfulStatuses = [
       ParcelStatus.PARTIAL_DELIVERY,
@@ -5670,6 +5689,7 @@ export class ParcelsService {
       maxAmount?: number;
       deliveryType?: DeliveryType;
       status?: ParcelStatus | 'ACTIVE';
+      codStatus?: string;
     } = {},
   ) {
     const {
@@ -5688,6 +5708,7 @@ export class ParcelsService {
       maxAmount,
       deliveryType,
       status,
+      codStatus,
     } = options;
     const skip = (page - 1) * limit;
 
@@ -5699,7 +5720,8 @@ export class ParcelsService {
       ParcelStatus.PAID_RETURN,
     ];
 
-    // If status is provided, use it to filter; otherwise show ALL parcels assigned to rider
+    // Status filters use the rider action while it is awaiting hub confirmation.
+    // After confirmation, the operational parcel status is used again.
     const statuses = status
       ? status === 'ACTIVE'
         ? successfulStatuses
@@ -5725,13 +5747,32 @@ export class ParcelsService {
       .leftJoinAndSelect('parcel.thirdPartyProvider', 'thirdPartyProvider')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
       .where('parcel.current_hub_id = :hubId', { hubId })
-      .andWhere('parcel.assigned_rider_id = :riderId', { riderId });
+      .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
+      .andWhere(
+        '(parcel.status = :assignedStatus OR parcel.hub_confirmation_status = :pendingHubConfirmation OR (parcel.hub_confirmation_status IS NULL AND parcel.cod_cleared_at IS NULL AND parcel.status IN (:...legacyOutcomeStatuses)))',
+        {
+          assignedStatus: ParcelStatus.ASSIGNED_TO_RIDER,
+          pendingHubConfirmation: 'PENDING',
+          legacyOutcomeStatuses: successfulStatuses,
+        },
+      );
 
     // If caller requested a status filter, apply it. Otherwise list all assigned parcels.
     if (statuses && statuses.length) {
-      queryBuilder.andWhere('parcel.status IN (:...statuses)', {
-        statuses: statuses,
-      });
+      queryBuilder.andWhere(
+        `CASE
+          WHEN parcel.hub_confirmation_status = :pendingStatusFilter
+            THEN COALESCE(parcel.rider_action_status, parcel.status)
+          ELSE parcel.status
+        END IN (:...statuses)`,
+        {
+          statuses: statuses,
+          pendingStatusFilter: 'PENDING',
+        },
+      );
+    }
+    if (codStatus) {
+      queryBuilder.andWhere('parcel.cod_status = :codStatus', { codStatus });
     }
 
     this.applyParcelListFilters(queryBuilder, {
@@ -5756,6 +5797,12 @@ export class ParcelsService {
 
     // Get total count for pagination
     const total = await queryBuilder.getCount();
+    const totalPendingConfirmation = await queryBuilder
+      .clone()
+      .andWhere('parcel.hub_confirmation_status = :pendingConfirmation', {
+        pendingConfirmation: 'PENDING',
+      })
+      .getCount();
 
     // Calculate total collectable amount (not-yet-cleared successful deliveries for this rider)
     const statusesForCollect = status
@@ -5770,9 +5817,12 @@ export class ParcelsService {
       .where('parcel.current_hub_id = :hubId', { hubId })
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.cod_cleared_at IS NULL')
-      .andWhere('parcel.status IN (:...statuses)', {
-        statuses: statusesForCollect,
-      });
+      .andWhere(
+        'COALESCE(parcel.rider_action_status, parcel.status) IN (:...statuses)',
+        {
+          statuses: statusesForCollect,
+        },
+      );
 
     const collectableResult = await collectableQuery.getRawOne();
     const totalCollectableAmount = Number(collectableResult?.total || 0);
@@ -5796,6 +5846,7 @@ export class ParcelsService {
       summary: {
         total_collectable_amount: totalCollectableAmount,
         total_cleared_parcels: total,
+        total_pending_confirmation: totalPendingConfirmation,
       },
     };
   }
@@ -6000,6 +6051,7 @@ export class ParcelsService {
     queryBuilder.andWhere('parcel.status = :status', {
       status: ParcelStatus.DELIVERY_RESCHEDULED,
     });
+    queryBuilder.andWhere('parcel.assigned_rider_id IS NULL');
 
     this.applyParcelListFilters(queryBuilder, {
       search,
@@ -6905,12 +6957,40 @@ export class ParcelsService {
       ? `${parcel.delivery_coverage_area.area}, ${parcel.delivery_coverage_area.zone}`
       : null;
 
+    const successfulActions = [
+      ParcelStatus.DELIVERED,
+      ParcelStatus.PARTIAL_DELIVERY,
+      ParcelStatus.EXCHANGE,
+      ParcelStatus.PAID_RETURN,
+    ];
+    const actionStatus =
+      parcel.hub_confirmation_status === 'PENDING'
+        ? parcel.rider_action_status || parcel.status
+        : parcel.status;
+    const canConfirm =
+      parcel.hub_confirmation_status === 'PENDING' ||
+      (!parcel.hub_confirmation_status &&
+        !parcel.cod_cleared_at &&
+        successfulActions.includes(parcel.status));
+
     return {
       ...toParcelListItem(parcel),
       parcel_id: parcel.id,
       parcel_tx_id: parcel.parcel_tx_id || null,
       tracking_number: parcel.tracking_number,
       status: parcel.status,
+      action_status: actionStatus,
+      can_confirm: canConfirm,
+      collectable_amount:
+        canConfirm && successfulActions.includes(actionStatus)
+          ? Number(parcel.cod_collected_amount) || 0
+          : 0,
+      merchant_amount_status:
+        successfulActions.includes(actionStatus) && parcel.hub_confirmed_at
+          ? 'AVAILABLE'
+          : successfulActions.includes(actionStatus)
+            ? 'PENDING'
+            : 'NOT_APPLICABLE',
       reason: parcel.return_reason || null,
 
       destination: parcel.customer_address,
@@ -7812,11 +7892,7 @@ export class ParcelsService {
     const order = options.order || 'DESC';
 
     // Active assigned statuses — parcels that are currently "with" the rider
-    const activeAssignedStatuses = [
-      ParcelStatus.ASSIGNED_TO_RIDER,
-      ParcelStatus.OUT_FOR_DELIVERY,
-      ParcelStatus.DELIVERY_RESCHEDULED,
-    ];
+    const activeAssignedStatuses = [ParcelStatus.ASSIGNED_TO_RIDER];
 
     const queryBuilder = this.parcelRepository
       .createQueryBuilder('parcel')
@@ -8121,6 +8197,18 @@ export class ParcelsService {
               tracking_number: parcel.tracking_number,
               success: false,
               error: 'Parcel is not assigned to any rider',
+            });
+            failed++;
+            continue;
+          }
+
+          if (parcel.status !== ParcelStatus.ASSIGNED_TO_RIDER) {
+            results.push({
+              parcel_id: parcelId,
+              parcel_tx_id: parcel.parcel_tx_id,
+              tracking_number: parcel.tracking_number,
+              success: false,
+              error: `Only ASSIGNED_TO_RIDER parcels can be transferred. Current status: ${parcel.status}`,
             });
             failed++;
             continue;

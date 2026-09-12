@@ -42,7 +42,7 @@ export class DeliveryVerification {
   id: string;
 
   // ===== RELATIONSHIPS =====
-  @Column({ type: 'uuid', unique: true })
+  @Column({ type: 'uuid' })
   parcel_id: string;
 
   @ManyToOne(() => Parcel, { onDelete: 'CASCADE' })

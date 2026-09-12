@@ -94,6 +94,9 @@ describe('RiderFinanceService', () => {
       mockParcelRepo.count.mockResolvedValueOnce(3); // returned
       mockParcelRepo.count.mockResolvedValueOnce(0); // returnToMerchant
 
+      // Mock Price Change Count
+      mockQueryBuilder.getRawOne.mockResolvedValueOnce({ priceChangeCount: 0 });
+
       // Mock Pickup Count
       mockQueryBuilder.getRawOne.mockResolvedValueOnce({ pickupCount: 15 });
 

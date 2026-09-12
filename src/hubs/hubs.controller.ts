@@ -340,6 +340,7 @@ export class HubsController {
         maxAmount: query.maxAmount,
         deliveryType: query.deliveryType,
         status: query.status,
+        codStatus: query.codStatus,
       },
     );
 
@@ -2249,7 +2250,7 @@ export class HubsController {
     return { success: true, data };
   }
 
-  // 2. Collect Cash (Manual COD) - Per Rider
+  // 2. Confirm selected rider actions and collect any associated COD
   @Post('finance/collect-cod/:rider_id')
   @Roles(UserRole.HUB_MANAGER)
   async collectCod(
@@ -2264,7 +2265,7 @@ export class HubsController {
     );
     return {
       success: true,
-      message: 'Cash collected successfully',
+      message: 'Selected rider actions confirmed successfully',
       data: settlement,
     };
   }

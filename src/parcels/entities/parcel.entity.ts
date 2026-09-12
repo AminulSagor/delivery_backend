@@ -89,6 +89,18 @@ export enum PaymentStatus {
   COD_COLLECTED = 'COD_COLLECTED',
 }
 
+export enum HubConfirmationStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+}
+
+export enum CodStatus {
+  PENDING = 'PENDING',
+  COLLECTED = 'COLLECTED',
+  REFUNDED = 'REFUNDED',
+  NOT_APPLICABLE = 'NOT_APPLICABLE',
+}
+
 @Entity('parcels')
 @Index(['store_id', 'status'])
 @Index(['parcel_tx_id'], { unique: true })
@@ -277,6 +289,10 @@ export class Parcel {
   @Column({ type: 'timestamp', nullable: true })
   cod_cleared_at: Date | null; // When rider cleared COD with hub manager
 
+  /** COD settlement state, intentionally separate from parcel.status. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  cod_status: CodStatus | null;
+
   @Column({ type: 'smallint', default: 1 })
   delivery_type: DeliveryType;
 
@@ -302,6 +318,26 @@ export class Parcel {
   // ===== RESCHEDULE TRACKING =====
   @Column({ type: 'smallint', default: 0 })
   reschedule_count: number;
+
+  /** Latest delivery outcome submitted by a rider. */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  rider_action_status: ParcelStatus | null;
+
+  /** Rider who submitted rider_action_status (kept for task history). */
+  @Column({ type: 'uuid', nullable: true })
+  rider_action_rider_id: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  hub_confirmation_status: HubConfirmationStatus | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rider_action_at: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  hub_confirmed_at: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  completed_at: Date | null;
 
   // ===== SPECIAL INSTRUCTIONS & NOTES =====
   @Column({ type: 'text', nullable: true })

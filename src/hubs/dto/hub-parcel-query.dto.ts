@@ -10,6 +10,7 @@ import {
 import { Type } from 'class-transformer';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import {
+  CodStatus,
   ParcelStatus,
   PaymentStatus,
 } from '../../parcels/entities/parcel.entity';
@@ -73,4 +74,8 @@ export class HubParcelQueryDto extends PaginationDto {
   @IsOptional()
   @IsEnum(PaymentStatus, { message: 'Invalid payment status' })
   paymentStatus?: PaymentStatus;
+
+  @IsOptional()
+  @IsEnum(CodStatus, { message: 'Invalid COD status' })
+  codStatus?: CodStatus;
 }

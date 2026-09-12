@@ -10,6 +10,7 @@ import {
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
 import { PickupRequestStatus } from '../../common/enums/pickup-request-status.enum';
 import { startOfDay, endOfDay, startOfMonth, subDays } from 'date-fns';
+import { getDhakaTodayRange } from '../../common/utils/dhaka-date.util';
 import { RiderFinanceSummaryMetric } from '../dto/rider-finance-summary-breakdown-query.dto';
 
 @Injectable()
@@ -69,8 +70,7 @@ export class RiderFinanceService {
     });
     if (!rider) throw new NotFoundException('Rider not found');
 
-    const todayStart = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
+    const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
     const monthStart = startOfMonth(new Date());
 
     // 1. Earning Today
@@ -472,21 +472,32 @@ export class RiderFinanceService {
       where: {
         assigned_rider_id: riderId,
         status: PickupRequestStatus.CONFIRMED,
+        rider_assigned_at: Between(todayStart, todayEnd),
       },
     });
 
     const deliveries = await this.parcelRepository.count({
       where: {
-        assigned_rider_id: riderId,
-        status: ParcelStatus.ASSIGNED_TO_RIDER,
+        rider_action_rider_id: riderId,
+        rider_action_at: Between(todayStart, todayEnd),
+        rider_action_status: In([
+          ParcelStatus.DELIVERED,
+          ParcelStatus.PARTIAL_DELIVERY,
+          ParcelStatus.EXCHANGE,
+          ParcelStatus.PAID_RETURN,
+          ParcelStatus.RETURNED,
+          ParcelStatus.RETURN_TO_MERCHANT,
+          ParcelStatus.DELIVERY_RESCHEDULED,
+        ]),
       },
     });
 
     const returned = await this.parcelRepository.count({
       where: {
         assigned_rider_id: riderId,
-        status: ParcelStatus.RETURNED,
-        updated_at: Between(todayStart, todayEnd),
+        status: ParcelStatus.ASSIGNED_TO_RIDER,
+        assigned_at: Between(todayStart, todayEnd),
+        is_return_parcel: true,
       },
     });
 
@@ -609,14 +620,14 @@ export class RiderFinanceService {
     const priceChange = Number(priceChangeCount) || 0;
 
     // Pickup (From Pickup Requests)
-    const { pickupCount } = await this.pickupRequestRepository
+    const pickupResult = await this.pickupRequestRepository
       .createQueryBuilder('pr')
       .select('SUM(pr.picked_up_count)', 'pickupCount')
       .where('pr.completed_by_rider_id = :riderId', { riderId })
       .andWhere('pr.picked_up_at BETWEEN :start AND :end', { start, end })
       .getRawOne();
 
-    const pickups = Number(pickupCount) || 0;
+    const pickups = Number(pickupResult?.pickupCount) || 0;
 
     const totalParcel =
       delivered +
