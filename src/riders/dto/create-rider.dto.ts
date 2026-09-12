@@ -10,6 +10,12 @@ import {
   MinLength,
 } from 'class-validator';
 import { BikeType } from '../entities/rider.entity';
+import { Transform, TransformFnParams } from 'class-transformer';
+
+const blankStringToNull = ({ value }: TransformFnParams): unknown => {
+  const input: unknown = value;
+  return typeof input === 'string' && input.trim() === '' ? null : input;
+};
 
 export class CreateRiderDto {
   // User fields
@@ -46,12 +52,14 @@ export class CreateRiderDto {
   bike_type: BikeType;
 
   @IsString()
-  @IsNotEmpty()
-  nid_number: string;
+  @IsOptional()
+  @Transform(blankStringToNull)
+  nid_number?: string | null;
 
   @IsString()
   @IsOptional()
-  license_no?: string;
+  @Transform(blankStringToNull)
+  license_no?: string | null;
 
   @IsString()
   @IsNotEmpty()

@@ -1,16 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThanOrEqual, In } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { Rider } from '../entities/rider.entity';
-import {
-  Parcel,
-  ParcelStatus,
-  RIDER_DELIVERY_STATUSES,
-} from '../../parcels/entities/parcel.entity';
+import { Parcel, ParcelStatus } from '../../parcels/entities/parcel.entity';
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
 import { PickupRequestStatus } from '../../common/enums/pickup-request-status.enum';
-import { startOfDay, endOfDay, startOfMonth, subDays } from 'date-fns';
-import { getDhakaTodayRange } from '../../common/utils/dhaka-date.util';
+import { startOfDay, endOfDay, subDays } from 'date-fns';
+import {
+  getDhakaMonthToDateRange,
+  getDhakaTodayRange,
+} from '../../common/utils/dhaka-date.util';
 import { RiderFinanceSummaryMetric } from '../dto/rider-finance-summary-breakdown-query.dto';
 
 @Injectable()
@@ -71,20 +70,25 @@ export class RiderFinanceService {
     if (!rider) throw new NotFoundException('Rider not found');
 
     const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
-    const monthStart = startOfMonth(new Date());
+    const { start: monthStart } = getDhakaMonthToDateRange();
 
     // 1. Earning Today
-    const earningsToday = await this.calculateEarnings(
+    const commissionToday = await this.calculateCommission(
       rider,
       todayStart,
       todayEnd,
     );
 
     // 2. Earning This Month
-    const earningsMonth = await this.calculateEarnings(
+    const commissionThisMonth = await this.calculateCommission(
       rider,
       monthStart,
       todayEnd,
+    );
+    const fixedSalaryThisMonth = Number(rider.fixed_salary) || 0;
+    const earningsToday = this.roundMoney(commissionToday);
+    const earningsMonth = this.roundMoney(
+      fixedSalaryThisMonth + commissionThisMonth,
     );
 
     // 3. Lifetime Cash Collection (Last 30 days as per user request)
@@ -128,6 +132,18 @@ export class RiderFinanceService {
       earnings: {
         today: earningsToday,
         this_month: earningsMonth,
+        breakdown: {
+          today: {
+            fixed_salary: 0,
+            commission: this.roundMoney(commissionToday),
+            total: earningsToday,
+          },
+          this_month: {
+            fixed_salary: this.roundMoney(fixedSalaryThisMonth),
+            commission: this.roundMoney(commissionThisMonth),
+            total: earningsMonth,
+          },
+        },
       },
       tasks_for_today: {
         total: totalTasksToday,
@@ -384,7 +400,7 @@ export class RiderFinanceService {
     };
   }
 
-  private async calculateEarnings(
+  private async calculateCommission(
     rider: Rider,
     start: Date,
     end: Date,
@@ -407,7 +423,13 @@ export class RiderFinanceService {
     });
 
     // Fixed commission per parcel
-    return count * (Number(rider.commission_per_delivery) || 0);
+    return this.roundMoney(
+      count * (Number(rider.commission_per_delivery) || 0),
+    );
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   }
 
   private async calculateCashCollection(

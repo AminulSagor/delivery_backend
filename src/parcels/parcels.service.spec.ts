@@ -375,6 +375,49 @@ describe('ParcelsService hub receipt timestamp', () => {
     expect(parcel.received_at).toBeInstanceOf(Date);
     expect(parcel.status).toBe(ParcelStatus.IN_HUB);
   });
+
+  it('confirms actual weight and recalculates charges during receipt', async () => {
+    const parcel = {
+      ...receivableParcel(),
+      merchant_id: 'merchant-1',
+      delivery_coverage_area_id: 'area-1',
+      cod_amount: 1000,
+      product_weight: 0.5,
+      delivery_charge: 60,
+      weight_charge: 0,
+      cod_charge: 10,
+      total_charge: 70,
+      receivable_amount: 930,
+    };
+    const service = serviceWithParcel(parcel);
+    (service as any).calculateCharges = jest.fn().mockResolvedValue({
+      weight_charge: 40,
+    });
+
+    const result = await service.bulkMarkAsReceived([parcelId], 'hub-1', [
+      { parcel_id: parcelId, product_weight: 1.5 },
+    ]);
+
+    expect((service as any).calculateCharges).toHaveBeenCalledWith(
+      'merchant-1',
+      'area-1',
+      1.5,
+      true,
+      1000,
+    );
+    expect(parcel.product_weight).toBe(1.5);
+    expect(parcel.weight_charge).toBe(40);
+    expect(parcel.total_charge).toBe(110);
+    expect(parcel.receivable_amount).toBe(890);
+    expect(result.results[0]).toMatchObject({
+      success: true,
+      weight_changed: true,
+      product_weight: 1.5,
+      weight_charge: 40,
+      total_charge: 110,
+      receivable_amount: 890,
+    });
+  });
 });
 
 describe('ParcelsService charge consistency', () => {
@@ -426,6 +469,34 @@ describe('ParcelsService charge consistency', () => {
     expect(parcel.total_charge).toBe(85);
     expect(parcel.receivable_amount).toBe(1915);
     expect((service as any).calculateCharges).not.toHaveBeenCalled();
+  });
+
+  it('lets the owning hub edit an assigned parcel and recalculates weight', async () => {
+    const parcel = baseParcel();
+    parcel.status = ParcelStatus.ASSIGNED_TO_RIDER;
+    const service = serviceWithParcel(parcel);
+    (service as any).calculateCharges = jest.fn().mockResolvedValue({
+      weight_charge: 30,
+    });
+
+    await service.update(
+      parcel.id,
+      {
+        customer_name: 'Updated Customer',
+        customer_phone: '01700000000',
+        customer_secondary_phone: '01800000000',
+        customer_address: 'Updated address',
+        product_description: 'Updated parcel',
+        product_weight: 2.5,
+        special_instructions: 'Call before delivery',
+      },
+      { role: UserRole.HUB_MANAGER, hubId: 'hub-1' },
+    );
+
+    expect(parcel.customer_name).toBe('Updated Customer');
+    expect(parcel.product_weight).toBe(2.5);
+    expect(parcel.weight_charge).toBe(30);
+    expect(parcel.total_charge).toBe(95);
   });
 
   it('derives weight charge from actual weight and preserves other charges', async () => {

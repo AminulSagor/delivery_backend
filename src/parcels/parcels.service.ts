@@ -62,6 +62,9 @@ import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
 import { createHash } from 'crypto';
 import { getDhakaTodayRange } from '../common/utils/dhaka-date.util';
+import { ParcelQueryService } from './services/parcel-query.service';
+import { ParcelQueryDto } from './dto/parcel-query.dto';
+import { RiderParcelSummaryQueryDto } from '../riders/dto/rider-parcel-summary-query.dto';
 
 // --- EXPORTED TYPES (Required for Controller) ---
 export interface ParcelCreationResult {
@@ -194,7 +197,16 @@ export class ParcelsService {
     private dataSource: DataSource,
     private parcelTrackingService: ParcelTrackingService,
     private coverageAreasService: CoverageAreasService,
+    private parcelQueryService: ParcelQueryService,
   ) {}
+
+  queryHubParcels(hubId: string, query: ParcelQueryDto) {
+    return this.parcelQueryService.queryHubParcels(hubId, query);
+  }
+
+  queryRiderParcelSummary(riderId: string, query: RiderParcelSummaryQueryDto) {
+    return this.parcelQueryService.queryRiderParcelSummary(riderId, query);
+  }
 
   private readonly parcelDetailRelations = [
     'merchant',
@@ -3215,6 +3227,10 @@ export class ParcelsService {
   async bulkMarkAsReceived(
     parcelIds: string[],
     hubId: string,
+    weightUpdates: Array<{
+      parcel_id: string;
+      product_weight: number;
+    }> = [],
   ): Promise<{
     success: number;
     failed: number;
@@ -3230,8 +3246,29 @@ export class ParcelsService {
       carrybee_delivery_fee?: number | null;
       carrybee_cod_fee?: number | null;
       carrybee_error?: string | null;
+      weight_changed?: boolean;
+      product_weight?: number;
+      weight_charge?: number;
+      total_charge?: number;
+      receivable_amount?: number;
     }>;
   }> {
+    const parcelIdSet = new Set(parcelIds);
+    const seenWeightUpdateIds = new Set<string>();
+    for (const update of weightUpdates) {
+      if (!parcelIdSet.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Weight update parcel ${update.parcel_id} is not included in parcel_ids`,
+        );
+      }
+      if (seenWeightUpdateIds.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Duplicate weight update for parcel ${update.parcel_id}`,
+        );
+      }
+      seenWeightUpdateIds.add(update.parcel_id);
+    }
+
     const results: Array<{
       parcel_id: string;
       parcel_tx_id?: string | null;
@@ -3244,9 +3281,17 @@ export class ParcelsService {
       carrybee_delivery_fee?: number | null;
       carrybee_cod_fee?: number | null;
       carrybee_error?: string | null;
+      weight_changed?: boolean;
+      product_weight?: number;
+      weight_charge?: number;
+      total_charge?: number;
+      receivable_amount?: number;
     }> = [];
     let successCount = 0;
     let failedCount = 0;
+    const weightUpdateMap = new Map(
+      weightUpdates.map((item) => [item.parcel_id, item.product_weight]),
+    );
 
     for (const parcelId of parcelIds) {
       try {
@@ -3293,6 +3338,27 @@ export class ParcelsService {
           });
           failedCount++;
           continue;
+        }
+
+        const confirmedWeight = weightUpdateMap.get(parcelId);
+        const weightChanged =
+          confirmedWeight !== undefined &&
+          Math.abs(confirmedWeight - Number(parcel.product_weight || 0)) >
+            0.009;
+
+        if (weightChanged) {
+          const recalculatedCharges = await this.calculateCharges(
+            parcel.merchant_id,
+            parcel.delivery_coverage_area_id || null,
+            confirmedWeight,
+            Number(parcel.cod_amount || 0) > 0,
+            Number(parcel.cod_amount || 0),
+          );
+
+          parcel.product_weight = confirmedWeight;
+          this.applyChargeComponentUpdate(parcel, {
+            weightCharge: recalculatedCharges.weight_charge,
+          });
         }
 
         // Mark as received
@@ -3381,6 +3447,11 @@ export class ParcelsService {
           carrybee_delivery_fee: carrybeeDeliveryFee,
           carrybee_cod_fee: carrybeeCodFee,
           carrybee_error: carrybeeError,
+          weight_changed: weightChanged,
+          product_weight: Number(parcel.product_weight || 0),
+          weight_charge: Number(parcel.weight_charge || 0),
+          total_charge: Number(parcel.total_charge || 0),
+          receivable_amount: Number(parcel.receivable_amount || 0),
         });
         successCount++;
 
@@ -3643,12 +3714,22 @@ export class ParcelsService {
         ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
       ];
 
-      const hubManagerPostReceiveEditableStatuses = [ParcelStatus.IN_HUB];
+      const hubManagerPostReceiveEditableStatuses = [
+        ParcelStatus.IN_HUB,
+        ParcelStatus.ASSIGNED_TO_RIDER,
+        ParcelStatus.ASSIGNED_TO_THIRD_PARTY,
+      ];
 
       const hubManagerAllowedUpdateFields = [
+        'customer_name',
         'customer_phone',
+        'customer_secondary_phone',
         'customer_address',
+        'delivery_coverage_area_id',
+        'product_description',
         'product_price',
+        'product_weight',
+        'special_instructions',
       ];
 
       if (actor.role === UserRole.MERCHANT) {
@@ -3679,7 +3760,9 @@ export class ParcelsService {
 
         const isPhysicallyAtHub =
           parcelWithStore.current_hub_id === actor.hubId;
-        const belongsToHubStore = parcelWithStore.store?.hub_id === actor.hubId;
+        const belongsToHubStore =
+          parcelWithStore.current_hub_id === null &&
+          parcelWithStore.store?.hub_id === actor.hubId;
 
         if (!isPhysicallyAtHub && !belongsToHubStore) {
           throw new ForbiddenException(
@@ -3707,7 +3790,7 @@ export class ParcelsService {
 
         if (invalidFields.length > 0) {
           throw new BadRequestException(
-            `Hub manager can update only customer_phone, customer_address, product_price after receiving parcel. Invalid fields: ${invalidFields.join(', ')}`,
+            `Hub manager cannot update these parcel fields: ${invalidFields.join(', ')}`,
           );
         }
 
@@ -3717,7 +3800,7 @@ export class ParcelsService {
           )
         ) {
           throw new BadRequestException(
-            `Hub manager can update phone/address/amount only after parcel is received (IN_HUB). Current status: ${parcelWithStore.status}`,
+            `Hub manager can edit a parcel only while it is IN_HUB, ASSIGNED_TO_RIDER, or ASSIGNED_TO_THIRD_PARTY. Current status: ${parcelWithStore.status}`,
           );
         }
       } else if (actor.role === UserRole.ADMIN) {
@@ -3835,6 +3918,32 @@ export class ParcelsService {
         }
         this.applyChargeComponentUpdate(parcel, {
           codCharge: newCodCharge,
+        });
+      }
+
+      if (updateParcelDto.delivery_coverage_area_id !== undefined) {
+        const recalculatedCharges = await this.calculateCharges(
+          parcel.merchant_id,
+          parcel.delivery_coverage_area_id || null,
+          Number(parcel.product_weight) || 0,
+          Number(parcel.cod_amount) > 0,
+          Number(parcel.cod_amount) || 0,
+        );
+        parcel.delivery_charge = recalculatedCharges.delivery_charge;
+        parcel.weight_charge = recalculatedCharges.weight_charge;
+        parcel.cod_charge = recalculatedCharges.cod_charge;
+        parcel.total_charge = recalculatedCharges.total_charge;
+        parcel.receivable_amount = recalculatedCharges.receivable_amount;
+      } else if (updateParcelDto.product_weight !== undefined) {
+        const recalculatedCharges = await this.calculateCharges(
+          parcel.merchant_id,
+          parcel.delivery_coverage_area_id || null,
+          Number(parcel.product_weight) || 0,
+          Number(parcel.cod_amount) > 0,
+          Number(parcel.cod_amount) || 0,
+        );
+        this.applyChargeComponentUpdate(parcel, {
+          weightCharge: recalculatedCharges.weight_charge,
         });
       }
 

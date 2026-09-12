@@ -155,8 +155,11 @@ export class DeliveryVerificationsService {
    *    - Status is DELIVERY_RESCHEDULED, PAID_RETURN, or RETURNED → reason always required
    * 4. System determines if OTP can be skipped:
    *    - If DELIVERED and collected amount matches expected amount → no OTP required
+   *    - DELIVERY_RESCHEDULED does not change money and does not require OTP
+   *    - Returns, partial delivery, exchange, paid return, and every amount
+   *      difference require OTP or explicit hub approval
    * 5. If OTP required, determine recipient:
-   *    - If DELIVERED and expected amount = 0 (already paid) → OTP to Customer
+   *    - If delivery charge is zero, or DELIVERED is already paid → OTP to Customer
    *    - All other cases → OTP to Merchant
    */
   async initiateDelivery(
@@ -194,8 +197,7 @@ export class DeliveryVerificationsService {
     const amountDifference = collectedAmount - expectedAmount;
     const skipOtpVerification =
       (selectedStatus === ParcelStatus.DELIVERED && !hasDifference) ||
-      selectedStatus === ParcelStatus.DELIVERY_RESCHEDULED ||
-      selectedStatus === ParcelStatus.RETURNED;
+      selectedStatus === ParcelStatus.DELIVERY_RESCHEDULED;
 
     // 3. Validate: Check if collected amount exceeds expected (potential over-collection)
     if (collectedAmount > expectedAmount) {
@@ -222,12 +224,15 @@ export class DeliveryVerificationsService {
     }
 
     // 5. Determine OTP recipient
-    // Special case: If DELIVERED and expected = 0 (already paid), OTP goes to customer
+    // Zero-charge deliveries use the customer as the trusted recipient. Preserve
+    // the previous already-paid delivery rule as well.
+    const hasZeroDeliveryCharge = Number(parcel.delivery_charge || 0) === 0;
     const isAlreadyPaid =
       selectedStatus === ParcelStatus.DELIVERED && expectedAmount === 0;
-    const otpRecipientType = isAlreadyPaid
-      ? OtpRecipientType.CUSTOMER
-      : OtpRecipientType.MERCHANT;
+    const otpRecipientType =
+      hasZeroDeliveryCharge || isAlreadyPaid
+        ? OtpRecipientType.CUSTOMER
+        : OtpRecipientType.MERCHANT;
 
     // Get phone number for OTP recipient
     let otpPhone: string | null = null;
@@ -236,12 +241,6 @@ export class DeliveryVerificationsService {
     } else {
       // Use merchant owner's phone, not store's phone
       otpPhone = parcel.store?.merchant?.user?.phone || null;
-    }
-
-    if (!otpPhone) {
-      throw new BadRequestException(
-        `Cannot send OTP: ${otpRecipientType} phone number not found`,
-      );
     }
 
     // 6. Check if a verification already exists for this parcel
@@ -329,8 +328,33 @@ export class DeliveryVerificationsService {
             difference: amountDifference,
             reason: reason || null,
             otp_required: false,
+            action_completed: true,
             message:
               'Delivery completed successfully. OTP verification was not required.',
+          };
+        }
+
+        if (!otpPhone) {
+          existingVerification.otp_code = null;
+          existingVerification.otp_sent_at = null;
+          existingVerification.otp_expires_at = null;
+          existingVerification.verification_status =
+            DeliveryVerificationStatus.PENDING;
+          await this.deliveryVerificationRepo.save(existingVerification);
+
+          return {
+            success: true,
+            verification_id: existingVerification.id,
+            selected_status: selectedStatus,
+            expected_amount: expectedAmount,
+            collected_amount: collectedAmount,
+            has_difference: hasDifference,
+            difference: amountDifference,
+            reason: reason || null,
+            otp_required: true,
+            otp_available: false,
+            hub_approval_available: true,
+            message: `${otpRecipientType} phone number was not found. Request hub approval to complete this action.`,
           };
         }
 
@@ -374,6 +398,9 @@ export class DeliveryVerificationsService {
           has_difference: hasDifference,
           difference: amountDifference,
           reason: reason || null,
+          otp_required: true,
+          otp_available: true,
+          hub_approval_available: true,
           otp_sent_to: otpRecipientType,
           otp_phone: this.maskPhone(otpPhone),
           otp_expires_at: existingVerification.otp_expires_at,
@@ -430,8 +457,26 @@ export class DeliveryVerificationsService {
         difference: amountDifference,
         reason: reason || null,
         otp_required: false,
+        action_completed: true,
         message:
           'Delivery completed successfully. OTP verification was not required.',
+      };
+    }
+
+    if (!otpPhone) {
+      return {
+        success: true,
+        verification_id: verification.id,
+        selected_status: selectedStatus,
+        expected_amount: expectedAmount,
+        collected_amount: collectedAmount,
+        has_difference: hasDifference,
+        difference: amountDifference,
+        reason: reason || null,
+        otp_required: true,
+        otp_available: false,
+        hub_approval_available: true,
+        message: `${otpRecipientType} phone number was not found. Request hub approval to complete this action.`,
       };
     }
 
@@ -475,6 +520,9 @@ export class DeliveryVerificationsService {
       has_difference: hasDifference,
       difference: amountDifference,
       reason: reason || null,
+      otp_required: true,
+      otp_available: true,
+      hub_approval_available: true,
       otp_sent_to: otpRecipientType,
       otp_phone: this.maskPhone(otpPhone),
       otp_expires_at: verification.otp_expires_at,
@@ -525,6 +573,14 @@ export class DeliveryVerificationsService {
       );
     }
 
+    const otpPhone =
+      verification.otp_sent_to_phone || verification.merchant_phone_used;
+    if (!otpPhone) {
+      throw new BadRequestException(
+        'OTP recipient phone number not found. Please request hub approval.',
+      );
+    }
+
     // Generate 4-digit OTP
     const otp = this.generateOtp();
     const hashedOtp = await bcrypt.hash(otp, 10);
@@ -540,20 +596,16 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     // Send SMS to the appropriate recipient
-    const otpPhone =
-      verification.otp_sent_to_phone || verification.merchant_phone_used;
-    if (otpPhone) {
-      await this.sendOtpSms(
-        otpPhone,
-        otp,
-        verification.parcel.tracking_number,
-        verification.selected_status,
-        verification.expected_cod_amount,
-        verification.collected_amount,
-        differenceReason,
-        verification.otp_recipient_type,
-      );
-    }
+    await this.sendOtpSms(
+      otpPhone,
+      otp,
+      verification.parcel.tracking_number,
+      verification.selected_status,
+      verification.expected_cod_amount,
+      verification.collected_amount,
+      differenceReason,
+      verification.otp_recipient_type,
+    );
 
     const recipientLabel =
       verification.otp_recipient_type === OtpRecipientType.CUSTOMER
@@ -566,10 +618,11 @@ export class DeliveryVerificationsService {
     return {
       success: true,
       otp_sent: true,
+      otp_sent_to: verification.otp_recipient_type,
+      otp_phone: otpPhone ? this.maskPhone(otpPhone) : null,
       merchant_phone: verification.merchant_phone_used,
       otp_expires_at: verification.otp_expires_at,
-      message:
-        'OTP sent to merchant. Please ask merchant for the 4-digit code.',
+      message: `OTP sent to ${recipientLabel}. Please ask ${recipientLabel} for the 4-digit code.`,
     };
   }
 
@@ -691,6 +744,14 @@ export class DeliveryVerificationsService {
       );
     }
 
+    const otpPhone =
+      verification.otp_sent_to_phone || verification.merchant_phone_used;
+    if (!otpPhone) {
+      throw new BadRequestException(
+        'OTP recipient phone number not found. Please request hub approval.',
+      );
+    }
+
     // Check if can resend (1 minute cooldown)
     if (verification.otp_sent_at) {
       const timeSinceLastSend = Date.now() - verification.otp_sent_at.getTime();
@@ -718,20 +779,16 @@ export class DeliveryVerificationsService {
     await this.deliveryVerificationRepo.save(verification);
 
     // Resend SMS to the appropriate recipient
-    const otpPhone =
-      verification.otp_sent_to_phone || verification.merchant_phone_used;
-    if (otpPhone) {
-      await this.sendOtpSms(
-        otpPhone,
-        otp,
-        verification.parcel.tracking_number,
-        verification.selected_status,
-        verification.expected_cod_amount,
-        verification.collected_amount,
-        verification.difference_reason || undefined,
-        verification.otp_recipient_type,
-      );
-    }
+    await this.sendOtpSms(
+      otpPhone,
+      otp,
+      verification.parcel.tracking_number,
+      verification.selected_status,
+      verification.expected_cod_amount,
+      verification.collected_amount,
+      verification.difference_reason || undefined,
+      verification.otp_recipient_type,
+    );
 
     const recipientLabel =
       verification.otp_recipient_type === OtpRecipientType.CUSTOMER
@@ -779,11 +836,16 @@ export class DeliveryVerificationsService {
       throw new BadRequestException('Delivery already verified');
     }
 
+    const approvalRequestableStatuses = [
+      DeliveryVerificationStatus.PENDING,
+      DeliveryVerificationStatus.OTP_SENT,
+      DeliveryVerificationStatus.OTP_FAILED,
+    ];
     if (
-      verification.verification_status !== DeliveryVerificationStatus.OTP_SENT
+      !approvalRequestableStatuses.includes(verification.verification_status)
     ) {
       throw new BadRequestException(
-        'OTP must be sent first. Please request or resend OTP before asking for hub approval.',
+        'This action cannot be submitted for hub approval in its current state.',
       );
     }
 
@@ -812,6 +874,7 @@ export class DeliveryVerificationsService {
       verification_id: verification.id,
       otp_bypass_status: verification.otp_bypass_request_status,
       requested_at: verification.otp_bypass_requested_at,
+      poll_url: `/delivery-verifications/${verification.id}`,
       message:
         'Request sent to hub manager. You can complete delivery without OTP after approval.',
     };
@@ -948,6 +1011,8 @@ export class DeliveryVerificationsService {
       success: true,
       approved: true,
       verification_id: verification.id,
+      approval_status: verification.otp_bypass_request_status,
+      action_completed: true,
       message:
         'Hub manager approved the request. Delivery completed without OTP.',
     };
@@ -1016,6 +1081,8 @@ export class DeliveryVerificationsService {
       success: true,
       approved: false,
       verification_id: verification.id,
+      approval_status: verification.otp_bypass_request_status,
+      action_completed: false,
       message: 'Hub manager rejected the OTP bypass request.',
     };
   }
@@ -1065,6 +1132,21 @@ export class DeliveryVerificationsService {
     }
 
     // Return different data based on role
+    const actionCompleted =
+      verification.verification_status === DeliveryVerificationStatus.COMPLETED;
+    const approvalPending =
+      verification.otp_bypass_request_status === OTP_BYPASS_STATUS.PENDING;
+    const approvalDecisionAvailable =
+      verification.otp_bypass_request_status === OTP_BYPASS_STATUS.APPROVED ||
+      verification.otp_bypass_request_status === OTP_BYPASS_STATUS.REJECTED;
+    const nextAction = actionCompleted
+      ? 'COMPLETED'
+      : approvalPending
+        ? 'WAIT_FOR_HUB'
+        : verification.otp_bypass_request_status === OTP_BYPASS_STATUS.REJECTED
+          ? 'VERIFY_OTP_OR_REQUEST_AGAIN'
+          : 'VERIFY_OTP_OR_REQUEST_HUB_APPROVAL';
+
     const baseData = {
       id: verification.id,
       parcel_tx_id: verification.parcel.parcel_tx_id,
@@ -1077,6 +1159,11 @@ export class DeliveryVerificationsService {
       otp_bypass_requested_at: verification.otp_bypass_requested_at,
       otp_bypass_reviewed_at: verification.otp_bypass_reviewed_at,
       otp_bypass_rejection_reason: verification.otp_bypass_rejection_reason,
+      action_completed: actionCompleted,
+      approval_pending: approvalPending,
+      approval_decision_available: approvalDecisionAvailable,
+      polling_recommended: approvalPending,
+      next_action: nextAction,
     };
 
     // For Rider: Show relevant data based on verification state

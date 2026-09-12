@@ -65,11 +65,11 @@ export class Staff {
   })
   bike_type: BikeType;
 
-  @Column({ type: 'varchar', length: 50, unique: true })
-  nid_number: string;
+  @Column({ type: 'varchar', length: 50, unique: true, nullable: true })
+  nid_number: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
-  license_no: string;
+  license_no: string | null;
 
   @Column({ type: 'text' })
   present_address: string;

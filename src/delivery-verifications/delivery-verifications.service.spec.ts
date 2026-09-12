@@ -16,6 +16,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 const mockDeliveryVerificationRepo = {
   findOne: jest.fn(),
   save: jest.fn(),
+  create: jest.fn(),
   createQueryBuilder: jest.fn(),
 };
 
@@ -88,18 +89,187 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
     otp_bypass_rejection_reason: null,
     parcel: {
       id: 'parcel-1',
+      parcel_tx_id: 'MF120926TEST',
       tracking_number: 'TRK-1001',
       assigned_rider_id: 'rider-1',
       current_hub_id: 'hub-1',
       assignedRider: { hub_id: 'hub-1' },
     },
     rider: {
+      user_id: 'rider-user-1',
       hub_id: 'hub-1',
       user: {
         full_name: 'Rider One',
         phone: '01712223344',
       },
     },
+  });
+
+  const buildAssignedParcel = (overrides: Record<string, unknown> = {}) => ({
+    id: 'parcel-1',
+    parcel_tx_id: 'MF120926TEST',
+    tracking_number: 'TRK-1001',
+    assigned_rider_id: 'rider-1',
+    current_hub_id: 'hub-1',
+    status: ParcelStatus.ASSIGNED_TO_RIDER,
+    cod_amount: 1500,
+    delivery_charge: 100,
+    customer_phone: '01810000000',
+    store: {
+      merchant: {
+        user: { phone: '01710000000' },
+      },
+    },
+    customer: {},
+    ...overrides,
+  });
+
+  const arrangeNewVerification = (parcel: Record<string, unknown>) => {
+    mockParcelRepo.findOne.mockResolvedValue(parcel);
+    mockParcelRepo.save.mockImplementation(async (value) => value);
+    mockDeliveryVerificationRepo.findOne.mockResolvedValue(null);
+    mockDeliveryVerificationRepo.create.mockImplementation((value) => ({
+      id: 'verification-new',
+      otp_bypass_request_status: 'NONE',
+      ...value,
+    }));
+    mockDeliveryVerificationRepo.save.mockImplementation(
+      async (value) => value,
+    );
+  };
+
+  it('requires OTP for a return instead of applying it immediately', async () => {
+    const parcel = buildAssignedParcel();
+    arrangeNewVerification(parcel);
+
+    const completeSpy = jest
+      .spyOn(service as any, 'completeDelivery')
+      .mockResolvedValue(undefined);
+
+    const result = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.RETURNED,
+      0,
+      'Customer requested a full return',
+    );
+
+    expect(result.otp_required).toBe(true);
+    expect(result.hub_approval_available).toBe(true);
+    expect(result.otp_sent_to).toBe(OtpRecipientType.MERCHANT);
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it('sends protected-action OTP to customer when delivery charge is zero', async () => {
+    const parcel = buildAssignedParcel({ delivery_charge: 0 });
+    arrangeNewVerification(parcel);
+
+    const result = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.RETURNED,
+      0,
+      'Customer requested a full return',
+    );
+
+    expect(result.otp_required).toBe(true);
+    expect(result.otp_sent_to).toBe(OtpRecipientType.CUSTOMER);
+    expect(mockSmsService.sendSms).toHaveBeenCalledWith(
+      '01810000000',
+      expect.any(String),
+    );
+  });
+
+  it('allows hub approval when the protected action has no OTP phone', async () => {
+    const parcel = buildAssignedParcel({
+      store: { merchant: { user: { phone: null } } },
+    });
+    arrangeNewVerification(parcel);
+
+    const initiation = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.RETURNED,
+      0,
+      'Customer requested a full return',
+    );
+
+    expect(initiation).toMatchObject({
+      otp_required: true,
+      otp_available: false,
+      hub_approval_available: true,
+    });
+    expect(mockSmsService.sendSms).not.toHaveBeenCalled();
+
+    const verification = mockDeliveryVerificationRepo.create.mock.results[0]
+      .value as DeliveryVerification;
+    verification.parcel = parcel as Parcel;
+    verification.rider = buildVerification().rider as any;
+    mockDeliveryVerificationRepo.findOne.mockResolvedValue(verification);
+
+    const approvalRequest = await service.requestHubApproval(
+      verification.id,
+      'rider-1',
+      'OTP phone is unavailable for this action',
+    );
+
+    expect(approvalRequest.otp_bypass_status).toBe('PENDING');
+  });
+
+  it('keeps rescheduling direct even when no OTP phone exists', async () => {
+    const parcel = buildAssignedParcel({
+      store: { merchant: { user: { phone: null } } },
+      customer_phone: null,
+    });
+    arrangeNewVerification(parcel);
+    const completeSpy = jest
+      .spyOn(service as any, 'completeDelivery')
+      .mockResolvedValue(undefined);
+
+    const result = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.DELIVERY_RESCHEDULED,
+      0,
+      'Customer requested delivery on another day',
+    );
+
+    expect(result.otp_required).toBe(false);
+    expect(result.action_completed).toBe(true);
+    expect(completeSpy).toHaveBeenCalled();
+  });
+
+  it('requires OTP for a changed amount but not an exact delivery', async () => {
+    const parcel = buildAssignedParcel();
+    arrangeNewVerification(parcel);
+
+    const protectedResult = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.DELIVERED,
+      1200,
+      'Customer received an approved discount',
+    );
+
+    expect(protectedResult.otp_required).toBe(true);
+    expect(protectedResult.otp_sent_to).toBe(OtpRecipientType.MERCHANT);
+
+    jest.restoreAllMocks();
+    arrangeNewVerification(parcel);
+    const completeSpy = jest
+      .spyOn(service as any, 'completeDelivery')
+      .mockResolvedValue(undefined);
+
+    const exactResult = await service.initiateDelivery(
+      'parcel-1',
+      'rider-1',
+      ParcelStatus.DELIVERED,
+      1500,
+    );
+
+    expect(exactResult.otp_required).toBe(false);
+    expect(exactResult.action_completed).toBe(true);
+    expect(completeSpy).toHaveBeenCalledWith('verification-new');
   });
 
   it('should request hub approval successfully', async () => {
@@ -119,6 +289,29 @@ describe('DeliveryVerificationsService - Hub Approval Flow', () => {
     expect(verification.otp_bypass_request_reason).toContain(
       'OTP not received',
     );
+  });
+
+  it('exposes a rider polling decision while hub approval is pending', async () => {
+    const verification = {
+      ...buildVerification(),
+      otp_bypass_request_status: 'PENDING',
+      otp_bypass_requested_at: new Date('2026-09-12T10:00:00.000Z'),
+    };
+    mockDeliveryVerificationRepo.findOne.mockResolvedValue(verification);
+
+    const result = await service.getVerification(
+      'verification-1',
+      'rider-user-1',
+      UserRole.RIDER,
+    );
+
+    expect(result.data).toMatchObject({
+      action_completed: false,
+      approval_pending: true,
+      approval_decision_available: false,
+      polling_recommended: true,
+      next_action: 'WAIT_FOR_HUB',
+    });
   });
 
   it('should approve hub request and complete delivery', async () => {

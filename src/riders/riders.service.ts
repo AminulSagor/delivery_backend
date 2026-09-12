@@ -153,13 +153,15 @@ export class RidersService {
       }
     }
 
-    // Check if NID already exists
-    const existingNID = await this.riderRepository.findOne({
-      where: { nid_number: createRiderDto.nid_number },
-    });
+    // NID is optional, but remains unique whenever it is supplied.
+    if (createRiderDto.nid_number) {
+      const existingNID = await this.riderRepository.findOne({
+        where: { nid_number: createRiderDto.nid_number },
+      });
 
-    if (existingNID) {
-      throw new ConflictException('NID number already registered');
+      if (existingNID) {
+        throw new ConflictException('NID number already registered');
+      }
     }
 
     // Use transaction to ensure atomicity - rollback user if rider creation fails
@@ -304,13 +306,15 @@ export class RidersService {
       }
     }
 
-    // Check if NID already exists
-    const existingNID = await this.riderRepository.findOne({
-      where: { nid_number: createRiderDto.nid_number },
-    });
+    // NID is optional, but remains unique whenever it is supplied.
+    if (createRiderDto.nid_number) {
+      const existingNID = await this.riderRepository.findOne({
+        where: { nid_number: createRiderDto.nid_number },
+      });
 
-    if (existingNID) {
-      throw new ConflictException('NID number already registered');
+      if (existingNID) {
+        throw new ConflictException('NID number already registered');
+      }
     }
 
     // Use transaction to ensure atomicity
@@ -1258,11 +1262,13 @@ export class RidersService {
       }
     }
 
-    // Update user fields if provided
+    // Update user fields if provided. A password sent to the management update
+    // endpoint is applied to the login user and is never copied onto Rider.
     if (
       updateRiderDto.full_name ||
       updateRiderDto.phone ||
-      updateRiderDto.email
+      updateRiderDto.email ||
+      updateRiderDto.password
     ) {
       const user = await this.userRepository.findOne({
         where: { id: rider.user_id },
@@ -1300,13 +1306,83 @@ export class RidersService {
         user.email = updateRiderDto.email;
       }
 
+      if (updateRiderDto.password) {
+        user.password_hash = await bcrypt.hash(updateRiderDto.password, 10);
+      }
+
       await this.userRepository.save(user);
     }
 
-    // Update rider fields
-    Object.assign(rider, updateRiderDto);
+    const riderUpdates: Partial<Rider> = {
+      hub_id: updateRiderDto.hub_id,
+      photo: updateRiderDto.photo,
+      guardian_mobile_no: updateRiderDto.guardian_mobile_no,
+      bike_type: updateRiderDto.bike_type,
+      nid_number: updateRiderDto.nid_number,
+      license_no: updateRiderDto.license_no,
+      present_address: updateRiderDto.present_address,
+      permanent_address: updateRiderDto.permanent_address,
+      fixed_salary: updateRiderDto.fixed_salary,
+      commission_per_delivery: updateRiderDto.commission_per_delivery,
+      bank_name: updateRiderDto.bank_name,
+      bank_account_number: updateRiderDto.bank_account_number,
+      bank_branch: updateRiderDto.bank_branch,
+      nid_front_photo: updateRiderDto.nid_front_photo,
+      nid_back_photo: updateRiderDto.nid_back_photo,
+      license_front_photo: updateRiderDto.license_front_photo,
+      license_back_photo: updateRiderDto.license_back_photo,
+      parent_nid_front_photo: updateRiderDto.parent_nid_front_photo,
+      parent_nid_back_photo: updateRiderDto.parent_nid_back_photo,
+    };
+    this.assignDefined(rider, riderUpdates);
 
-    return await this.riderRepository.save(rider);
+    const savedRider = await this.riderRepository.save(rider);
+
+    // Rider creation also creates a Staff mirror. Keep operational and payroll
+    // data aligned when a hub manager/admin edits the rider.
+    const staff = await this.staffRepository.findOne({
+      where: { user_id: rider.user_id, position: StaffPosition.RIDER },
+    });
+    if (staff) {
+      const staffUpdates: Partial<Staff> = {
+        hub_id: updateRiderDto.hub_id,
+        photo: updateRiderDto.photo,
+        guardian_mobile_no: updateRiderDto.guardian_mobile_no,
+        bike_type: updateRiderDto.bike_type,
+        nid_number: updateRiderDto.nid_number,
+        license_no: updateRiderDto.license_no,
+        present_address: updateRiderDto.present_address,
+        permanent_address: updateRiderDto.permanent_address,
+        fixed_salary: updateRiderDto.fixed_salary,
+        bank_name: updateRiderDto.bank_name,
+        bank_account_number: updateRiderDto.bank_account_number,
+        bank_branch: updateRiderDto.bank_branch,
+        nid_front_photo: updateRiderDto.nid_front_photo,
+        nid_back_photo: updateRiderDto.nid_back_photo,
+        license_front_photo: updateRiderDto.license_front_photo,
+        license_back_photo: updateRiderDto.license_back_photo,
+        parent_nid_front_photo: updateRiderDto.parent_nid_front_photo,
+        parent_nid_back_photo: updateRiderDto.parent_nid_back_photo,
+      };
+      this.assignDefined(staff, staffUpdates);
+      await this.staffRepository.save(staff);
+    }
+
+    return (await this.riderRepository.findOne({
+      where: { id: savedRider.id },
+      relations: ['user', 'hub'],
+    }))!;
+  }
+
+  private assignDefined<T extends object>(
+    target: T,
+    updates: Partial<T>,
+  ): void {
+    for (const [key, value] of Object.entries(updates)) {
+      if (value !== undefined) {
+        Reflect.set(target, key, value);
+      }
+    }
   }
 
   /**
@@ -1314,19 +1390,18 @@ export class RidersService {
    */
   async deactivate(id: string): Promise<Rider> {
     const rider = await this.findOne(id);
-    rider.is_active = false;
 
-    // Also deactivate user
-    const user = await this.userRepository.findOne({
-      where: { id: rider.user_id },
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Rider, rider.id, { is_active: false });
+      await manager.update(User, rider.user_id, { is_active: false });
+      await manager.update(
+        Staff,
+        { user_id: rider.user_id, position: StaffPosition.RIDER },
+        { is_active: false },
+      );
     });
 
-    if (user) {
-      user.is_active = false;
-      await this.userRepository.save(user);
-    }
-
-    return await this.riderRepository.save(rider);
+    return await this.findOne(id);
   }
 
   /**
@@ -1334,19 +1409,18 @@ export class RidersService {
    */
   async activate(id: string): Promise<Rider> {
     const rider = await this.findOne(id);
-    rider.is_active = true;
 
-    // Also activate user
-    const user = await this.userRepository.findOne({
-      where: { id: rider.user_id },
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Rider, rider.id, { is_active: true });
+      await manager.update(User, rider.user_id, { is_active: true });
+      await manager.update(
+        Staff,
+        { user_id: rider.user_id, position: StaffPosition.RIDER },
+        { is_active: true },
+      );
     });
 
-    if (user) {
-      user.is_active = true;
-      await this.userRepository.save(user);
-    }
-
-    return await this.riderRepository.save(rider);
+    return await this.findOne(id);
   }
 
   /**

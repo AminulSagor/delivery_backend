@@ -22,6 +22,7 @@ import { ParcelTrackingService } from './services/parcel-tracking.service';
 import { ParcelTrackingSubscriber } from './subscribers/parcel-tracking.subscriber';
 import { CoverageAreasModule } from '../coverage-areas/coverage-areas.module';
 import { ShippingLabelService } from './services/shipping-label.service';
+import { ParcelQueryService } from './services/parcel-query.service';
 
 @Module({
   imports: [
@@ -51,7 +52,8 @@ import { ShippingLabelService } from './services/shipping-label.service';
     ParcelTrackingService,
     ParcelTrackingSubscriber,
     ShippingLabelService,
+    ParcelQueryService,
   ],
-  exports: [ParcelsService, ParcelTrackingService],
+  exports: [ParcelsService, ParcelTrackingService, ParcelQueryService],
 })
 export class ParcelsModule {}

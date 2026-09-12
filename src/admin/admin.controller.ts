@@ -132,7 +132,10 @@ export class AdminController {
   @Post('parcels/receive')
   @HttpCode(HttpStatus.OK)
   async bulkReceiveParcels(@Body() dto: BulkReceiveParcelsDto) {
-    const result = await this.adminService.bulkReceiveParcels(dto.parcel_ids);
+    const result = await this.adminService.bulkReceiveParcels(
+      dto.parcel_ids,
+      dto.weight_updates,
+    );
 
     return {
       success: true,

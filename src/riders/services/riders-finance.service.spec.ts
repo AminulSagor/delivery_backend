@@ -2,13 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RiderFinanceService } from './riders-finance.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Rider } from '../entities/rider.entity';
-import { Parcel, ParcelStatus } from '../../parcels/entities/parcel.entity';
+import { Parcel } from '../../parcels/entities/parcel.entity';
 import { PickupRequest } from '../../pickup-requests/entities/pickup-request.entity';
-import { Repository } from 'typeorm';
 import { endOfDay, startOfDay } from 'date-fns';
 
 const mockRider = {
   id: 'rider-1',
+  fixed_salary: 1000,
   commission_per_delivery: 20,
   created_at: new Date('2025-01-15T08:00:00.000Z'),
 };
@@ -103,7 +103,17 @@ describe('RiderFinanceService', () => {
       const result = await service.getFinanceSummary('rider-1');
 
       expect(result.earnings.today).toBe(5 * 20); // 100
-      expect(result.earnings.this_month).toBe(100 * 20); // 2000
+      expect(result.earnings.this_month).toBe(1000 + 100 * 20); // 3000
+      expect(result.earnings.breakdown.today).toEqual({
+        fixed_salary: 0,
+        commission: 100,
+        total: 100,
+      });
+      expect(result.earnings.breakdown.this_month).toEqual({
+        fixed_salary: 1000,
+        commission: 2000,
+        total: 3000,
+      });
       expect(result.tasks_for_today.total).toBe(19);
       expect(result.tasks_for_today.pickups).toBe(5);
       expect(result.tasks_for_today.deliveries).toBe(12);

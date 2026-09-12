@@ -344,7 +344,10 @@ export class AdminService {
   /**
    * Admin: Bulk receive parcels on behalf of the parcel's assigned store hub.
    */
-  async bulkReceiveParcels(parcelIds: string[]): Promise<{
+  async bulkReceiveParcels(
+    parcelIds: string[],
+    weightUpdates: Array<{ parcel_id: string; product_weight: number }> = [],
+  ): Promise<{
     success: number;
     failed: number;
     results: Array<{
@@ -361,6 +364,22 @@ export class AdminService {
       carrybee_error?: string | null;
     }>;
   }> {
+    const parcelIdSet = new Set(parcelIds);
+    const seenWeightUpdateIds = new Set<string>();
+    for (const update of weightUpdates) {
+      if (!parcelIdSet.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Weight update parcel ${update.parcel_id} is not included in parcel_ids`,
+        );
+      }
+      if (seenWeightUpdateIds.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Duplicate weight update for parcel ${update.parcel_id}`,
+        );
+      }
+      seenWeightUpdateIds.add(update.parcel_id);
+    }
+
     const results: Array<{
       parcel_id: string;
       parcel_tx_id?: string | null;
@@ -379,6 +398,9 @@ export class AdminService {
     let failedCount = 0;
 
     const hubToParcelIds = new Map<string, string[]>();
+    const weightUpdateMap = new Map(
+      weightUpdates.map((item) => [item.parcel_id, item]),
+    );
 
     for (const parcelId of parcelIds) {
       const parcel = await this.parcelRepository.findOne({
@@ -417,6 +439,12 @@ export class AdminService {
       const hubResult = await this.parcelsService.bulkMarkAsReceived(
         ids,
         hubId,
+        ids
+          .map((id) => weightUpdateMap.get(id))
+          .filter(
+            (item): item is { parcel_id: string; product_weight: number } =>
+              !!item,
+          ),
       );
 
       for (const item of hubResult.results) {

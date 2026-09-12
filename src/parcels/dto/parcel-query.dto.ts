@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 import {
   IsOptional,
@@ -11,6 +11,7 @@ import {
   IsString,
   IsNumber,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -18,6 +19,12 @@ import { ParcelStatus, PaymentStatus } from '../entities/parcel.entity';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
 
 export type ParcelStatusQuery = ParcelStatus | 'ACTIVE';
+
+export enum ParcelAssignmentFilter {
+  UNASSIGNED = 'UNASSIGNED',
+  RIDER = 'RIDER',
+  THIRD_PARTY = 'THIRD_PARTY',
+}
 
 export class ParcelQueryDto extends PaginationDto {
   @IsOptional()
@@ -88,4 +95,23 @@ export class ParcelQueryDto extends PaginationDto {
   @IsOptional()
   @IsUUID('4', { message: 'Invalid hub ID' })
   hubId?: string;
+
+  @IsOptional()
+  @IsUUID('4', { message: 'Invalid rider ID' })
+  riderId?: string;
+
+  @IsOptional()
+  @IsUUID('4', { message: 'Invalid third-party provider ID' })
+  providerId?: string;
+
+  @IsOptional()
+  @IsEnum(ParcelAssignmentFilter, {
+    message: 'Assignment must be UNASSIGNED, RIDER, or THIRD_PARTY',
+  })
+  assignment?: ParcelAssignmentFilter;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  history?: boolean;
 }

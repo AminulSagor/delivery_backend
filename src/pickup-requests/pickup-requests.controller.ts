@@ -72,7 +72,7 @@ export class PickupRequestsController {
     @CurrentUser('merchantId') merchantId: string,
     @Query() query: PickupQueryDto,
   ) {
-    const { status, page, limit, sortBy, order } = query;
+    const { status, page, limit, sortBy, order, search } = query;
     const result = await this.pickupRequestsService.findAllForMerchant(
       merchantId,
       page,
@@ -80,6 +80,7 @@ export class PickupRequestsController {
       status,
       sortBy,
       order,
+      search,
     );
     return {
       success: true,
@@ -106,7 +107,7 @@ export class PickupRequestsController {
     @Query() query: PickupQueryDto,
   ) {
     const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
-    const { status, page, limit, sortBy, order } = query;
+    const { status, page, limit, sortBy, order, search } = query;
     const result = await this.pickupRequestsService.findAllForHub(
       hubId,
       page,
@@ -114,6 +115,7 @@ export class PickupRequestsController {
       status,
       sortBy,
       order,
+      search,
     );
     return {
       success: true,
@@ -139,11 +141,12 @@ export class PickupRequestsController {
     @Query() query: PickupQueryDto,
   ) {
     const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
-    const { page, limit } = query;
+    const { page, limit, search } = query;
     const result = await this.pickupRequestsService.getConfirmedPickupsForHub(
       hubId,
       page,
       limit,
+      search,
     );
     return {
       success: true,
@@ -168,11 +171,12 @@ export class PickupRequestsController {
     @Query() query: PickupQueryDto,
   ) {
     const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
-    const { page, limit } = query;
+    const { page, limit, search } = query;
     const result = await this.pickupRequestsService.getAcceptedPickupsForHub(
       hubId,
       page,
       limit,
+      search,
     );
     return {
       success: true,

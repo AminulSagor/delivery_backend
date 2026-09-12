@@ -98,7 +98,7 @@ export class DeliveryVerificationsController {
 
   /**
    * Step 3: Verify OTP
-   * Rider enters OTP received from merchant
+   * Rider enters OTP received from the merchant or customer
    * POST /delivery-verifications/:id/verify-otp
    */
   @Post(':id/verify-otp')
@@ -234,7 +234,9 @@ export class DeliveryVerificationsController {
   }
 
   /**
-   * Get verification details
+   * Get verification details. Riders can poll this endpoint while a hub
+   * approval request is pending; polling_recommended becomes false after the
+   * hub approves or rejects the request.
    * GET /delivery-verifications/:id
    */
   @Get(':id')

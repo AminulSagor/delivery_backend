@@ -46,6 +46,7 @@ import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum'
 // import { ResolveEmergencyDto } from './dto/resolve-emergency.dto';
 import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
 import { CreateEmergencyDto } from './dto/create-emergency.dto';
+import { RiderParcelSummaryQueryDto } from './dto/rider-parcel-summary-query.dto';
 
 @Controller('riders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -139,6 +140,31 @@ export class RidersController {
       success: true,
       data,
       message: 'Finance summary retrieved successfully',
+    };
+  }
+
+  /** Lifetime delivered/return card plus its searchable, date-filtered list. */
+  @Get('parcel-summary')
+  @Roles(UserRole.RIDER)
+  async getParcelSummary(
+    @CurrentUser() user: any,
+    @Query() query: RiderParcelSummaryQueryDto,
+  ) {
+    const result = await this.parcelsService.queryRiderParcelSummary(
+      user.riderId,
+      query,
+    );
+
+    return {
+      success: true,
+      data: {
+        type: result.type,
+        total: result.total,
+        cod_amount: result.cod_amount,
+        parcels: result.parcels.map(toParcelListItem),
+        pagination: result.pagination,
+      },
+      message: 'Rider parcel summary retrieved successfully',
     };
   }
 
@@ -728,8 +754,14 @@ export class RidersController {
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
     const rider = await this.ridersService.findOne(id);
+    if (user.role === UserRole.HUB_MANAGER && rider.hub_id !== user.hubId) {
+      throw new ForbiddenException('Rider does not belong to your hub');
+    }
 
     return {
       success: true,
@@ -746,7 +778,23 @@ export class RidersController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRiderDto: UpdateRiderDto,
+    @CurrentUser() user: any,
   ) {
+    const existingRider = await this.ridersService.findOne(id);
+    if (
+      user.role === UserRole.HUB_MANAGER &&
+      existingRider.hub_id !== user.hubId
+    ) {
+      throw new ForbiddenException('Rider does not belong to your hub');
+    }
+    if (
+      user.role === UserRole.HUB_MANAGER &&
+      updateRiderDto.hub_id &&
+      updateRiderDto.hub_id !== user.hubId
+    ) {
+      throw new ForbiddenException('Hub managers cannot transfer riders');
+    }
+
     const rider = await this.ridersService.update(id, updateRiderDto);
 
     return {
@@ -761,7 +809,18 @@ export class RidersController {
    */
   @Patch(':id/deactivate')
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async deactivate(@Param('id', ParseUUIDPipe) id: string) {
+  async deactivate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const existingRider = await this.ridersService.findOne(id);
+    if (
+      user.role === UserRole.HUB_MANAGER &&
+      existingRider.hub_id !== user.hubId
+    ) {
+      throw new ForbiddenException('Rider does not belong to your hub');
+    }
+
     const rider = await this.ridersService.deactivate(id);
 
     return {

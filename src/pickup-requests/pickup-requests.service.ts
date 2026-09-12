@@ -455,24 +455,41 @@ export class PickupRequestsService {
     status?: PickupRequestStatus,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    search?: string,
   ): Promise<PaginatedResponse<any>> {
     try {
-      const where: FindOptionsWhere<PickupRequest> = {
-        merchant_id: merchantId,
-      };
-
+      const queryBuilder = this.pickupRequestRepository
+        .createQueryBuilder('pickup')
+        .leftJoinAndSelect('pickup.store', 'store')
+        .leftJoinAndSelect('pickup.hub', 'hub')
+        .where('pickup.merchant_id = :merchantId', { merchantId });
       if (status) {
-        where.status = status;
+        queryBuilder.andWhere('pickup.status = :status', { status });
       }
 
-      const [pickupRequests, total] =
-        await this.pickupRequestRepository.findAndCount({
-          where,
-          relations: ['store', 'hub'],
-          order: { [sortBy]: order },
-          skip: (page - 1) * limit,
-          take: limit,
-        });
+      if (search?.trim()) {
+        queryBuilder.andWhere(
+          `(LOWER(COALESCE(pickup.request_code, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_name, '')) LIKE :search
+            OR LOWER(COALESCE(store.phone_number, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_address, '')) LIKE :search
+            OR LOWER(COALESCE(hub.branch_name, '')) LIKE :search
+            OR LOWER(COALESCE(pickup.comment, '')) LIKE :search)`,
+          { search: `%${search.trim().toLowerCase()}%` },
+        );
+      }
+
+      const allowedSortFields: Record<string, string> = {
+        created_at: 'pickup.created_at',
+        requested_at: 'pickup.requested_at',
+        updated_at: 'pickup.updated_at',
+        request_code: 'pickup.request_code',
+      };
+      const [pickupRequests, total] = await queryBuilder
+        .orderBy(allowedSortFields[sortBy] || 'pickup.created_at', order)
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
 
       const totalPages = Math.ceil(total / limit);
 
@@ -525,26 +542,51 @@ export class PickupRequestsService {
     status?: PickupRequestStatus,
     sortBy: string = 'created_at',
     order: 'ASC' | 'DESC' = 'DESC',
+    search?: string,
   ): Promise<PaginatedResponse<any>> {
     try {
-      const where: FindOptionsWhere<PickupRequest> = {
-        // Default to PENDING status (pickups ready for assignment)
-        status: status || PickupRequestStatus.PENDING,
-      };
+      const queryBuilder = this.pickupRequestRepository
+        .createQueryBuilder('pickup')
+        .leftJoinAndSelect('pickup.store', 'store')
+        .leftJoinAndSelect('pickup.merchant', 'merchant')
+        .leftJoinAndSelect('merchant.user', 'merchantUser')
+        .leftJoinAndSelect('pickup.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'riderUser')
+        .where('pickup.status = :status', {
+          status: status || PickupRequestStatus.PENDING,
+        });
 
-      // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
       if (hubId) {
-        where.hub_id = hubId;
+        queryBuilder.andWhere('pickup.hub_id = :hubId', { hubId });
       }
 
-      const [pickupRequests, total] =
-        await this.pickupRequestRepository.findAndCount({
-          where,
-          relations: ['store'],
-          order: { [sortBy]: order },
-          skip: (page - 1) * limit,
-          take: limit,
-        });
+      if (search?.trim()) {
+        queryBuilder.andWhere(
+          `(LOWER(COALESCE(pickup.request_code, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_name, '')) LIKE :search
+            OR LOWER(COALESCE(store.phone_number, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_address, '')) LIKE :search
+            OR LOWER(COALESCE(merchantUser.full_name, '')) LIKE :search
+            OR LOWER(COALESCE(merchantUser.phone, '')) LIKE :search
+            OR LOWER(COALESCE(riderUser.full_name, '')) LIKE :search
+            OR LOWER(COALESCE(riderUser.phone, '')) LIKE :search
+            OR LOWER(COALESCE(pickup.comment, '')) LIKE :search)`,
+          { search: `%${search.trim().toLowerCase()}%` },
+        );
+      }
+
+      const allowedSortFields: Record<string, string> = {
+        created_at: 'pickup.created_at',
+        requested_at: 'pickup.requested_at',
+        updated_at: 'pickup.updated_at',
+        request_code: 'pickup.request_code',
+      };
+      queryBuilder
+        .orderBy(allowedSortFields[sortBy] || 'pickup.created_at', order)
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      const [pickupRequests, total] = await queryBuilder.getManyAndCount();
 
       const totalPages = Math.ceil(total / limit);
 
@@ -594,22 +636,37 @@ export class PickupRequestsService {
     hubId: string | null,
     page: number = 1,
     limit: number = 20,
+    search?: string,
   ): Promise<PaginatedResponse<any>> {
     try {
-      const where: FindOptionsWhere<PickupRequest> = {
-        status: PickupRequestStatus.PICKED_UP,
-      };
-
+      const queryBuilder = this.pickupRequestRepository
+        .createQueryBuilder('pickup')
+        .leftJoinAndSelect('pickup.store', 'store')
+        .leftJoinAndSelect('pickup.completedByRider', 'completedByRider')
+        .leftJoinAndSelect('completedByRider.user', 'completedRiderUser')
+        .where('pickup.status = :status', {
+          status: PickupRequestStatus.PICKED_UP,
+        });
       if (hubId) {
-        where.hub_id = hubId;
+        queryBuilder.andWhere('pickup.hub_id = :hubId', { hubId });
       }
 
-      // Get all completed pickups (we'll group them)
-      const pickupRequests = await this.pickupRequestRepository.find({
-        where,
-        relations: ['store', 'completedByRider', 'completedByRider.user'],
-        order: { picked_up_at: 'DESC' },
-      });
+      if (search?.trim()) {
+        queryBuilder.andWhere(
+          `(LOWER(COALESCE(pickup.request_code, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_name, '')) LIKE :search
+            OR LOWER(COALESCE(store.phone_number, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_address, '')) LIKE :search
+            OR LOWER(COALESCE(completedRiderUser.full_name, '')) LIKE :search
+            OR LOWER(COALESCE(completedRiderUser.phone, '')) LIKE :search
+            OR LOWER(COALESCE(pickup.comment, '')) LIKE :search)`,
+          { search: `%${search.trim().toLowerCase()}%` },
+        );
+      }
+
+      const pickupRequests = await queryBuilder
+        .orderBy('pickup.picked_up_at', 'DESC')
+        .getMany();
 
       // Group by store+date
       const grouped = new Map<string, any>();
@@ -717,26 +774,46 @@ export class PickupRequestsService {
     hubId: string | null,
     page: number = 1,
     limit: number = 20,
+    search?: string,
   ): Promise<PaginatedResponse<any>> {
     try {
       const skip = (page - 1) * limit;
 
-      const where: FindOptionsWhere<PickupRequest> = {
-        status: PickupRequestStatus.CONFIRMED,
-      };
+      const queryBuilder = this.pickupRequestRepository
+        .createQueryBuilder('pickup')
+        .leftJoinAndSelect('pickup.store', 'store')
+        .leftJoinAndSelect('pickup.merchant', 'merchant')
+        .leftJoinAndSelect('merchant.user', 'merchantUser')
+        .leftJoinAndSelect('pickup.assignedRider', 'assignedRider')
+        .leftJoinAndSelect('assignedRider.user', 'riderUser')
+        .where('pickup.status = :status', {
+          status: PickupRequestStatus.CONFIRMED,
+        });
 
-      // Hub filter: if hubId provided, scope to hub; otherwise system-wide (admin)
       if (hubId) {
-        where.hub_id = hubId;
+        queryBuilder.andWhere('pickup.hub_id = :hubId', { hubId });
       }
 
-      const [items, total] = await this.pickupRequestRepository.findAndCount({
-        where,
-        relations: ['store', 'merchant', 'assignedRider', 'assignedRider.user'],
-        order: { rider_assigned_at: 'DESC' },
-        skip,
-        take: limit,
-      });
+      if (search?.trim()) {
+        queryBuilder.andWhere(
+          `(LOWER(COALESCE(pickup.request_code, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_name, '')) LIKE :search
+            OR LOWER(COALESCE(store.phone_number, '')) LIKE :search
+            OR LOWER(COALESCE(store.business_address, '')) LIKE :search
+            OR LOWER(COALESCE(merchantUser.full_name, '')) LIKE :search
+            OR LOWER(COALESCE(merchantUser.phone, '')) LIKE :search
+            OR LOWER(COALESCE(riderUser.full_name, '')) LIKE :search
+            OR LOWER(COALESCE(riderUser.phone, '')) LIKE :search
+            OR LOWER(COALESCE(pickup.comment, '')) LIKE :search)`,
+          { search: `%${search.trim().toLowerCase()}%` },
+        );
+      }
+
+      const [items, total] = await queryBuilder
+        .orderBy('pickup.rider_assigned_at', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
 
       return {
         items,

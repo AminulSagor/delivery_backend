@@ -215,6 +215,23 @@ export class HubsController {
     @Query() query: DeliveryOutcomeQueryDto,
   ) {
     const hubId = user.role === UserRole.ADMIN ? null : user.hubId;
+    if (hubId) {
+      const unifiedResult = await this.parcelsService.queryHubParcels(hubId, {
+        ...query,
+        area: query.zone,
+        history: true,
+      });
+      return {
+        success: true,
+        data: {
+          parcels: unifiedResult.items.map(toParcelListItem),
+          pagination: unifiedResult.pagination,
+          summary: unifiedResult.summary,
+        },
+        message: 'Parcel history retrieved successfully',
+      };
+    }
+
     const result = await this.parcelsService.getParcelHistory(
       hubId,
       query.page,
@@ -648,51 +665,13 @@ export class HubsController {
     @CurrentUser() user: any,
     @Query() query: HubParcelQueryDto,
   ) {
-    const {
-      status,
-      page,
-      limit,
-      sortBy,
-      order,
-      search,
-      paymentStatus,
-      merchantId,
-      storeId,
-      customerName,
-      customerPhone,
-      merchantName,
-      area,
-      minAmount,
-      maxAmount,
-      deliveryType,
-    } = query;
-    const result = await this.parcelsService.findAllForHub(
-      user.hubId,
-      page,
-      limit,
-      status,
-      sortBy,
-      order,
-      undefined,
-      undefined,
-      undefined,
-      paymentStatus,
-      search,
-      merchantId,
-      storeId,
-      customerName,
-      customerPhone,
-      merchantName,
-      area,
-      minAmount,
-      maxAmount,
-      deliveryType,
-    );
+    const result = await this.parcelsService.queryHubParcels(user.hubId, query);
     return {
       success: true,
       data: {
         parcels: result.items.map(toParcelListItem),
         pagination: result.pagination,
+        summary: result.summary,
       },
       message: 'Parcels retrieved successfully',
     };
@@ -1172,9 +1151,27 @@ export class HubsController {
     @Body() dto: BulkReceiveParcelsDto,
     @CurrentUser() user: any,
   ) {
+    const weightUpdates = dto.weight_updates || [];
+    const receivedIds = new Set(dto.parcel_ids);
+    const weightUpdateIds = new Set<string>();
+    for (const update of weightUpdates) {
+      if (!receivedIds.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Weight update parcel ${update.parcel_id} is not included in parcel_ids`,
+        );
+      }
+      if (weightUpdateIds.has(update.parcel_id)) {
+        throw new BadRequestException(
+          `Duplicate weight update for parcel ${update.parcel_id}`,
+        );
+      }
+      weightUpdateIds.add(update.parcel_id);
+    }
+
     const result = await this.parcelsService.bulkMarkAsReceived(
       dto.parcel_ids,
       user.hubId,
+      weightUpdates,
     );
 
     return {
