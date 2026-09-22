@@ -73,6 +73,7 @@ import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { RiderPerformanceQueryDto } from './dto/rider-performance-query.dto';
 import { BulkTransferFromRidersDto } from './dto/bulk-transfer-from-riders.dto';
 import { RiderTransferQueryDto } from './dto/rider-transfer-query.dto';
+import { HubMerchantPerformanceQueryDto } from './dto/hub-merchant-performance-query.dto';
 import { RiderAssignedParcelsQueryDto } from './dto/rider-assigned-parcels-query.dto';
 import { TransferSelectedParcelsDto } from './dto/transfer-selected-parcels.dto';
 import { HubDashboardService } from './services/hub-dashboard.service';
@@ -83,6 +84,7 @@ import {
   HubDashboardRiderQueryDto,
 } from './dto/hub-dashboard-query.dto';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
+import { ToggleHubThirdPartyDto } from './dto/toggle-hub-third-party.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -2064,17 +2066,19 @@ export class HubsController {
   @HttpCode(HttpStatus.OK)
   async getMerchantPerformance(
     @CurrentUser() user: any,
-    @Query('hub_id') queryHubId?: string,
+    @Query() query: HubMerchantPerformanceQueryDto,
   ) {
     const effectiveHubId =
-      user.role === UserRole.ADMIN ? queryHubId : user.hubId;
+      user.role === UserRole.ADMIN ? query.hub_id : user.hubId;
 
     if (!effectiveHubId && user.role !== UserRole.ADMIN) {
       throw new BadRequestException('Hub ID is required');
     }
 
-    const result =
-      await this.hubsService.getHubMerchantPerformance(effectiveHubId);
+    const result = await this.hubsService.getHubMerchantPerformance(
+      effectiveHubId,
+      query,
+    );
 
     return {
       success: true,
@@ -2467,6 +2471,25 @@ export class HubsController {
       id: hub.id,
       hub_code: hub.hub_code,
       message: 'Hub updated successfully',
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/third-party')
+  @HttpCode(HttpStatus.OK)
+  async toggleThirdParty(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ToggleHubThirdPartyDto,
+  ) {
+    const hub = await this.hubsService.setThirdPartyEnabled(id, dto.enabled);
+    return {
+      success: true,
+      data: {
+        id: hub.id,
+        hub_code: hub.hub_code,
+        third_party_enabled: hub.third_party_enabled,
+      },
+      message: `Third-party delivery ${hub.third_party_enabled ? 'enabled' : 'disabled'} for hub successfully`,
     };
   }
 

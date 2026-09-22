@@ -56,6 +56,10 @@ export class Hub {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
+  /** Controls whether third-party delivery features are available to this hub. */
+  @Column({ type: 'boolean', default: false })
+  third_party_enabled: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

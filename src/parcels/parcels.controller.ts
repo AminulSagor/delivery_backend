@@ -54,6 +54,7 @@ import {
   toParcelListItem,
   toParcelDetail,
 } from '../common/interfaces/responses.interface';
+import { PARCEL_STATUS_OPTIONS } from './parcel-status-options';
 
 @Controller('parcels')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -63,6 +64,27 @@ export class ParcelsController {
     private readonly parcelImportParser: ParcelImportParserService,
     private readonly shippingLabelService: ShippingLabelService,
   ) {}
+
+  /**
+   * Canonical parcel statuses for frontend dropdowns and filters.
+   */
+  @Get('statuses')
+  @HttpCode(HttpStatus.OK)
+  @Roles(
+    UserRole.MERCHANT,
+    UserRole.ADMIN,
+    UserRole.HUB_MANAGER,
+    UserRole.RIDER,
+  )
+  getStatuses() {
+    return {
+      success: true,
+      data: {
+        statuses: PARCEL_STATUS_OPTIONS,
+      },
+      message: 'Parcel statuses retrieved successfully',
+    };
+  }
 
   @Post('calculate-pricing')
   @HttpCode(HttpStatus.OK)

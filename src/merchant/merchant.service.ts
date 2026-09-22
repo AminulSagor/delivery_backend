@@ -26,7 +26,11 @@ import { AddPayoutMethodDto } from './dto/add-payout-method.dto';
 import { UpdatePayoutMethodDto } from './dto/update-payout-method.dto';
 import { MerchantProfile } from './entities/merchant-profile.entity';
 import { Store, StoreStatus } from 'src/stores/entities/store.entity';
-import { Parcel, ParcelStatus } from '../parcels/entities/parcel.entity';
+import {
+  HubConfirmationStatus,
+  Parcel,
+  ParcelStatus,
+} from '../parcels/entities/parcel.entity';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import {
   UpdateBinDto,
@@ -565,6 +569,8 @@ export class MerchantService {
       hubId?: string | null;
       range?: 'last7d' | 'month';
       month?: string;
+      startDate?: string;
+      endDate?: string;
     },
   ) {
     const merchant = await this.merchantRepository.findOne({
@@ -576,9 +582,18 @@ export class MerchantService {
       throw new NotFoundException(`Merchant with ID ${merchantId} not found`);
     }
 
-    const range: 'last7d' | 'month' =
-      options.range === 'month' ? 'month' : 'last7d';
-    const { start, end } = this.getDateRange(range, options.month);
+    const range: 'last7d' | 'month' | 'custom' =
+      options.startDate || options.endDate
+        ? 'custom'
+        : options.range === 'month'
+          ? 'month'
+          : 'last7d';
+    const { start, end } = this.getDateRange(
+      range,
+      options.month,
+      options.startDate,
+      options.endDate,
+    );
 
     const storeScope: any = { merchant_id: merchantId };
     if (options.hubId) {
@@ -601,12 +616,14 @@ export class MerchantService {
         order: { created_at: 'ASC' },
       }));
 
+    const receivedAtExpression =
+      'COALESCE(parcel.received_at, parcel.received_at_destination_hub, parcel.picked_up_at, parcel.created_at)';
     const baseQb = this.parcelRepo
       .createQueryBuilder('parcel')
       .leftJoin('parcel.store', 'store')
       .where('parcel.merchant_id = :merchantId', { merchantId })
-      .andWhere('parcel.created_at >= :start', { start })
-      .andWhere('parcel.created_at < :end', { end });
+      .andWhere(`${receivedAtExpression} >= :start`, { start })
+      .andWhere(`${receivedAtExpression} < :end`, { end });
 
     if (options.hubId) {
       baseQb.andWhere('store.hub_id = :hubId', { hubId: options.hubId });
@@ -625,7 +642,23 @@ export class MerchantService {
       ParcelStatus.PAID_RETURN,
     ];
 
+    const financiallyCompletedStatuses = [
+      ...deliveredStatuses,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ];
+    const platformChargeExpression = `CASE
+      WHEN parcel.status IN (:...financiallyCompletedStatuses)
+       AND (parcel.hub_confirmation_status = :confirmed OR parcel.hub_confirmation_status IS NULL)
+      THEN
+        CASE WHEN parcel.delivery_charge_applicable = true THEN COALESCE(parcel.total_charge, 0) ELSE 0 END
+        + CASE WHEN parcel.return_charge_applicable = true THEN COALESCE(parcel.return_charge, 0) ELSE 0 END
+      ELSE 0
+    END`;
+
     const [
+      flowTotalsRaw,
       totalParcels,
       deliveredParcels,
       returnedParcels,
@@ -633,6 +666,19 @@ export class MerchantService {
       graphRows,
       parcelsList,
     ] = await Promise.all([
+      baseQb
+        .clone()
+        .select('COUNT(parcel.id)', 'received_count')
+        .addSelect('COALESCE(SUM(parcel.product_price), 0)', 'received_value')
+        .addSelect(
+          `COALESCE(SUM(${platformChargeExpression}), 0)`,
+          'platform_charge',
+        )
+        .setParameters({
+          financiallyCompletedStatuses,
+          confirmed: HubConfirmationStatus.CONFIRMED,
+        })
+        .getRawOne(),
       baseQb.clone().getCount(),
       baseQb
         .clone()
@@ -652,8 +698,20 @@ export class MerchantService {
         .getCount(),
       baseQb
         .clone()
-        .select("DATE_TRUNC('day', parcel.created_at)", 'bucket')
-        .addSelect('COUNT(*)', 'count')
+        .select(
+          `DATE(${receivedAtExpression} AT TIME ZONE 'Asia/Dhaka')`,
+          'bucket',
+        )
+        .addSelect('COUNT(*)', 'received_count')
+        .addSelect('COALESCE(SUM(parcel.product_price), 0)', 'received_value')
+        .addSelect(
+          `COALESCE(SUM(${platformChargeExpression}), 0)`,
+          'platform_charge',
+        )
+        .setParameters({
+          financiallyCompletedStatuses,
+          confirmed: HubConfirmationStatus.CONFIRMED,
+        })
         .groupBy('bucket')
         .orderBy('bucket', 'ASC')
         .getRawMany(),
@@ -674,8 +732,10 @@ export class MerchantService {
     ]);
 
     const graph = graphRows.map((row: any) => ({
-      bucket: new Date(row.bucket).toISOString().substring(0, 10),
-      count: Number(row.count),
+      bucket: String(row.bucket).substring(0, 10),
+      received_count: Number(row.received_count) || 0,
+      received_value: this.toMoney(row.received_value),
+      platform_charge: this.toMoney(row.platform_charge),
     }));
 
     const parcels = (parcelsList || []).map((p) => toParcelListItem(p));
@@ -697,6 +757,14 @@ export class MerchantService {
         delivered: deliveredParcels,
         returned: returnedParcels,
         reported: reportedParcels,
+      },
+      parcel_flow_totals: {
+        received_count: this.toCount(flowTotalsRaw?.received_count),
+        received_value: this.toMoney(flowTotalsRaw?.received_value),
+        platform_charge: this.toMoney(flowTotalsRaw?.platform_charge),
+        currency: 'BDT',
+        financial_rule:
+          'Platform charge includes only hub-confirmed completed outcomes and legacy completed parcels.',
       },
       parcels,
       graph,
@@ -1939,11 +2007,39 @@ export class MerchantService {
     return profile;
   }
 
-  private getDateRange(range: 'last7d' | 'month', month?: string) {
+  private getDateRange(
+    range: 'last7d' | 'month' | 'custom',
+    month?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    if (range === 'custom') {
+      const todayDhaka = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka',
+      }).format(new Date());
+      const start = new Date(
+        `${startDate ?? endDate ?? todayDhaka}T00:00:00+06:00`,
+      );
+      const end = new Date(
+        `${endDate ?? startDate ?? todayDhaka}T00:00:00+06:00`,
+      );
+      end.setUTCDate(end.getUTCDate() + 1);
+      if (start >= end) {
+        throw new BadRequestException(
+          'start_date must be before or equal to end_date',
+        );
+      }
+      return { start, end };
+    }
+
     if (range === 'month') {
       const monthString =
         month ||
-        `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Dhaka',
+          year: 'numeric',
+          month: '2-digit',
+        }).format(new Date());
       const [yearStr, monthStr] = monthString.split('-');
       const year = Number(yearStr);
       const monthIndex = Number(monthStr) - 1;
@@ -1952,27 +2048,23 @@ export class MerchantService {
         throw new BadRequestException('month must be in YYYY-MM format');
       }
 
-      const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
-      const end = new Date(Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0));
+      const start = new Date(
+        `${year}-${String(monthIndex + 1).padStart(2, '0')}-01T00:00:00+06:00`,
+      );
+      const end = new Date(
+        Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0) - 6 * 60 * 60 * 1000,
+      );
 
       return { start, end };
     }
 
-    const todayUtc = new Date();
-    const end = new Date(
-      Date.UTC(
-        todayUtc.getUTCFullYear(),
-        todayUtc.getUTCMonth(),
-        todayUtc.getUTCDate() + 1,
-      ),
-    );
-    const start = new Date(
-      Date.UTC(
-        todayUtc.getUTCFullYear(),
-        todayUtc.getUTCMonth(),
-        todayUtc.getUTCDate() - 6,
-      ),
-    );
+    const todayDhaka = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+    }).format(new Date());
+    const start = new Date(`${todayDhaka}T00:00:00+06:00`);
+    start.setUTCDate(start.getUTCDate() - 6);
+    const end = new Date(`${todayDhaka}T00:00:00+06:00`);
+    end.setUTCDate(end.getUTCDate() + 1);
 
     return { start, end };
   }

@@ -282,6 +282,7 @@ export interface HubListItem {
   address: string;
   manager_name: string;
   manager_phone: string;
+  third_party_enabled: boolean;
 }
 
 export interface HubDetail extends HubListItem {
@@ -1178,6 +1179,7 @@ export function toHubListItem(hub: any): HubListItem {
     address: hub.address,
     manager_name: hub.manager_name,
     manager_phone: hub.manager_phone,
+    third_party_enabled: Boolean(hub.third_party_enabled),
   };
 }
 

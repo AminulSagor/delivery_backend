@@ -114,6 +114,8 @@ export class MerchantController {
       hubId: user.role === UserRole.HUB_MANAGER ? user.hubId : null,
       range: query.range,
       month: query.month,
+      startDate: query.start_date,
+      endDate: query.end_date,
     });
 
     return {

@@ -55,6 +55,7 @@ import { ThirdPartyProvider } from '../third-party-providers/entities/third-part
 import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { AdminAccount } from 'src/admin/entities/admin-account.entity';
+import { HubMerchantPerformanceQueryDto } from './dto/hub-merchant-performance-query.dto';
 
 @Injectable()
 export class HubsService {
@@ -332,6 +333,17 @@ export class HubsService {
     }
   }
 
+  async setThirdPartyEnabled(id: string, enabled: boolean): Promise<Hub> {
+    const hub = await this.findOne(id);
+    hub.third_party_enabled = enabled;
+
+    const updatedHub = await this.hubRepository.save(hub);
+    this.logger.log(
+      `Hub third-party access ${enabled ? 'enabled' : 'disabled'}: ${updatedHub.id}`,
+    );
+    return updatedHub;
+  }
+
   async remove(id: string): Promise<void> {
     try {
       const hub = await this.findOne(id);
@@ -439,7 +451,7 @@ export class HubsService {
     try {
       const stores = await this.storeRepository.find({
         where: { hub_id: hubId },
-        select: ['id'],
+        relations: ['merchant', 'merchant.user'],
       });
 
       const storeIds = stores.map((store) => store.id);
@@ -1573,7 +1585,10 @@ export class HubsService {
    * Get comprehensive merchant performance statistics for a hub
    * Returns total count, top merchant, and a detailed list of all merchants in the hub
    */
-  async getHubMerchantPerformance(hubId: string): Promise<any> {
+  async getHubMerchantPerformance(
+    hubId: string,
+    query: HubMerchantPerformanceQueryDto = {},
+  ): Promise<any> {
     try {
       // 1. Get stores (filter by hub if hubId is provided)
       const whereCondition: any = {};
@@ -1591,9 +1606,24 @@ export class HubsService {
         return {
           summary: {
             total_merchants: 0,
+            active_merchants: 0,
+            total_stores: 0,
+            total_parcels: 0,
+            delivered_parcels: 0,
+            returned_parcels: 0,
+            total_transactions: 0,
+            total_platform_charge: 0,
             top_merchant: null,
           },
           merchants: [],
+          pagination: {
+            total: 0,
+            page: query.page ?? 1,
+            limit: query.limit ?? 20,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+          },
         };
       }
 
@@ -1609,6 +1639,12 @@ export class HubsService {
         ParcelStatus.RETURN_TO_MERCHANT,
         ParcelStatus.RETURNED_TO_HUB,
       ];
+      const financiallyCompletedStatuses = [
+        ...deliveredStatuses,
+        ParcelStatus.RETURNED,
+        ParcelStatus.PAID_RETURN,
+        ParcelStatus.RETURN_TO_MERCHANT,
+      ];
 
       // 3. Get all parcels for these stores
       // Selecting minimal fields for performance
@@ -1622,6 +1658,14 @@ export class HubsService {
           'cod_collected_amount',
           'cod_amount',
           'total_charge',
+          'return_charge',
+          'delivery_charge_applicable',
+          'return_charge_applicable',
+          'hub_confirmation_status',
+          'received_at',
+          'received_at_destination_hub',
+          'picked_up_at',
+          'created_at',
         ],
       });
 
@@ -1631,7 +1675,56 @@ export class HubsService {
       // 5. Aggregate stats by merchant
       const merchantMap = new Map<string, any>();
 
+      // Include merchants with zero parcels so the total and table match the
+      // merchants actually connected to this hub.
+      for (const store of stores) {
+        const merchantId = store.merchant_id;
+        if (!merchantId || merchantMap.has(merchantId)) continue;
+        merchantMap.set(merchantId, {
+          merchant_id: merchantId,
+          business_name:
+            store.business_name || store.merchant?.user?.full_name || 'N/A',
+          phone: store.phone_number || store.merchant?.user?.phone || 'N/A',
+          address:
+            store.business_address || store.merchant?.full_address || 'N/A',
+          is_active: !!store.merchant?.user?.is_active,
+          store_count: 0,
+          total_parcels: 0,
+          delivered_parcels: 0,
+          returned_parcels: 0,
+          total_transactions: 0,
+          platform_charge: 0,
+        });
+      }
+
+      for (const store of stores) {
+        const merchant = merchantMap.get(store.merchant_id);
+        if (merchant) merchant.store_count++;
+      }
+
+      const rangeStart = query.start_date
+        ? new Date(`${query.start_date}T00:00:00+06:00`)
+        : null;
+      const rangeEnd = query.end_date
+        ? new Date(`${query.end_date}T00:00:00+06:00`)
+        : null;
+      if (rangeEnd) rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+      if (rangeStart && rangeEnd && rangeStart >= rangeEnd) {
+        throw new BadRequestException(
+          'start_date must be before or equal to end_date',
+        );
+      }
+
       for (const parcel of parcels) {
+        const receivedAt =
+          parcel.received_at ||
+          parcel.received_at_destination_hub ||
+          parcel.picked_up_at ||
+          parcel.created_at;
+        if (rangeStart && receivedAt < rangeStart) continue;
+        if (rangeEnd && receivedAt >= rangeEnd) continue;
+
         const mid = parcel.merchant_id;
         const store = storeMap.get(parcel.store_id as string);
 
@@ -1642,10 +1735,13 @@ export class HubsService {
             phone: store?.phone_number || store?.merchant?.user?.phone || 'N/A',
             address:
               store?.business_address || store?.merchant?.full_address || 'N/A',
+            is_active: !!store?.merchant?.user?.is_active,
+            store_count: store ? 1 : 0,
             total_parcels: 0,
             delivered_parcels: 0,
             returned_parcels: 0,
             total_transactions: 0,
+            platform_charge: 0,
           });
         }
 
@@ -1653,51 +1749,130 @@ export class HubsService {
         data.total_parcels++;
 
         // Successful delivered stats
-        if (deliveredStatuses.includes(parcel.status)) {
+        const financiallyConfirmed =
+          parcel.hub_confirmation_status === HubConfirmationStatus.CONFIRMED ||
+          parcel.hub_confirmation_status == null;
+
+        if (deliveredStatuses.includes(parcel.status) && financiallyConfirmed) {
           data.delivered_parcels++;
-          const amount = Number(
-            parcel.cod_collected_amount || parcel.cod_amount || 0,
-          );
+          const amount = Number(parcel.cod_collected_amount || 0);
           data.total_transactions += amount;
         }
 
         // Return stats
-        if (returnedStatuses.includes(parcel.status)) {
+        if (returnedStatuses.includes(parcel.status) && financiallyConfirmed) {
           data.returned_parcels++;
+        }
+
+        if (
+          financiallyConfirmed &&
+          financiallyCompletedStatuses.includes(parcel.status)
+        ) {
+          data.platform_charge +=
+            (parcel.delivery_charge_applicable
+              ? Number(parcel.total_charge) || 0
+              : 0) +
+            (parcel.return_charge_applicable
+              ? Number(parcel.return_charge) || 0
+              : 0);
         }
       }
 
       const merchantList = Array.from(merchantMap.values());
 
       // 6. Find Top Merchant (by delivered parcel count)
-      const topMerchant =
-        merchantList.length > 0
-          ? [...merchantList].sort(
-              (a, b) => b.delivered_parcels - a.delivered_parcels,
-            )[0]
-          : null;
+      const topMerchant = merchantList.some(
+        (merchant) => merchant.delivered_parcels > 0,
+      )
+        ? [...merchantList]
+            .filter((merchant) => merchant.delivered_parcels > 0)
+            .sort((a, b) => b.delivered_parcels - a.delivered_parcels)[0]
+        : null;
+
+      const search = query.search?.trim().toLowerCase();
+      const filteredMerchants = search
+        ? merchantList.filter((merchant) =>
+            [merchant.business_name, merchant.phone, merchant.address].some(
+              (value) =>
+                String(value ?? '')
+                  .toLowerCase()
+                  .includes(search),
+            ),
+          )
+        : merchantList;
+      const page = query.page ?? 1;
+      const limit = query.limit ?? 20;
+      const paginatedMerchants = filteredMerchants.slice(
+        (page - 1) * limit,
+        page * limit,
+      );
+      const totalPages = Math.ceil(filteredMerchants.length / limit);
+      const roundMoney = (value: number) => Number(value.toFixed(2));
 
       return {
         summary: {
           total_merchants: merchantList.length,
+          active_merchants: merchantList.filter((m) => m.is_active).length,
+          total_stores: stores.length,
+          total_parcels: merchantList.reduce(
+            (sum, merchant) => sum + merchant.total_parcels,
+            0,
+          ),
+          delivered_parcels: merchantList.reduce(
+            (sum, merchant) => sum + merchant.delivered_parcels,
+            0,
+          ),
+          returned_parcels: merchantList.reduce(
+            (sum, merchant) => sum + merchant.returned_parcels,
+            0,
+          ),
+          total_transactions: roundMoney(
+            merchantList.reduce(
+              (sum, merchant) => sum + merchant.total_transactions,
+              0,
+            ),
+          ),
+          total_platform_charge: roundMoney(
+            merchantList.reduce(
+              (sum, merchant) => sum + merchant.platform_charge,
+              0,
+            ),
+          ),
           top_merchant: topMerchant
             ? {
                 merchant_id: topMerchant.merchant_id,
                 business_name: topMerchant.business_name,
                 phone: topMerchant.phone,
                 address: topMerchant.address,
+                successful_parcels: topMerchant.delivered_parcels,
+                total_parcels: topMerchant.total_parcels,
                 total_transactions: Number(
                   topMerchant.total_transactions.toFixed(2),
                 ),
+                platform_charge: roundMoney(topMerchant.platform_charge),
               }
             : null,
+          date_range: {
+            start_date: query.start_date ?? null,
+            end_date: query.end_date ?? null,
+          },
         },
-        merchants: merchantList.map((m) => ({
+        merchants: paginatedMerchants.map((m) => ({
           ...m,
           total_transactions: Number(m.total_transactions.toFixed(2)),
+          platform_charge: roundMoney(m.platform_charge),
         })),
+        pagination: {
+          total: filteredMerchants.length,
+          page,
+          limit,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
       };
     } catch (error) {
+      if (error instanceof BadRequestException) throw error;
       this.logger.error(
         `Failed to get hub merchant performance for hub ${hubId}: ${error.message}`,
         error.stack,
@@ -1755,27 +1930,37 @@ export class HubsService {
           'cod_collected_amount',
           'cod_amount',
           'total_charge',
+          'return_charge',
+          'delivery_charge_applicable',
+          'return_charge_applicable',
+          'hub_confirmation_status',
         ],
       });
 
       // Total successful parcels for the entire hub
-      const hubSuccessfulParcelsTotal = parcels.filter((p) =>
-        successfulStatuses.includes(p.status),
+      const isFinanciallyConfirmed = (parcel: Parcel) =>
+        parcel.hub_confirmation_status === HubConfirmationStatus.CONFIRMED ||
+        parcel.hub_confirmation_status == null;
+      const hubSuccessfulParcelsTotal = parcels.filter(
+        (parcel) =>
+          successfulStatuses.includes(parcel.status) &&
+          isFinanciallyConfirmed(parcel),
       ).length;
 
-      // Get unique merchant IDs
-      const uniqueMerchantIds = [...new Set(parcels.map((p) => p.merchant_id))];
-
-      // Fetch merchant user data
-      const merchantUsers = await this.userRepository.find({
-        where: { id: In(uniqueMerchantIds) },
-        select: ['id', 'full_name', 'phone'],
-      });
-
-      // Create merchant info map
-      const merchantInfoMap = new Map<string, User>();
-      for (const user of merchantUsers) {
-        merchantInfoMap.set(user.id, user);
+      // Parcel.merchant_id references merchants.id, not users.id.
+      const merchantInfoMap = new Map<
+        string,
+        { full_name: string; phone: string }
+      >();
+      for (const store of stores) {
+        if (!store.merchant_id || merchantInfoMap.has(store.merchant_id)) {
+          continue;
+        }
+        merchantInfoMap.set(store.merchant_id, {
+          full_name:
+            store.business_name || store.merchant?.user?.full_name || 'Unknown',
+          phone: store.phone_number || store.merchant?.user?.phone || 'N/A',
+        });
       }
 
       // Group by merchant
@@ -1818,13 +2003,20 @@ export class HubsService {
         data.total_parcels++;
 
         // Check if successful delivery
-        if (successfulStatuses.includes(parcel.status)) {
+        if (
+          successfulStatuses.includes(parcel.status) &&
+          isFinanciallyConfirmed(parcel)
+        ) {
           data.successful_parcels++;
 
-          const codCollected = Number(
-            parcel.cod_collected_amount || parcel.cod_amount || 0,
-          );
-          const deliveryCharge = Number(parcel.total_charge || 0);
+          const codCollected = Number(parcel.cod_collected_amount || 0);
+          const deliveryCharge =
+            (parcel.delivery_charge_applicable
+              ? Number(parcel.total_charge) || 0
+              : 0) +
+            (parcel.return_charge_applicable
+              ? Number(parcel.return_charge) || 0
+              : 0);
 
           data.total_cod_collected += codCollected;
           data.total_delivery_charges += deliveryCharge;
