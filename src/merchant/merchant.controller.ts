@@ -99,6 +99,7 @@ export class MerchantController {
         page: result.page,
         limit: result.limit,
       },
+      summary: result.summary,
       message: 'Merchants retrieved successfully',
     };
   }

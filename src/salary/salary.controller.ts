@@ -7,8 +7,10 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { SalaryService } from './salary.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -18,6 +20,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { ProcessSalaryPaymentDto } from './dto/process-salary-payment.dto';
 import { FinalizePayoutDto } from './dto/finalize-payout.dto';
+import { BulkProcessSalaryPaymentDto } from './dto/bulk-process-salary-payment.dto';
 
 @Controller('api/salary')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -62,6 +65,36 @@ export class SalaryController {
     @CurrentUser() user: any,
   ) {
     return this.salaryService.processPayment(dto, user.userId);
+  }
+
+  @Post('bulk-process-payment')
+  bulkProcessPayments(
+    @Body() dto: BulkProcessSalaryPaymentDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.salaryService.bulkProcessPayments(dto.payments, user.userId);
+  }
+
+  @Get('export')
+  async exportSalaryReport(
+    @Query('from_date') fromDate: string,
+    @Query('to_date') toDate: string,
+    @Query('format') format: string,
+    @Res() response: Response,
+  ) {
+    const report = await this.salaryService.exportSalaryReport(
+      fromDate,
+      toDate,
+      format,
+    );
+
+    response.setHeader('Content-Type', report.contentType);
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${report.fileName}"`,
+    );
+    response.setHeader('Content-Length', report.buffer.length);
+    response.send(report.buffer);
   }
 
   @Post('payouts/:id/finalize')

@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Merchant } from '../merchant/entities/merchant.entity';
 import { MerchantPayoutMethod } from '../merchant/entities/merchant-payout-method.entity';
@@ -38,6 +38,15 @@ import {
   NotificationCategory,
   NotificationEntityType,
 } from '../notifications/notification.types';
+
+export const MERCHANT_CLEARANCE_FINAL_STATUSES: ParcelStatus[] = [
+  ParcelStatus.DELIVERED,
+  ParcelStatus.RETURNED,
+  ParcelStatus.PAID_RETURN,
+  ParcelStatus.PARTIAL_DELIVERY,
+  ParcelStatus.EXCHANGE,
+  ParcelStatus.RETURN_TO_MERCHANT,
+];
 
 @Injectable()
 export class AdminService {
@@ -1086,8 +1095,7 @@ export class AdminService {
 
   /**
    * Get merchant clearance list
-   * Shows merchants with unpaid parcels (paid_to_merchant = false)
-   * All unpaid parcels are treated as "delivered" for clearance purposes
+   * Shows merchants with unpaid parcels that reached a final lifecycle status.
    */
   async getMerchantClearanceList(query: {
     page?: number;
@@ -1102,12 +1110,15 @@ export class AdminService {
     const { page = 1, limit = 10, merchantId, search } = query;
 
     // Build where clause
-    const whereClause: any = { paid_to_merchant: false };
+    const whereClause: any = {
+      paid_to_merchant: false,
+      status: In(MERCHANT_CLEARANCE_FINAL_STATUSES),
+    };
     if (merchantId) {
       whereClause.merchant_id = merchantId;
     }
 
-    // Get ALL unpaid parcels
+    // Get all unpaid parcels whose lifecycle is complete.
     const unpaidParcels = await this.parcelRepository.find({
       where: whereClause,
     });
@@ -1201,11 +1212,8 @@ export class AdminService {
         const totalReturned = parcels.filter(
           (p) =>
             p.status === ParcelStatus.RETURNED ||
-            p.status === ParcelStatus.RETURNED_TO_HUB ||
             p.status === ParcelStatus.RETURN_TO_MERCHANT ||
-            p.status === ParcelStatus.PAID_RETURN ||
-            p.return_charge_applicable === true ||
-            String(p.return_charge_applicable) === 'true',
+            p.status === ParcelStatus.PAID_RETURN,
         ).length;
 
         return {

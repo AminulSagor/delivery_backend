@@ -24,6 +24,8 @@ import { format, endOfMonth, startOfMonth } from 'date-fns';
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
 import { AdminAccountStatement } from '../admin/entities/admin-account-statement.entity';
 import { AccountTransactionType } from '../common/enums/account-type.enum';
+import * as ExcelJS from 'exceljs';
+import PDFDocument = require('pdfkit');
 
 type SalaryBreakdown = {
   basic_salary: number;
@@ -425,6 +427,232 @@ export class SalaryService {
         status: saved.status,
         initiated_at: saved.initiated_at,
       },
+    };
+  }
+
+  async bulkProcessPayments(
+    payments: ProcessSalaryPaymentDto[],
+    initiatedBy: string,
+  ) {
+    const seenStaffIds = new Set<string>();
+    const results: Array<Record<string, unknown>> = [];
+
+    for (let index = 0; index < payments.length; index++) {
+      const payment = payments[index];
+
+      if (seenStaffIds.has(payment.staff_id)) {
+        results.push({
+          index,
+          staff_id: payment.staff_id,
+          success: false,
+          message: 'Duplicate staff_id in the same bulk request',
+        });
+        continue;
+      }
+
+      seenStaffIds.add(payment.staff_id);
+
+      try {
+        const processed = await this.processPayment(payment, initiatedBy);
+        results.push({
+          index,
+          staff_id: payment.staff_id,
+          success: true,
+          data: processed.data,
+        });
+      } catch (error) {
+        results.push({
+          index,
+          staff_id: payment.staff_id,
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Payment processing failed',
+        });
+      }
+    }
+
+    return {
+      status: 'success',
+      data: {
+        total: payments.length,
+        succeeded: results.filter((result) => result.success).length,
+        failed: results.filter((result) => !result.success).length,
+        results,
+      },
+    };
+  }
+
+  async exportSalaryReport(
+    fromDateInput: string,
+    toDateInput: string,
+    formatInput: string,
+  ): Promise<{
+    buffer: Buffer;
+    contentType: string;
+    fileName: string;
+  }> {
+    const fromDate = this.parseOptionalDate(fromDateInput, 'from_date');
+    const toDate = this.parseOptionalDate(toDateInput, 'to_date');
+    const reportFormat = formatInput?.toLowerCase();
+
+    if (!fromDate || !toDate) {
+      throw new BadRequestException('from_date and to_date are required');
+    }
+
+    if (fromDate > toDate) {
+      throw new BadRequestException('from_date must be earlier than to_date');
+    }
+
+    if (!['csv', 'excel', 'pdf'].includes(reportFormat)) {
+      throw new BadRequestException('format must be csv, excel, or pdf');
+    }
+
+    const startBoundary = new Date(fromDate);
+    startBoundary.setHours(0, 0, 0, 0);
+    const endBoundary = new Date(toDate);
+    endBoundary.setHours(23, 59, 59, 999);
+
+    const transactions = await this.payoutRepository
+      .createQueryBuilder('transaction')
+      .innerJoinAndSelect('transaction.staff', 'staff')
+      .innerJoinAndSelect('staff.user', 'user')
+      .leftJoinAndSelect('staff.hub', 'hub')
+      .leftJoinAndSelect(
+        'transaction.staff_payout_method',
+        'staff_payout_method',
+      )
+      .where('transaction.staff_id IS NOT NULL')
+      .andWhere('transaction.status = :status', {
+        status: PayoutTransactionStatus.COMPLETED,
+      })
+      .andWhere(
+        'COALESCE(transaction.completed_at, transaction.created_at) BETWEEN :fromDate AND :toDate',
+        { fromDate: startBoundary, toDate: endBoundary },
+      )
+      .orderBy(
+        'COALESCE(transaction.completed_at, transaction.created_at)',
+        'DESC',
+      )
+      .getMany();
+
+    const rows = transactions.map((transaction) => ({
+      transaction_id: transaction.id,
+      reference_number: transaction.reference_number ?? '',
+      staff_code: transaction.staff?.staff_code ?? '',
+      staff_name: transaction.staff?.user?.full_name ?? '',
+      phone: transaction.staff?.user?.phone ?? '',
+      position: transaction.staff?.position ?? '',
+      hub: transaction.staff?.hub?.branch_name ?? '',
+      payment_method: transaction.staff_payout_method?.method_type ?? '',
+      amount: this.toMoney(transaction.amount),
+      paid_at: (
+        transaction.completed_at ?? transaction.created_at
+      ).toISOString(),
+    }));
+    const dateSuffix = `${format(startBoundary, 'yyyy-MM-dd')}_${format(endBoundary, 'yyyy-MM-dd')}`;
+
+    if (reportFormat === 'csv') {
+      const headers = Object.keys(
+        rows[0] ?? {
+          transaction_id: '',
+          reference_number: '',
+          staff_code: '',
+          staff_name: '',
+          phone: '',
+          position: '',
+          hub: '',
+          payment_method: '',
+          amount: '',
+          paid_at: '',
+        },
+      );
+      const csv = [
+        headers.join(','),
+        ...rows.map((row) =>
+          headers
+            .map((header) =>
+              this.escapeCsvValue(row[header as keyof typeof row]),
+            )
+            .join(','),
+        ),
+      ].join('\n');
+
+      return {
+        buffer: Buffer.from(`\uFEFF${csv}`, 'utf8'),
+        contentType: 'text/csv; charset=utf-8',
+        fileName: `salary-report-${dateSuffix}.csv`,
+      };
+    }
+
+    if (reportFormat === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Salary Report');
+      worksheet.columns = [
+        { header: 'Transaction ID', key: 'transaction_id', width: 38 },
+        { header: 'Reference', key: 'reference_number', width: 26 },
+        { header: 'Staff Code', key: 'staff_code', width: 16 },
+        { header: 'Staff Name', key: 'staff_name', width: 28 },
+        { header: 'Phone', key: 'phone', width: 16 },
+        { header: 'Position', key: 'position', width: 20 },
+        { header: 'Hub', key: 'hub', width: 24 },
+        { header: 'Payment Method', key: 'payment_method', width: 20 },
+        { header: 'Amount (BDT)', key: 'amount', width: 16 },
+        { header: 'Paid At', key: 'paid_at', width: 26 },
+      ];
+      worksheet.addRows(rows);
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF15A24' },
+      };
+      const excelBuffer = await workbook.xlsx.writeBuffer();
+
+      return {
+        buffer: Buffer.from(excelBuffer),
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileName: `salary-report-${dateSuffix}.xlsx`,
+      };
+    }
+
+    const document = new PDFDocument({ size: 'A4', margin: 36 });
+    const chunks: Buffer[] = [];
+    document.on('data', (chunk: Buffer) => chunks.push(chunk));
+    const completed = new Promise<Buffer>((resolve, reject) => {
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
+    });
+    document.fontSize(18).text('Meghswar Salary Report');
+    document
+      .fontSize(10)
+      .fillColor('#555555')
+      .text(
+        `${format(startBoundary, 'dd MMM yyyy')} - ${format(endBoundary, 'dd MMM yyyy')}`,
+      )
+      .moveDown();
+
+    rows.forEach((row, index) => {
+      if (document.y > 740) document.addPage();
+      document
+        .fillColor('#111111')
+        .fontSize(10)
+        .text(
+          `${index + 1}. ${row.staff_name} (${row.staff_code}) | ${row.hub || 'No hub'} | BDT ${row.amount.toFixed(2)}`,
+        )
+        .fontSize(8)
+        .fillColor('#666666')
+        .text(`${row.reference_number || row.transaction_id} | ${row.paid_at}`)
+        .moveDown(0.6);
+    });
+    document.end();
+
+    return {
+      buffer: await completed,
+      contentType: 'application/pdf',
+      fileName: `salary-report-${dateSuffix}.pdf`,
     };
   }
 
@@ -1204,6 +1432,11 @@ export class SalaryService {
     }
 
     return parsed;
+  }
+
+  private escapeCsvValue(value: unknown) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
   }
 
   private buildShowingRange(

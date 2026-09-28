@@ -11,20 +11,19 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  ParseBoolPipe,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import { StaffQueryDto } from './dto/staff-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import {
-  toStaffListItem,
   toStaffDetail,
   toStaffActionResponse,
 } from '../common/interfaces/responses.interface';
@@ -46,30 +45,20 @@ export class StaffController {
 
     return {
       success: true,
-      data: {
-        id: staff.id,
-        full_name: staff.user?.full_name,
-        phone: staff.user?.phone,
-        hub_name: staff.hub?.branch_name,
-      },
+      data: toStaffDetail(staff),
       message: 'Staff created successfully',
     };
   }
 
   /**
    * Get all staff with optional filters
-   * GET /staff?hubId=xxx&isActive=true
+   * GET /staff?hub_id=xxx&is_active=true&position=RIDER
    */
   @Get()
   @Roles(UserRole.ADMIN, UserRole.HUB_MANAGER)
-  async findAll(
-    @CurrentUser() user: any,
-    @Query('hubId') hubId?: string,
-    @Query('isActive') isActive?: string,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  async findAll(@CurrentUser() user: any, @Query() query: StaffQueryDto) {
+    const hubId = query.hub_id ?? query.hubId;
+    const isActive = query.is_active ?? query.isActive;
     const effectiveHubId =
       user.role === UserRole.HUB_MANAGER ? user.hubId || null : hubId;
 
@@ -79,56 +68,28 @@ export class StaffController {
       );
     }
 
-    const isActiveBoolean =
-      isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const limitNum = limit ? parseInt(limit, 10) : 10;
-
     const { data: staff, total } = await this.staffService.findAll(
       effectiveHubId || undefined,
-      isActiveBoolean,
-      search,
-      pageNum,
-      limitNum,
+      isActive,
+      query.search,
+      query.page,
+      query.limit,
+      query.position,
     );
 
     const summary = await this.staffService.getSummary(
       effectiveHubId || undefined,
-      search,
+      query.search,
     );
 
     return {
       success: true,
-      data: staff.map((s) => ({
-        id: s.id,
-        full_name: s.user?.full_name,
-        phone: s.user?.phone,
-        email: s.user?.email,
-        position: s.position,
-        hub_id: s.hub_id,
-        hub_name: s.hub?.branch_name,
-        hub_code: s.hub?.hub_code,
-        photo: s.photo,
-        secondary_phone: s.secondary_phone,
-        guardian_mobile_no: s.guardian_mobile_no,
-        bike_type: s.bike_type,
-        nid_number: s.nid_number,
-        license_no: s.license_no,
-        present_address: s.present_address,
-        permanent_address: s.permanent_address,
-        fixed_salary: s.fixed_salary,
-        bank_name: s.bank_name,
-        bank_account_number: s.bank_account_number,
-        bank_branch: s.bank_branch,
-        is_active: s.is_active,
-        created_at: s.created_at,
-      })),
+      data: staff.map(toStaffDetail),
       pagination: {
         total,
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
+        page: query.page,
+        limit: query.limit,
+        totalPages: Math.ceil(total / query.limit),
       },
       summary,
       message: 'Staff retrieved successfully',
@@ -240,38 +201,7 @@ export class StaffController {
 
     return {
       success: true,
-      data: {
-        id: staff.id,
-        user_id: staff.user_id,
-        full_name: staff.user?.full_name,
-        phone: staff.user?.phone,
-        email: staff.user?.email,
-        position: staff.position,
-        hub_id: staff.hub_id,
-        hub_name: staff.hub?.branch_name,
-        hub_code: staff.hub?.hub_code,
-        photo: staff.photo,
-        secondary_phone: staff.secondary_phone,
-        guardian_mobile_no: staff.guardian_mobile_no,
-        bike_type: staff.bike_type,
-        nid_number: staff.nid_number,
-        license_no: staff.license_no,
-        present_address: staff.present_address,
-        permanent_address: staff.permanent_address,
-        fixed_salary: staff.fixed_salary,
-        bank_name: staff.bank_name,
-        bank_account_number: staff.bank_account_number,
-        bank_branch: staff.bank_branch,
-        nid_front_photo: staff.nid_front_photo,
-        nid_back_photo: staff.nid_back_photo,
-        license_front_photo: staff.license_front_photo,
-        license_back_photo: staff.license_back_photo,
-        parent_nid_front_photo: staff.parent_nid_front_photo,
-        parent_nid_back_photo: staff.parent_nid_back_photo,
-        is_active: staff.is_active,
-        created_at: staff.created_at,
-        updated_at: staff.updated_at,
-      },
+      data: toStaffDetail(staff),
       message: 'Staff retrieved successfully',
     };
   }
@@ -303,7 +233,7 @@ export class StaffController {
 
     return {
       success: true,
-      data: toStaffActionResponse(staff),
+      data: toStaffDetail(staff),
       message: 'Staff updated successfully',
     };
   }
@@ -353,7 +283,11 @@ export class StaffController {
       throw new BadRequestException('Invalid amount');
     }
 
-    const tx = await this.staffService.payStaff(id, Number(amount), user.id);
+    const tx = await this.staffService.payStaff(
+      id,
+      Number(amount),
+      user.userId,
+    );
 
     return {
       success: true,

@@ -35,12 +35,17 @@ import { AdminCreateParcelDto } from '../parcels/dto/admin-create-parcel.dto';
 import { toParcelListItem } from '../common/interfaces/responses.interface';
 import { BulkReceiveParcelsDto } from '../hubs/dto/bulk-receive-parcels.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { HubsService } from '../hubs/hubs.service';
+import { TransferRecordStatus } from '../common/enums/transfer-record-status.enum';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly hubsService: HubsService,
+  ) {}
 
   @Public() // ⚠️ WARNING: Public admin creation - remove in production
   @Post()
@@ -296,10 +301,13 @@ export class AdminController {
     @Req() req: any,
   ) {
     const adminUserId = req.user.userId;
-    const record = await this.adminService.approveTransferRecord(
+    const record = await this.hubsService.reviewTransfer(
       id,
-      adminUserId,
-      dto.admin_notes,
+      {
+        status: TransferRecordStatus.APPROVED,
+        admin_notes: dto.admin_notes,
+      },
+      { userId: adminUserId },
     );
 
     return {
@@ -319,11 +327,14 @@ export class AdminController {
     @Req() req: any,
   ) {
     const adminUserId = req.user.userId;
-    const record = await this.adminService.rejectTransferRecord(
+    const record = await this.hubsService.reviewTransfer(
       id,
-      adminUserId,
-      dto.rejection_reason,
-      dto.admin_notes,
+      {
+        status: TransferRecordStatus.DECLINED,
+        rejection_reason: dto.rejection_reason,
+        admin_notes: dto.admin_notes,
+      },
+      { userId: adminUserId },
     );
 
     return {

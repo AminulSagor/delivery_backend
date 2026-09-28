@@ -56,6 +56,18 @@ import { DeliveryProvider } from '../common/enums/delivery-provider.enum';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 import { HubMerchantPerformanceQueryDto } from './dto/hub-merchant-performance-query.dto';
+import { AdminAccountStatement } from '../admin/entities/admin-account-statement.entity';
+import {
+  AccountReferenceType,
+  AccountTransactionType,
+} from '../common/enums/account-type.enum';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationCategory,
+  NotificationEntityType,
+} from '../notifications/notification.types';
+import { AdminTransferApprovalQueryDto } from './dto/admin-transfer-approval-query.dto';
+import { BulkReviewTransferDto } from './dto/bulk-review-transfer.dto';
 
 @Injectable()
 export class HubsService {
@@ -88,6 +100,7 @@ export class HubsService {
     private adminAccountRepo: Repository<AdminAccount>,
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -1256,83 +1269,7 @@ export class HubsService {
     hubManagerId: string,
     dto: CreateTransferRecordDto,
   ): Promise<HubTransferRecord> {
-    try {
-      // 1. Verify Hub Manager
-      const hubManager = await this.hubManagerRepository.findOne({
-        where: { id: hubManagerId },
-      });
-
-      if (!hubManager) {
-        throw new NotFoundException('Hub manager not found');
-      }
-
-      // 2. Fetch Admin Account for Snapshot
-      const adminAccount = await this.adminAccountRepo.findOne({
-        where: { id: dto.admin_account_id },
-      });
-
-      if (!adminAccount) {
-        throw new NotFoundException('Selected Admin Account not found');
-      }
-
-      // 3. Create Transfer Record
-      const transferRecord = this.hubTransferRecordRepository.create({
-        hub_manager_id: hubManagerId,
-        hub_id: hubManager.hub_id,
-        transferred_amount: dto.transferred_amount,
-
-        // Link to Account
-        admin_account_id: adminAccount.id,
-
-        // Snapshot Account Details (From DB, not DTO, for security/accuracy)
-        admin_account_name: adminAccount.account_name,
-        admin_account_number: adminAccount.account_number,
-        admin_account_holder_name: adminAccount.account_holder_name,
-
-        transaction_reference_id: dto.transaction_reference_id,
-        notes: dto.notes || null,
-        proof_file_url: dto.proof_file_url,
-
-        status: TransferRecordStatus.PENDING,
-      });
-
-      const saved = await this.hubTransferRecordRepository.save(transferRecord);
-
-      // 4. Update Hub Finance Balance (Deduct transferred amount)
-      // Note: Ensure you have the finance repo injected
-      const finance = await this.financeRepository.findOne({
-        where: { hub_manager_id: hubManagerId },
-      });
-      if (finance) {
-        finance.current_balance =
-          Number(finance.current_balance) - dto.transferred_amount;
-        finance.total_transferred_to_admin =
-          Number(finance.total_transferred_to_admin) + dto.transferred_amount;
-        finance.last_transfer_at = new Date();
-        await this.financeRepository.save(finance);
-      }
-
-      this.logger.log(
-        `Transfer record created: ${saved.id} by hub manager ${hubManagerId} - Amount: ${saved.transferred_amount}`,
-      );
-
-      return saved;
-    } catch (error) {
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-
-      this.logger.error(
-        `Failed to create transfer record: ${error.message}`,
-        error.stack,
-      );
-      throw new InternalServerErrorException(
-        'Failed to create transfer record. Please try again later.',
-      );
-    }
+    return this.createTransfer(hubManagerId, dto);
   }
 
   /**
@@ -2664,18 +2601,9 @@ export class HubsService {
         transaction_reference_id: dto.transaction_reference_id,
         proof_file_url: dto.proof_file_url,
         notes: dto.notes || '',
+        funds_reserved: false,
       });
       await queryRunner.manager.save(transfer);
-
-      // Deduct Balance
-      managerFinance.current_balance =
-        Number(managerFinance.current_balance) - dto.transferred_amount;
-      managerFinance.total_transferred_to_admin =
-        Number(managerFinance.total_transferred_to_admin) +
-        dto.transferred_amount;
-      managerFinance.last_transfer_at = new Date();
-
-      await queryRunner.manager.save(managerFinance);
       await queryRunner.commitTransaction();
       return transfer;
     } catch (err) {
@@ -2742,8 +2670,11 @@ export class HubsService {
       .createQueryBuilder('transfer')
       .select('SUM(transfer.transferred_amount)', 'total')
       .where('transfer.hub_manager_id = :id', { id: hubManagerId })
-      .andWhere('transfer.status = :status', {
-        status: TransferRecordStatus.PENDING,
+      .andWhere('transfer.status IN (:...statuses)', {
+        statuses: [
+          TransferRecordStatus.PENDING,
+          TransferRecordStatus.IN_REVIEW,
+        ],
       })
       .getRawOne();
 
@@ -3080,74 +3011,225 @@ export class HubsService {
   // ==========================================
 
   // 1. All Transfers (Paginated)
-  async getAllTransfersForAdmin(query: PaginationDto) {
-    const {
-      page = 1,
-      limit = 20,
-      search,
-      sortBy = 'created_at',
-      order = 'DESC',
-    } = query;
-    const skip = (page - 1) * limit;
-
-    const sortableColumns: Record<string, string> = {
-      created_at: 'transfer.created_at',
-      transfer_date: 'transfer.transfer_date',
-      transferred_amount: 'transfer.transferred_amount',
-      status: 'transfer.status',
-      transaction_reference_id: 'transfer.transaction_reference_id',
-    };
-    const sortColumn = sortableColumns[sortBy] || 'transfer.created_at';
-    const sortOrder: 'ASC' | 'DESC' = order === 'ASC' ? 'ASC' : 'DESC';
-
-    const qb = this.hubTransferRecordRepository
-      .createQueryBuilder('transfer')
-      .leftJoinAndSelect('transfer.hub', 'hub')
-      .leftJoinAndSelect('transfer.hubManager', 'manager')
-      .leftJoinAndSelect('manager.user', 'user')
-      .orderBy(sortColumn, sortOrder)
-      .skip(skip)
+  async getAllTransfersForAdmin(query: AdminTransferApprovalQueryDto) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const qb = this.buildAdminTransferQuery(query)
+      .skip((page - 1) * limit)
       .take(limit);
 
-    if (search) {
-      qb.andWhere('transfer.transaction_reference_id ILIKE :search', {
-        search: `%${search}%`,
-      });
-    }
-
     const [items, total] = await qb.getManyAndCount();
-
-    // Map to minimal admin-facing transfer list columns
-    const mapped = items.map((transfer) => ({
-      id: transfer.id,
-      date: transfer.transfer_date || transfer.created_at,
-      hub: transfer.hub ? transfer.hub.branch_name : null,
-      amount: parseFloat(transfer.transferred_amount?.toString() || '0'),
-      proof: transfer.proof_file_url || null,
-      reference: transfer.transaction_reference_id || null,
-      notes: transfer.notes || null,
-      status: transfer.status,
-    }));
+    const totalPages = Math.ceil(total / limit);
 
     return {
-      data: mapped,
+      data: items.map((transfer) => this.mapAdminTransfer(transfer)),
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
       },
     };
+  }
+
+  async exportAllTransfersForAdmin(
+    query: AdminTransferApprovalQueryDto,
+  ): Promise<string> {
+    const transfers = await this.buildAdminTransferQuery(query).getMany();
+    const rows = transfers.map((transfer) => this.mapAdminTransfer(transfer));
+    const csvRows = [
+      [
+        'Date',
+        'Transfer ID',
+        'From Account',
+        'From Account Number',
+        'To Account',
+        'To Account Number',
+        'Requested By',
+        'Amount',
+        'Reason',
+        'Status',
+      ],
+      ...rows.map((row) => [
+        row.date ? new Date(row.date).toISOString() : '',
+        row.transfer_id || '',
+        row.from_account.name || '',
+        row.from_account.account_number || '',
+        row.to_account.name || '',
+        row.to_account.account_number || '',
+        row.requested_by.name || '',
+        row.amount,
+        row.reason || '',
+        row.status,
+      ]),
+    ];
+
+    return csvRows
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','),
+      )
+      .join('\n');
   }
 
   // 2. Single Transfer Detail
   async getTransferDetailForAdmin(id: string) {
     const transfer = await this.hubTransferRecordRepository.findOne({
       where: { id },
-      relations: ['hub', 'hubManager', 'hubManager.user', 'reviewer'],
+      relations: [
+        'hub',
+        'hubManager',
+        'hubManager.user',
+        'reviewer',
+        'adminAccount',
+      ],
     });
     if (!transfer) throw new NotFoundException('Transfer not found');
-    return transfer;
+    return this.mapAdminTransfer(transfer);
+  }
+
+  private buildAdminTransferQuery(query: AdminTransferApprovalQueryDto) {
+    const sortableColumns: Record<string, string> = {
+      created_at: 'transfer.created_at',
+      transfer_date: 'transfer.transfer_date',
+      amount: 'transfer.transferred_amount',
+      transferred_amount: 'transfer.transferred_amount',
+      status: 'transfer.status',
+      transfer_id: 'transfer.transaction_reference_id',
+      transaction_reference_id: 'transfer.transaction_reference_id',
+    };
+    const sortColumn = sortableColumns[query.sortBy] || 'transfer.created_at';
+    const sortOrder: 'ASC' | 'DESC' = query.order === 'ASC' ? 'ASC' : 'DESC';
+    const qb = this.hubTransferRecordRepository
+      .createQueryBuilder('transfer')
+      .leftJoinAndSelect('transfer.hub', 'hub')
+      .leftJoinAndSelect('transfer.hubManager', 'manager')
+      .leftJoinAndSelect('manager.user', 'requester')
+      .leftJoinAndSelect('transfer.reviewer', 'reviewer')
+      .leftJoinAndSelect('transfer.adminAccount', 'adminAccount')
+      .orderBy(sortColumn, sortOrder)
+      .addOrderBy('transfer.id', sortOrder);
+
+    const search = query.search?.trim();
+    if (search) {
+      qb.andWhere(
+        `(
+          transfer.transaction_reference_id ILIKE :search OR
+          transfer.notes ILIKE :search OR
+          transfer.admin_account_name ILIKE :search OR
+          transfer.admin_account_number ILIKE :search OR
+          hub.branch_name ILIKE :search OR
+          requester.full_name ILIKE :search OR
+          manager.bank_name ILIKE :search OR
+          manager.bank_account_number ILIKE :search
+        )`,
+        { search: `%${search}%` },
+      );
+    }
+    if (query.status === TransferRecordStatus.IN_REVIEW) {
+      qb.andWhere('transfer.status IN (:...reviewStatuses)', {
+        reviewStatuses: [
+          TransferRecordStatus.PENDING,
+          TransferRecordStatus.IN_REVIEW,
+        ],
+      });
+    } else if (query.status === TransferRecordStatus.DECLINED) {
+      qb.andWhere('transfer.status IN (:...declinedStatuses)', {
+        declinedStatuses: [
+          TransferRecordStatus.DECLINED,
+          TransferRecordStatus.REJECTED,
+        ],
+      });
+    } else if (query.status) {
+      qb.andWhere('transfer.status = :status', { status: query.status });
+    }
+    if (query.hubId) {
+      qb.andWhere('transfer.hub_id = :hubId', { hubId: query.hubId });
+    }
+    if (query.hubManagerId) {
+      qb.andWhere('transfer.hub_manager_id = :hubManagerId', {
+        hubManagerId: query.hubManagerId,
+      });
+    }
+    if (query.fromDate) {
+      qb.andWhere('transfer.transfer_date >= :fromDate', {
+        fromDate: new Date(query.fromDate),
+      });
+    }
+    if (query.toDate) {
+      const toDate = new Date(query.toDate);
+      toDate.setUTCHours(23, 59, 59, 999);
+      qb.andWhere('transfer.transfer_date <= :toDate', { toDate });
+    }
+    return qb;
+  }
+
+  private mapAdminTransfer(transfer: HubTransferRecord) {
+    const manager = transfer.hubManager;
+    const requester = manager?.user;
+    const status =
+      transfer.status === TransferRecordStatus.PENDING
+        ? TransferRecordStatus.IN_REVIEW
+        : transfer.status === TransferRecordStatus.REJECTED
+          ? TransferRecordStatus.DECLINED
+          : transfer.status;
+
+    return {
+      id: transfer.id,
+      transfer_id: transfer.transaction_reference_id,
+      date: transfer.transfer_date || transfer.created_at,
+      created_at: transfer.created_at,
+      updated_at: transfer.updated_at,
+      hub: transfer.hub
+        ? {
+            id: transfer.hub.id,
+            name: transfer.hub.branch_name,
+            code: transfer.hub.hub_code,
+          }
+        : null,
+      from_account: {
+        id: manager?.id || transfer.hub_manager_id,
+        name:
+          manager?.bank_name ||
+          (transfer.hub ? `${transfer.hub.branch_name} Hub Cash` : 'Hub Cash'),
+        account_number: manager?.bank_account_number || null,
+        account_holder_name: requester?.full_name || null,
+        branch: manager?.bank_branch || null,
+      },
+      to_account: {
+        id: transfer.admin_account_id,
+        name:
+          transfer.admin_account_name ||
+          transfer.adminAccount?.account_name ||
+          null,
+        account_number:
+          transfer.admin_account_number ||
+          transfer.adminAccount?.account_number ||
+          null,
+        account_holder_name:
+          transfer.admin_account_holder_name ||
+          transfer.adminAccount?.account_holder_name ||
+          null,
+      },
+      requested_by: {
+        id: requester?.id || manager?.user_id || null,
+        name: requester?.full_name || null,
+      },
+      amount: Number(transfer.transferred_amount || 0),
+      reason: transfer.notes || null,
+      proof_file_url: transfer.proof_file_url || null,
+      status,
+      reviewed_by: transfer.reviewer
+        ? {
+            id: transfer.reviewer.id,
+            name: transfer.reviewer.full_name,
+          }
+        : null,
+      reviewed_at: transfer.reviewed_at,
+      admin_notes: transfer.admin_notes,
+      rejection_reason: transfer.rejection_reason,
+    };
   }
 
   // 3. All Expenses (Paginated)
@@ -3275,8 +3357,28 @@ export class HubsService {
   async reviewTransfer(
     id: string,
     dto: ReviewFinanceRequestDto,
-    adminUser: User,
+    adminUser: User | { id?: string; userId?: string },
   ) {
+    const adminUserId =
+      adminUser?.id || ('userId' in adminUser ? adminUser.userId : undefined);
+    if (!adminUserId) {
+      throw new BadRequestException('Admin user ID is required');
+    }
+    if (
+      dto.status !== TransferRecordStatus.APPROVED &&
+      dto.status !== TransferRecordStatus.DECLINED
+    ) {
+      throw new BadRequestException('Status must be APPROVED or DECLINED');
+    }
+    if (
+      dto.status === TransferRecordStatus.DECLINED &&
+      !dto.rejection_reason?.trim()
+    ) {
+      throw new BadRequestException(
+        'Rejection reason is required when declining',
+      );
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -3284,60 +3386,204 @@ export class HubsService {
     try {
       const transfer = await queryRunner.manager.findOne(HubTransferRecord, {
         where: { id },
-        relations: ['hubManager'], // Needed to find finance record
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!transfer) throw new NotFoundException('Transfer record not found');
 
-      if (transfer.status !== TransferRecordStatus.IN_REVIEW) {
+      if (
+        transfer.status !== TransferRecordStatus.IN_REVIEW &&
+        transfer.status !== TransferRecordStatus.PENDING
+      ) {
         throw new BadRequestException(
           `Cannot review transfer. Current status: ${transfer.status}`,
         );
       }
 
-      // Update Transfer Status
-      transfer.status = dto.status;
-      transfer.reviewed_by = adminUser.id;
-      transfer.reviewed_at = new Date();
-      transfer.rejection_reason = dto.rejection_reason || null;
+      const finance = await queryRunner.manager.findOne(HubManagerFinance, {
+        where: { hub_manager_id: transfer.hub_manager_id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!finance) {
+        throw new NotFoundException('Hub finance account not found');
+      }
 
-      // LOGIC: If DECLINED, we must REFUND the amount to the Hub Manager's balance.
-      // Why? Because we deducted it immediately when they created the request.
-      if (dto.status === TransferRecordStatus.DECLINED) {
-        if (!dto.rejection_reason) {
+      const amount = Number(transfer.transferred_amount);
+
+      if (dto.status === TransferRecordStatus.APPROVED) {
+        if (!transfer.funds_reserved) {
+          if (Number(finance.current_balance) < amount) {
+            throw new BadRequestException(
+              'Insufficient Hub balance to approve this transfer',
+            );
+          }
+          finance.current_balance = Number(finance.current_balance) - amount;
+          finance.total_transferred_to_admin =
+            Number(finance.total_transferred_to_admin) + amount;
+        }
+        finance.last_transfer_at = new Date();
+        await queryRunner.manager.save(HubManagerFinance, finance);
+
+        if (!transfer.admin_account_id) {
           throw new BadRequestException(
-            'Rejection reason is required when declining',
+            'Transfer does not have a destination Admin account',
+          );
+        }
+        const adminAccount = await queryRunner.manager.findOne(AdminAccount, {
+          where: { id: transfer.admin_account_id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!adminAccount) {
+          throw new NotFoundException('Destination Admin account not found');
+        }
+        if (!adminAccount.is_active) {
+          throw new BadRequestException(
+            'Destination Admin account is inactive',
           );
         }
 
-        const finance = await queryRunner.manager.findOne(HubManagerFinance, {
-          where: { hub_manager_id: transfer.hub_manager_id },
+        const balanceBefore = Number(adminAccount.current_balance);
+        const balanceAfter = balanceBefore + amount;
+        adminAccount.current_balance = balanceAfter;
+        await queryRunner.manager.save(AdminAccount, adminAccount);
+
+        const statement = queryRunner.manager.create(AdminAccountStatement, {
+          account_id: adminAccount.id,
+          type: AccountTransactionType.CREDIT,
+          credit_amount: amount,
+          debit_amount: 0,
+          balance_before: balanceBefore,
+          balance_after: balanceAfter,
+          description: `Hub transfer from ${transfer.admin_account_holder_name || transfer.hub_id}: ${transfer.notes || transfer.transaction_reference_id}`,
+          reference_type: AccountReferenceType.HUB_TRANSFER,
+          reference_id: transfer.transaction_reference_id || transfer.id,
+          created_by_id: adminUserId,
         });
-
-        if (finance) {
-          // Revert the deduction
-          finance.current_balance =
-            Number(finance.current_balance) +
-            Number(transfer.transferred_amount);
-          // Also revert the "Total Transferred" stat since it was rejected
-          finance.total_transferred_to_admin =
-            Number(finance.total_transferred_to_admin) -
-            Number(transfer.transferred_amount);
-
-          await queryRunner.manager.save(finance);
-        }
+        await queryRunner.manager.save(AdminAccountStatement, statement);
+      } else if (transfer.funds_reserved) {
+        // Compatibility for requests submitted before debiting moved to approval.
+        finance.current_balance = Number(finance.current_balance) + amount;
+        finance.total_transferred_to_admin = Math.max(
+          0,
+          Number(finance.total_transferred_to_admin) - amount,
+        );
+        await queryRunner.manager.save(HubManagerFinance, finance);
       }
 
-      await queryRunner.manager.save(transfer);
+      transfer.status = dto.status;
+      transfer.reviewed_by = adminUserId;
+      transfer.reviewed_at = new Date();
+      transfer.rejection_reason = dto.rejection_reason?.trim() || null;
+      transfer.admin_notes = dto.admin_notes?.trim() || null;
+      transfer.funds_reserved = false;
+      await queryRunner.manager.save(HubTransferRecord, transfer);
+
+      if (dto.status === TransferRecordStatus.DECLINED) {
+        const manager = await queryRunner.manager.findOne(HubManager, {
+          where: { id: transfer.hub_manager_id },
+        });
+        if (!manager) {
+          throw new NotFoundException('Requesting Hub Manager not found');
+        }
+        await this.notificationsService.create(
+          {
+            recipient_user_id: manager.user_id,
+            recipient_role: UserRole.HUB_MANAGER,
+            type: 'HUB_TRANSFER_DECLINED',
+            category: NotificationCategory.FINANCE,
+            title: 'Transfer request declined',
+            message: `Transfer ${transfer.transaction_reference_id || transfer.id} for BDT ${amount.toFixed(2)} was declined. Reason: ${transfer.rejection_reason}`,
+            entity_type: NotificationEntityType.TRANSFER,
+            entity_id: transfer.id,
+            action_url: `/hub/finance/transfers/${transfer.id}`,
+            metadata: {
+              transfer_id: transfer.id,
+              transaction_reference_id: transfer.transaction_reference_id,
+              amount,
+              rejection_reason: transfer.rejection_reason,
+              reviewed_by: adminUserId,
+            },
+            dedupe_key: `HUB_TRANSFER_DECLINED:${transfer.id}`,
+          },
+          queryRunner.manager,
+        );
+      }
+
       await queryRunner.commitTransaction();
 
-      return transfer;
+      return {
+        id: transfer.id,
+        transfer_id: transfer.transaction_reference_id,
+        status: transfer.status,
+        amount,
+        reviewed_by: adminUserId,
+        reviewed_at: transfer.reviewed_at,
+        admin_notes: transfer.admin_notes,
+        rejection_reason: transfer.rejection_reason,
+        notification_sent: dto.status === TransferRecordStatus.DECLINED,
+      };
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async reviewTransfersBulk(
+    dto: BulkReviewTransferDto,
+    adminUser: User | { id?: string; userId?: string },
+  ) {
+    if (
+      dto.status === TransferRecordStatus.DECLINED &&
+      !dto.rejection_reason?.trim()
+    ) {
+      throw new BadRequestException(
+        'Rejection reason is required when declining transfers',
+      );
+    }
+
+    const transferIds = Array.from(new Set(dto.transfer_ids));
+    const results: Array<{
+      transfer_id: string;
+      success: boolean;
+      status?: TransferRecordStatus;
+      error?: string;
+    }> = [];
+
+    for (const transferId of transferIds) {
+      try {
+        const reviewed = await this.reviewTransfer(
+          transferId,
+          {
+            status: dto.status,
+            rejection_reason: dto.rejection_reason,
+            admin_notes: dto.admin_notes,
+          },
+          adminUser,
+        );
+        results.push({
+          transfer_id: transferId,
+          success: true,
+          status: reviewed.status,
+        });
+      } catch (error) {
+        results.push({
+          transfer_id: transferId,
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Transfer review failed',
+        });
+      }
+    }
+
+    const success = results.filter((result) => result.success).length;
+    return {
+      requested: transferIds.length,
+      success,
+      failed: transferIds.length - success,
+      results,
+    };
   }
 
   // 7. ADMIN REVIEW EXPENSE (Approve/Decline)

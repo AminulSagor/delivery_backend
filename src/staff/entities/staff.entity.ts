@@ -6,15 +6,18 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Hub } from '../../hubs/entities/hub.entity';
 import { StaffPosition } from '../../common/enums/staff-position.enum';
+import { StaffPayoutMethod } from './staff-payout-method.entity';
 
 export enum BikeType {
   BICYCLE = 'BICYCLE',
   MOTORCYCLE = 'MOTORCYCLE',
   SCOOTER = 'SCOOTER',
+  CAR = 'CAR',
   VAN = 'VAN',
 }
 
@@ -39,6 +42,9 @@ export class Staff {
   @ManyToOne(() => Hub)
   @JoinColumn({ name: 'hub_id' })
   hub: Hub;
+
+  @OneToMany(() => StaffPayoutMethod, (payoutMethod) => payoutMethod.staff)
+  payout_methods: StaffPayoutMethod[];
 
   // Position/Role
   @Column({

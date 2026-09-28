@@ -35,6 +35,7 @@ import { MerchantInvoice } from '../merchant/entities/merchant-invoice.entity';
 import { AdminDashboardController } from './controllers/admin-dashboard.controller';
 import { AdminDashboardService } from './services/admin-dashboard.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { HubsModule } from '../hubs/hubs.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ParcelsModule,
     SalaryModule,
     NotificationsModule,
+    HubsModule,
   ],
   controllers: [
     PayoutHistoryController,

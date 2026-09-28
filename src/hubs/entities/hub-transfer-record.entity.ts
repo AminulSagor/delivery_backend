@@ -96,6 +96,14 @@ export class HubTransferRecord {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /**
+   * Compatibility flag for requests created before approval-time accounting.
+   * Legacy requests deducted the Hub balance when submitted. New requests do
+   * not reserve funds and are debited only after Admin approval.
+   */
+  @Column({ type: 'boolean', default: true })
+  funds_reserved: boolean;
+
   // ===== TIMESTAMPS =====
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   transfer_date: Date;

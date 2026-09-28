@@ -131,18 +131,35 @@ export interface StaffListItem {
   hub?: {
     id: string;
     branch_name: string;
+    hub_code: string;
   } | null;
+  hub_id: string;
+  hub_name: string | null;
+  hub_code: string | null;
 }
 
 export interface StaffDetail extends StaffListItem {
   secondary_phone: string | null;
   guardian_mobile_no: string;
-  nid_number: string;
+  nid_number: string | null;
   license_no: string | null;
   present_address: string;
   permanent_address: string;
   fixed_salary: number;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_branch: string | null;
+  district: string | null;
+  account_holder_name: string | null;
+  routing_number: string | null;
+  nid_front_photo: string | null;
+  nid_back_photo: string | null;
+  license_front_photo: string | null;
+  license_back_photo: string | null;
+  parent_nid_front_photo: string | null;
+  parent_nid_back_photo: string | null;
   created_at: Date;
+  updated_at: Date;
 }
 
 export interface StaffActionResponse {
@@ -1337,12 +1354,21 @@ export function toStaffListItem(staff: any): StaffListItem {
       ? {
           id: staff.hub.id,
           branch_name: staff.hub.branch_name,
+          hub_code: staff.hub.hub_code,
         }
       : null,
+    hub_id: staff.hub_id,
+    hub_name: staff.hub?.branch_name ?? null,
+    hub_code: staff.hub?.hub_code ?? null,
   };
 }
 
 export function toStaffDetail(staff: any): StaffDetail {
+  const payoutMethod =
+    staff.payout_methods?.find(
+      (method: any) => method.is_default && method.is_active,
+    ) ?? staff.payout_methods?.find((method: any) => method.is_active);
+
   return {
     ...toStaffListItem(staff),
     secondary_phone: staff.secondary_phone || null,
@@ -1352,7 +1378,20 @@ export function toStaffDetail(staff: any): StaffDetail {
     present_address: staff.present_address,
     permanent_address: staff.permanent_address,
     fixed_salary: staff.fixed_salary,
+    bank_name: staff.bank_name,
+    bank_account_number: staff.bank_account_number,
+    bank_branch: staff.bank_branch,
+    district: payoutMethod?.district ?? null,
+    account_holder_name: payoutMethod?.account_holder_name ?? null,
+    routing_number: payoutMethod?.routing_number ?? null,
+    nid_front_photo: staff.nid_front_photo ?? null,
+    nid_back_photo: staff.nid_back_photo ?? null,
+    license_front_photo: staff.license_front_photo ?? null,
+    license_back_photo: staff.license_back_photo ?? null,
+    parent_nid_front_photo: staff.parent_nid_front_photo ?? null,
+    parent_nid_back_photo: staff.parent_nid_back_photo ?? null,
     created_at: staff.created_at,
+    updated_at: staff.updated_at,
   };
 }
 

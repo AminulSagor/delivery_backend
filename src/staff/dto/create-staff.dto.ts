@@ -8,6 +8,7 @@ import {
   IsNumber,
   Min,
   MinLength,
+  IsUUID,
 } from 'class-validator';
 import { BikeType } from '../entities/staff.entity';
 import { StaffPosition } from '../../common/enums/staff-position.enum';
@@ -130,7 +131,7 @@ export class CreateStaffDto {
   parent_nid_back_photo: string;
 
   // Hub assignment (required for Admin)
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   hub_id: string;
 }

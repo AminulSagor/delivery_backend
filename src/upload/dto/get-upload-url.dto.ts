@@ -13,6 +13,13 @@ export enum UploadModule {
   RIDERS_NID = 'riders/nid',
   RIDERS_LICENSE = 'riders/license',
   RIDERS_PARENT_NID = 'riders/parent-nid',
+
+  STAFF_PROFILE = 'staff/profile',
+  STAFF_NID = 'staff/nid',
+  STAFF_LICENSE = 'staff/license',
+  STAFF_PARENT_NID = 'staff/parent-nid',
+
+  HUB_TRANSFER_PROOF = 'hubs/transfer-proofs',
 }
 
 export class GetUploadUrlDto {

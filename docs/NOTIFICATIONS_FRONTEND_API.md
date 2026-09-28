@@ -26,17 +26,17 @@ or update their own notifications.
 
 ## Routes
 
-| Method | Route | Body | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/notifications` | None | Paginated notification list |
-| `GET` | `/notifications/unread-count` | None | Notification badge count |
-| `PATCH` | `/notifications/:id/read` | None | Mark one notification as read |
-| `PATCH` | `/notifications/read-all` | None | Mark all current-user notifications as read |
+| Method  | Route                         | Body | Purpose                                     |
+| ------- | ----------------------------- | ---- | ------------------------------------------- |
+| `GET`   | `/notifications`              | None | Paginated notification list                 |
+| `GET`   | `/notifications/unread-count` | None | Notification badge count                    |
+| `PATCH` | `/notifications/:id/read`     | None | Mark one notification as read               |
+| `PATCH` | `/notifications/read-all`     | None | Mark all current-user notifications as read |
 
 The existing Admin route below now creates a real Hub Manager notification:
 
-| Method | Route | Body | Purpose |
-| --- | --- | --- | --- |
+| Method | Route                                  | Body                   | Purpose                                      |
+| ------ | -------------------------------------- | ---------------------- | -------------------------------------------- |
 | `POST` | `/admin/hub-collections/:hubId/notify` | `{ "message": "..." }` | Send an in-app message to that Hub's manager |
 
 ## 1. Get Notifications
@@ -47,13 +47,13 @@ GET /notifications?page=1&limit=20&status=ALL
 
 ### Query parameters
 
-| Parameter | Required | Default | Allowed values |
-| --- | --- | --- | --- |
-| `page` | No | `1` | Integer greater than or equal to `1` |
-| `limit` | No | `20` | Integer from `1` to `100` |
-| `status` | No | `ALL` | `ALL`, `READ`, `UNREAD` |
-| `category` | No | — | `PARCEL`, `PICKUP`, `FINANCE`, `ACCOUNT`, `SYSTEM` |
-| `type` | No | — | An exact notification event type |
+| Parameter  | Required | Default | Allowed values                                     |
+| ---------- | -------- | ------- | -------------------------------------------------- |
+| `page`     | No       | `1`     | Integer greater than or equal to `1`               |
+| `limit`    | No       | `20`    | Integer from `1` to `100`                          |
+| `status`   | No       | `ALL`   | `ALL`, `READ`, `UNREAD`                            |
+| `category` | No       | —       | `PARCEL`, `PICKUP`, `FINANCE`, `ACCOUNT`, `SYSTEM` |
+| `type`     | No       | —       | An exact notification event type                   |
 
 Values are uppercase and case-sensitive.
 
@@ -225,6 +225,7 @@ The Hub Manager receives notifications scoped to their Hub, including:
 - Return or paid return started
 - Returned parcel reached the Hub
 - Parcel issue reported or reopened
+- Admin declined a Hub transfer request
 
 A Hub does not receive a notification for an action performed by that same Hub.
 
@@ -282,6 +283,7 @@ ISSUE_RESOLVED
 ISSUE_REOPENED
 ISSUE_CLEARED
 CANCELLED
+HUB_TRANSFER_DECLINED
 ```
 
 The frontend should display unknown future types using the provided `title` and
@@ -366,7 +368,7 @@ export async function markAllNotificationsRead(token: string) {
 
 ## Current Scope
 
-Parcel lifecycle notifications are generated automatically now. The database
-model and notification service also support `PICKUP`, `FINANCE`, `ACCOUNT`, and
-`SYSTEM` categories so those domain events can be connected later without any
+Parcel lifecycle notifications and declined Hub transfer notifications are
+generated automatically. The database model and notification service also
+support `PICKUP`, `FINANCE`, `ACCOUNT`, and `SYSTEM` categories without any
 frontend API changes.

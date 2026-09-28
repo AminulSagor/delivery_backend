@@ -332,6 +332,16 @@ export class MerchantService {
     page: number;
     limit: number;
     stats: Record<string, any>;
+    summary: {
+      total_merchants: number;
+      top_merchant: {
+        id: string;
+        full_name: string;
+        successful_parcels: number;
+      } | null;
+      top_merchant_transaction: number;
+      currency: 'BDT';
+    };
   }> {
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
@@ -359,13 +369,16 @@ export class MerchantService {
       );
     }
 
-    const [data, total] = await query
-      .skip(skip)
-      .take(limit)
-      .orderBy('merchant.created_at', 'DESC')
-      .getManyAndCount();
+    const [allFilteredMerchants, [data, total]] = await Promise.all([
+      query.clone().getMany(),
+      query
+        .skip(skip)
+        .take(limit)
+        .orderBy('merchant.created_at', 'DESC')
+        .getManyAndCount(),
+    ]);
 
-    const merchantIds = data.map((merchant) => merchant.id);
+    const merchantIds = allFilteredMerchants.map((merchant) => merchant.id);
     let merchantParcelStats: Record<string, any> = {};
 
     if (merchantIds.length > 0) {
@@ -418,12 +431,46 @@ export class MerchantService {
       );
     }
 
+    let topMerchant: Merchant | null = null;
+    let topSuccessfulParcels = -1;
+    let topMerchantTransaction = -1;
+
+    for (const merchant of allFilteredMerchants) {
+      const stats = merchantParcelStats[merchant.id] || {};
+      const successfulParcels = Number(stats.total_delivered) || 0;
+      const transactionAmount = Number(stats.collected_amount) || 0;
+
+      const hasMoreSuccessfulParcels = successfulParcels > topSuccessfulParcels;
+      const winsTransactionTie =
+        successfulParcels === topSuccessfulParcels &&
+        transactionAmount > topMerchantTransaction;
+
+      if (hasMoreSuccessfulParcels || winsTransactionTie) {
+        topMerchant = merchant;
+        topSuccessfulParcels = successfulParcels;
+        topMerchantTransaction = transactionAmount;
+      }
+    }
+
     return {
       data,
       total,
       page,
       limit,
       stats: merchantParcelStats,
+      summary: {
+        total_merchants: total,
+        top_merchant: topMerchant
+          ? {
+              id: topMerchant.id,
+              full_name: topMerchant.user?.full_name || '',
+              successful_parcels: topSuccessfulParcels,
+            }
+          : null,
+        top_merchant_transaction:
+          topMerchantTransaction >= 0 ? topMerchantTransaction : 0,
+        currency: 'BDT',
+      },
     };
   }
 

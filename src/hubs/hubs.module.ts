@@ -17,6 +17,8 @@ import { Parcel } from '../parcels/entities/parcel.entity';
 import { HubExpense } from './entities/hub-expense.entity';
 import { AdminAccount } from 'src/admin/entities/admin-account.entity';
 import { HubDashboardService } from './services/hub-dashboard.service';
+import { AdminAccountStatement } from '../admin/entities/admin-account-statement.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { HubDashboardService } from './services/hub-dashboard.service';
       HubTransferRecord,
       HubExpense,
       AdminAccount,
+      AdminAccountStatement,
       User,
       Rider,
       DeliveryVerification,
@@ -35,6 +38,7 @@ import { HubDashboardService } from './services/hub-dashboard.service';
       Parcel,
     ]),
     forwardRef(() => ParcelsModule),
+    NotificationsModule,
   ],
   providers: [HubsService, HubDashboardService, UsersService],
   controllers: [HubsController],

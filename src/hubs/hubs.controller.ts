@@ -15,7 +15,9 @@ import {
   UploadedFile,
   BadRequestException,
   Req,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
@@ -85,6 +87,8 @@ import {
 } from './dto/hub-dashboard-query.dto';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { ToggleHubThirdPartyDto } from './dto/toggle-hub-third-party.dto';
+import { AdminTransferApprovalQueryDto } from './dto/admin-transfer-approval-query.dto';
+import { BulkReviewTransferDto } from './dto/bulk-review-transfer.dto';
 
 // File storage configuration for transfer proofs
 const transferProofStorage = diskStorage({
@@ -2389,9 +2393,32 @@ export class HubsController {
 
   @Get('admin/finance/transfers')
   @Roles(UserRole.ADMIN)
-  async getAllTransfersAdmin(@Query() query: PaginationDto) {
+  async getAllTransfersAdmin(@Query() query: AdminTransferApprovalQueryDto) {
     const result = await this.hubsService.getAllTransfersForAdmin(query);
-    return { success: true, ...result };
+    return {
+      success: true,
+      ...result,
+      message: 'Transfer approval list retrieved successfully',
+    };
+  }
+
+  @Get('admin/finance/transfers/export')
+  @Roles(UserRole.ADMIN)
+  async exportTransfersAdmin(
+    @Query() query: AdminTransferApprovalQueryDto,
+    @Res() response: Response,
+  ) {
+    const csv = await this.hubsService.exportAllTransfersForAdmin(query);
+    const filename = `hub-transfer-approvals-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.send(`\uFEFF${csv}`);
   }
 
   @Get('admin/finance/transfers/:id')
@@ -2399,6 +2426,35 @@ export class HubsController {
   async getTransferByIdAdmin(@Param('id') id: string) {
     const data = await this.hubsService.getTransferDetailForAdmin(id);
     return { success: true, data };
+  }
+
+  @Patch('admin/finance/transfers/bulk-review')
+  @Roles(UserRole.ADMIN)
+  async reviewTransfersBulk(
+    @Body() dto: BulkReviewTransferDto,
+    @CurrentUser() user: any,
+  ) {
+    const data = await this.hubsService.reviewTransfersBulk(dto, user);
+    return {
+      success: true,
+      data,
+      message: `${data.success} transfer request(s) processed; ${data.failed} failed`,
+    };
+  }
+
+  @Patch('admin/finance/transfers/:id/review')
+  @Roles(UserRole.ADMIN)
+  async reviewTransferAdmin(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewFinanceRequestDto,
+    @CurrentUser() user: any,
+  ) {
+    const data = await this.hubsService.reviewTransfer(id, dto, user);
+    return {
+      success: true,
+      data,
+      message: `Transfer request ${dto.status.toLowerCase()}`,
+    };
   }
 
   @Get('admin/finance/expenses')

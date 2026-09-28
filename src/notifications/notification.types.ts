@@ -17,6 +17,7 @@ export enum NotificationEntityType {
   PICKUP_REQUEST = 'PICKUP_REQUEST',
   INVOICE = 'INVOICE',
   SETTLEMENT = 'SETTLEMENT',
+  TRANSFER = 'TRANSFER',
   USER = 'USER',
   HUB = 'HUB',
 }

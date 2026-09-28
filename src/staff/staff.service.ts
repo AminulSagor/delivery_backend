@@ -21,6 +21,7 @@ import { PayoutTransactionStatus } from '../common/enums/payout-transaction-stat
 import { PayoutTransaction } from '../merchant/entities/payout-transaction.entity';
 import { PayoutMethodType } from '../common/enums/payout-method-type.enum';
 import { PayoutMethodStatus } from '../common/enums/payout-method-status.enum';
+import { StaffPayoutMethod } from './entities/staff-payout-method.entity';
 
 @Injectable()
 export class StaffService {
@@ -178,9 +179,6 @@ export class StaffService {
       const savedStaff = await queryRunner.manager.save(Staff, staff);
 
       // ALWAYS create a staff payout method record with bank account
-      const StaffPayoutMethod = (
-        await import('./entities/staff-payout-method.entity')
-      ).StaffPayoutMethod;
       const payoutRepo = queryRunner.manager.getRepository(StaffPayoutMethod);
 
       const payoutMethod = payoutRepo.create({
@@ -216,7 +214,7 @@ export class StaffService {
       // Load staff with user relation for response
       const staffWithRelations = await this.staffRepository.findOne({
         where: { id: savedStaff.id },
-        relations: ['user', 'hub'],
+        relations: ['user', 'hub', 'payout_methods'],
       });
 
       if (!staffWithRelations) {
@@ -243,6 +241,7 @@ export class StaffService {
     search?: string,
     page: number = 1,
     limit: number = 10,
+    position?: StaffPosition,
   ): Promise<{ data: Staff[]; total: number }> {
     const skip = (page - 1) * limit;
 
@@ -250,6 +249,7 @@ export class StaffService {
       .createQueryBuilder('staff')
       .leftJoinAndSelect('staff.user', 'user')
       .leftJoinAndSelect('staff.hub', 'hub')
+      .leftJoinAndSelect('staff.payout_methods', 'payout_methods')
       .orderBy('staff.created_at', 'DESC');
 
     if (hubId) {
@@ -258,6 +258,10 @@ export class StaffService {
 
     if (isActive !== undefined) {
       query.andWhere('staff.is_active = :isActive', { isActive });
+    }
+
+    if (position) {
+      query.andWhere('staff.position = :position', { position });
     }
 
     if (search) {
@@ -373,7 +377,7 @@ export class StaffService {
 
     const staff = await this.staffRepository.findOne({
       where: whereClause,
-      relations: ['user', 'hub'],
+      relations: ['user', 'hub', 'payout_methods'],
     });
 
     if (!staff) {
@@ -530,10 +534,75 @@ export class StaffService {
       if (updateStaffDto.parent_nid_back_photo)
         staffUpdate.parent_nid_back_photo =
           updateStaffDto.parent_nid_back_photo;
-      if (updateStaffDto.is_active !== undefined)
-        staffUpdate.is_active = updateStaffDto.is_active;
-
       await queryRunner.manager.update(Staff, id, staffUpdate);
+
+      const payoutFieldsChanged = [
+        'bank_name',
+        'bank_account_number',
+        'bank_branch',
+        'district',
+        'account_holder_name',
+        'routing_number',
+      ].some(
+        (field) =>
+          (updateStaffDto as unknown as Record<string, unknown>)[field] !==
+          undefined,
+      );
+
+      if (payoutFieldsChanged) {
+        const payoutRepository =
+          queryRunner.manager.getRepository(StaffPayoutMethod);
+        let payoutMethod = await payoutRepository.findOne({
+          where: {
+            staff_id: id,
+            method_type: PayoutMethodType.BANK_ACCOUNT,
+            is_default: true,
+          },
+        });
+
+        if (!payoutMethod) {
+          payoutMethod = payoutRepository.create({
+            staff_id: id,
+            method_type: PayoutMethodType.BANK_ACCOUNT,
+            status: PayoutMethodStatus.VERIFIED,
+            is_default: true,
+            is_active: true,
+          });
+        }
+
+        if (updateStaffDto.bank_name !== undefined)
+          payoutMethod.bank_name = updateStaffDto.bank_name;
+        if (updateStaffDto.bank_account_number !== undefined)
+          payoutMethod.account_number = updateStaffDto.bank_account_number;
+        if (updateStaffDto.bank_branch !== undefined)
+          payoutMethod.branch_name = updateStaffDto.bank_branch;
+        if (updateStaffDto.district !== undefined)
+          payoutMethod.district = updateStaffDto.district;
+        if (updateStaffDto.account_holder_name !== undefined)
+          payoutMethod.account_holder_name = updateStaffDto.account_holder_name;
+        if (updateStaffDto.routing_number !== undefined)
+          payoutMethod.routing_number = updateStaffDto.routing_number;
+
+        await payoutRepository.save(payoutMethod);
+      }
+
+      if (updateStaffDto.fixed_salary !== undefined) {
+        const financeRepository =
+          queryRunner.manager.getRepository(StaffFinance);
+        const finance = await financeRepository.findOne({
+          where: { staff_id: id },
+        });
+
+        if (finance) {
+          const salaryDifference =
+            Number(updateStaffDto.fixed_salary) - Number(staff.fixed_salary);
+          finance.remaining_balance = Math.max(
+            0,
+            Number(finance.remaining_balance) + salaryDifference,
+          );
+          await financeRepository.save(finance);
+        }
+      }
 
       await queryRunner.commitTransaction();
 
