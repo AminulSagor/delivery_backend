@@ -46,4 +46,22 @@ describe('ShippingLabelService', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(3000);
   });
+
+  it('marks generated return parcels with the RETURN label status', () => {
+    const service = new ShippingLabelService();
+    const returnParcel = parcel('004');
+    returnParcel.is_return_parcel = true;
+
+    expect((service as any).labelStatus(returnParcel)).toBe('RETURN');
+  });
+
+  it('formats a normal parcel status for printing', () => {
+    const service = new ShippingLabelService();
+    const deliveryParcel = parcel('005');
+    deliveryParcel.status = 'OUT_FOR_DELIVERY' as any;
+
+    expect((service as any).labelStatus(deliveryParcel)).toBe(
+      'OUT FOR DELIVERY',
+    );
+  });
 });

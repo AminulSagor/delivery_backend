@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument = require('pdfkit');
 import * as bwipjs from 'bwip-js';
-import { Parcel } from '../entities/parcel.entity';
+import { Parcel, ParcelStatus } from '../entities/parcel.entity';
 import { ShippingLabelLayout } from '../dto/shipping-label.dto';
 
 const MM = 72 / 25.4;
@@ -12,6 +12,14 @@ const COLORS = {
   border: '#D9DEE7',
   soft: '#F5F7FA',
   white: '#FFFFFF',
+};
+const COMPANY = {
+  name: 'Meghswar Courier',
+  phone: process.env.MEGHSWAR_COMPANY_PHONE || '01715080169',
+  address:
+    process.env.MEGHSWAR_COMPANY_ADDRESS ||
+    'House 601, Road 9, Adabor, Dhaka 1207',
+  website: process.env.MEGHSWAR_WEBSITE || 'https://www.meghswar.com',
 };
 
 @Injectable()
@@ -99,8 +107,7 @@ export class ShippingLabelService {
       .save()
       .roundedRect(x, y, width, height, 8 * scale)
       .lineWidth(line)
-      .strokeColor(COLORS.border)
-      .stroke();
+      .fillAndStroke(COLORS.white, COLORS.border);
 
     document
       .fillColor(COLORS.orange)
@@ -118,22 +125,31 @@ export class ShippingLabelService {
         contentX,
         y + padding + 24 * verticalScale,
       );
-    document
-      .fillColor(COLORS.navy)
-      .font('Helvetica-Bold')
-      .fontSize(font(10))
-      .text(
-        'OFFICIAL SHIPPING LABEL',
-        x + width * 0.58,
-        y + padding + 4 * verticalScale,
-        {
-          width: width * 0.38 - padding,
-          align: 'right',
-        },
-      );
 
     const barcodeText =
       parcel.tracking_number || parcel.parcel_tx_id || parcel.id;
+    const qrCode = await bwipjs.toBuffer({
+      bcid: 'qrcode',
+      text: `${COMPANY.website}/track/${encodeURIComponent(barcodeText)}`,
+      scale: 3,
+      padding: 0,
+      backgroundcolor: 'FFFFFF',
+    });
+    const qrSize = Math.min(46 * verticalScale, width * 0.17);
+    document.image(qrCode, x + width - padding - qrSize, y + padding, {
+      fit: [qrSize, qrSize],
+    });
+
+    const labelStatus = this.labelStatus(parcel);
+    document
+      .fillColor(COLORS.navy)
+      .font('Helvetica-Bold')
+      .fontSize(font(8.5))
+      .text(labelStatus, x + width * 0.55, y + padding + 4 * verticalScale, {
+        width: width * 0.25,
+        align: 'right',
+      });
+
     const barcode = await bwipjs.toBuffer({
       bcid: 'code128',
       text: barcodeText,
@@ -219,18 +235,25 @@ export class ShippingLabelService {
       'Pickup Hub';
     const deliveryHub =
       parcel.destinationHub?.branch_name ||
-      parcel.delivery_coverage_area?.zone ||
       parcel.currentHub?.branch_name ||
       'Delivery Hub';
+    const coverage = parcel.delivery_coverage_area;
+    const deliveryRoute = [
+      deliveryHub,
+      coverage?.zone ? `Z-${coverage.zone}` : null,
+      coverage?.area ? `A-${coverage.area}` : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
     this.drawPair(
       document,
       contentX,
       routeY,
       contentWidth,
-      'PICKUP HUB',
+      'SORT / PICKUP HUB',
       pickupHub,
-      'DELIVERY HUB',
-      deliveryHub,
+      'DELIVERY ROUTE',
+      deliveryRoute,
       font,
       verticalScale,
     );
@@ -332,12 +355,14 @@ export class ShippingLabelService {
       .fillColor(COLORS.muted)
       .font('Helvetica-Bold')
       .fontSize(font(7))
-      .text('DESCRIPTION', contentX, footerY)
+      .text('NOTE', contentX, footerY)
       .fillColor(COLORS.navy)
       .font('Helvetica')
       .fontSize(font(7.5))
       .text(
-        parcel.product_description || parcel.special_instructions || 'Parcel',
+        parcel.special_instructions ||
+          parcel.product_description ||
+          merchantName,
         contentX,
         footerY + 10 * verticalScale,
         {
@@ -361,12 +386,27 @@ export class ShippingLabelService {
       .fillColor(COLORS.orange)
       .font('Helvetica-Bold')
       .text(
-        'meghswar.com',
+        COMPANY.phone,
         contentX + contentWidth * 0.7,
         footerY + 15 * verticalScale,
         {
           width: contentWidth * 0.3,
           align: 'right',
+        },
+      );
+
+    document
+      .fillColor(COLORS.muted)
+      .font('Helvetica')
+      .fontSize(font(6.2))
+      .text(
+        `${COMPANY.name} | ${COMPANY.address} | ${COMPANY.website.replace(/^https?:\/\//, '')}`,
+        contentX,
+        footerY + 25 * verticalScale,
+        {
+          width: contentWidth,
+          align: 'center',
+          ellipsis: true,
         },
       );
 
@@ -436,7 +476,22 @@ export class ShippingLabelService {
   }
 
   private money(value: number | null | undefined): string {
-    return `BDT ${Number(value || 0).toFixed(0)}`;
+    return `${Number(value || 0).toFixed(0)} TK`;
+  }
+
+  private labelStatus(parcel: Parcel): string {
+    const returnStatuses = new Set<ParcelStatus>([
+      ParcelStatus.RETURNED,
+      ParcelStatus.PAID_RETURN,
+      ParcelStatus.RETURNED_TO_HUB,
+      ParcelStatus.RETURN_TO_MERCHANT,
+    ]);
+
+    if (parcel.is_return_parcel || returnStatuses.has(parcel.status)) {
+      return 'RETURN';
+    }
+
+    return String(parcel.status || 'PARCEL').replace(/_/g, ' ');
   }
 
   private formatDate(value: Date | null | undefined): string {

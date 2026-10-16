@@ -119,6 +119,10 @@ type CoverageAreaWithNorms = CoverageArea & {
   _area_norm: string;
 };
 
+type MerchantStoreWithCoverage = Store & {
+  merchant_coverage_area?: CoverageArea | null;
+};
+
 interface ParcelListFilterOptions {
   search?: string;
   merchantId?: string;
@@ -4635,6 +4639,197 @@ export class ParcelsService {
   }
 
   /**
+   * Rider return work grouped by merchant for the Return task cards.
+   */
+  async getRiderReturnTasks(
+    riderId: string,
+    tab: 'pending' | 'completed' = 'pending',
+  ) {
+    const parcels = await this.findRiderReturnTaskParcels(riderId, tab);
+    const merchantStores = await this.getMerchantStoresMap(parcels);
+    return this.groupRiderReturnTasks(parcels, merchantStores);
+  }
+
+  /**
+   * One merchant return task with the original customer parcel information.
+   */
+  async getRiderReturnTaskDetail(
+    merchantId: string,
+    riderId: string,
+    tab: 'pending' | 'completed' | 'all' = 'pending',
+  ) {
+    const tabs: Array<'pending' | 'completed'> =
+      tab === 'all' ? ['pending', 'completed'] : [tab];
+    const parcelGroups = await Promise.all(
+      tabs.map((selectedTab) =>
+        this.findRiderReturnTaskParcels(riderId, selectedTab, merchantId),
+      ),
+    );
+    const parcels = parcelGroups.flat();
+
+    if (parcels.length === 0) {
+      throw new NotFoundException(
+        'Return task not found or not assigned to you',
+      );
+    }
+
+    const merchantStores = await this.getMerchantStoresMap(parcels);
+    return this.groupRiderReturnTasks(parcels, merchantStores)[0];
+  }
+
+  /**
+   * Complete every pending return parcel assigned to this rider for a merchant.
+   */
+  async completeRiderReturnTask(merchantId: string, riderId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const parcels = await manager
+        .getRepository(Parcel)
+        .createQueryBuilder('parcel')
+        .setLock('pessimistic_write')
+        .where('parcel.merchant_id = :merchantId', { merchantId })
+        .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
+        .andWhere('parcel.is_return_parcel = true')
+        .andWhere('parcel.status = :status', {
+          status: ParcelStatus.ASSIGNED_TO_RIDER,
+        })
+        .getMany();
+
+      if (parcels.length === 0) {
+        throw new NotFoundException(
+          'No pending return parcels found for this merchant',
+        );
+      }
+
+      const completedAt = new Date();
+      for (const parcel of parcels) {
+        parcel.status = ParcelStatus.RETURN_TO_MERCHANT;
+        parcel.rider_action_status = ParcelStatus.RETURN_TO_MERCHANT;
+        parcel.rider_action_rider_id = riderId;
+        parcel.rider_action_at = completedAt;
+        parcel.completed_at = completedAt;
+        parcel.delivered_at = completedAt;
+        parcel.tracking_context = {
+          actor_type: ParcelTrackingActorType.RIDER,
+          actor_id: riderId,
+          source: 'RIDER_RETURN_TASK',
+          event_type: ParcelTrackingEventType.RETURN_TO_MERCHANT,
+          title: 'Returned to merchant',
+          description: 'The rider handed the return parcel to the merchant.',
+        };
+      }
+
+      await manager.save(Parcel, parcels);
+
+      return {
+        merchant_id: merchantId,
+        completed_at: completedAt,
+        parcel_count: parcels.length,
+        parcels: parcels.map((parcel) => ({
+          id: parcel.id,
+          parcel_id: parcel.parcel_tx_id || parcel.tracking_number,
+          status: parcel.status,
+        })),
+      };
+    });
+  }
+
+  private async findRiderReturnTaskParcels(
+    riderId: string,
+    tab: 'pending' | 'completed',
+    merchantId?: string,
+  ): Promise<Parcel[]> {
+    const { start: todayStart, end: todayEnd } = getDhakaTodayRange();
+    const where: FindOptionsWhere<Parcel> = {
+      assigned_rider_id: riderId,
+      is_return_parcel: true,
+    };
+
+    if (merchantId) {
+      where.merchant_id = merchantId;
+    }
+
+    if (tab === 'pending') {
+      where.status = ParcelStatus.ASSIGNED_TO_RIDER;
+      where.assigned_at = Between(todayStart, todayEnd);
+    } else {
+      where.rider_action_rider_id = riderId;
+      where.rider_action_at = Between(todayStart, todayEnd);
+      where.rider_action_status = ParcelStatus.RETURN_TO_MERCHANT;
+    }
+
+    return this.parcelRepository.find({
+      where,
+      relations: [
+        'merchant',
+        'merchant.user',
+        'merchant.merchant_profile',
+        'store',
+        'store.merchant',
+        'store.merchant.user',
+        'originalParcel',
+      ],
+      order: { assigned_at: 'DESC', updated_at: 'DESC' },
+    });
+  }
+
+  private groupRiderReturnTasks(
+    parcels: Parcel[],
+    merchantStoresMap: Map<string, MerchantStoreWithCoverage[]>,
+  ) {
+    const grouped = new Map<string, Parcel[]>();
+
+    for (const parcel of parcels) {
+      const merchantId = parcel.merchant?.id || parcel.merchant_id;
+      const merchantParcels = grouped.get(merchantId) || [];
+      merchantParcels.push(parcel);
+      grouped.set(merchantId, merchantParcels);
+    }
+
+    return Array.from(grouped.entries()).map(([merchantId, returnParcels]) => {
+      const first = returnParcels[0];
+      const merchant = first.merchant || first.store?.merchant;
+      const stores =
+        merchantStoresMap.get(merchantId) ||
+        (first.store ? [first.store as MerchantStoreWithCoverage] : []);
+      const defaultStore =
+        stores.find((store) => store.is_default) ||
+        (first.store as MerchantStoreWithCoverage | null) ||
+        stores[0] ||
+        null;
+
+      return {
+        id: merchantId,
+        merchant_id: merchantId,
+        name: defaultStore?.business_name || merchant?.user?.full_name || 'N/A',
+        address:
+          defaultStore?.business_address || merchant?.full_address || 'N/A',
+        phone: defaultStore?.phone_number || merchant?.user?.phone || 'N/A',
+        image: merchant?.merchant_profile?.profile_img_url || null,
+        number_of_parcels: returnParcels.length,
+        parcels: returnParcels.map((returnParcel) => {
+          const originalParcel = returnParcel.originalParcel;
+          return {
+            id: returnParcel.id,
+            return_parcel_id:
+              returnParcel.parcel_tx_id || returnParcel.tracking_number,
+            original_parcel_uuid: originalParcel?.id || null,
+            parcel_id:
+              originalParcel?.parcel_tx_id ||
+              originalParcel?.tracking_number ||
+              returnParcel.parcel_tx_id ||
+              returnParcel.tracking_number,
+            customer_name:
+              originalParcel?.customer_name || returnParcel.customer_name,
+            customer_phone:
+              originalParcel?.customer_phone || returnParcel.customer_phone,
+            status: returnParcel.status,
+          };
+        }),
+      };
+    });
+  }
+
+  /**
    * Get finance summary parcel detail for rider (status-agnostic lookup).
    */
   async getFinanceSummaryParcelDetail(parcelId: string, riderId: string) {
@@ -5663,10 +5858,15 @@ export class ParcelsService {
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('merchant.merchant_profile', 'merchantProfile')
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('store.hub', 'storeHub')
       .leftJoinAndSelect('store.merchant', 'storeMerchant')
       .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect(
+        'storeMerchant.merchant_profile',
+        'storeMerchantProfile',
+      )
       .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
       .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
@@ -5758,7 +5958,10 @@ export class ParcelsService {
     const parcels = await queryBuilder.getMany();
 
     // Transform parcels to response format
-    const items = parcels.map((parcel) => this.toDeliveryOutcomeItem(parcel));
+    const merchantStores = await this.getMerchantStoresMap(parcels);
+    const items = parcels.map((parcel) =>
+      this.toDeliveryOutcomeItem(parcel, merchantStores),
+    );
 
     return {
       parcels: items,
@@ -6137,10 +6340,15 @@ export class ParcelsService {
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('merchant.merchant_profile', 'merchantProfile')
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('store.hub', 'storeHub')
       .leftJoinAndSelect('store.merchant', 'storeMerchant')
       .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect(
+        'storeMerchant.merchant_profile',
+        'storeMerchantProfile',
+      )
       .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.delivery_coverage_area', 'coverageArea')
       .leftJoinAndSelect('parcel.assignedRider', 'rider')
@@ -6187,8 +6395,10 @@ export class ParcelsService {
     const parcels = await queryBuilder.getMany();
 
     // Add reschedule_count only for rescheduled deliveries endpoint
+    const merchantStores = await this.getMerchantStoresMap(parcels);
     const items = parcels.map((parcel) => ({
-      ...this.toDeliveryOutcomeItem(parcel),
+      ...this.toDeliveryOutcomeItem(parcel, merchantStores),
+      attempt: Number(parcel.reschedule_count) || 0,
       reschedule_count: parcel.reschedule_count || 0,
     }));
 
@@ -6226,10 +6436,15 @@ export class ParcelsService {
       .createQueryBuilder('parcel')
       .leftJoinAndSelect('parcel.merchant', 'merchant')
       .leftJoinAndSelect('merchant.user', 'merchantUser')
+      .leftJoinAndSelect('merchant.merchant_profile', 'merchantProfile')
       .leftJoinAndSelect('parcel.store', 'store')
       .leftJoinAndSelect('store.hub', 'storeHub')
       .leftJoinAndSelect('store.merchant', 'storeMerchant')
       .leftJoinAndSelect('storeMerchant.user', 'storeMerchantUser')
+      .leftJoinAndSelect(
+        'storeMerchant.merchant_profile',
+        'storeMerchantProfile',
+      )
       .leftJoinAndSelect('parcel.customer', 'customer')
       .leftJoinAndSelect('parcel.assignedRider', 'assignedRider')
       .leftJoinAndSelect('assignedRider.user', 'assignedRiderUser')
@@ -6297,14 +6512,22 @@ export class ParcelsService {
     const returnParcelMap = new Map(
       returnParcels.map((rp) => [rp.original_parcel_id, rp]),
     );
+    const merchantStores = await this.getMerchantStoresMap(parcels);
 
     // Transform parcels with return parcel info
     const items = parcels.map((parcel) => {
-      const baseItem = this.toDeliveryOutcomeItem(parcel);
+      const baseItem = this.toDeliveryOutcomeItem(
+        parcel,
+        merchantStores,
+        'MERCHANT',
+      );
       const returnParcel = returnParcelMap.get(parcel.id);
 
       return {
         ...baseItem,
+        original_parcel_id: parcel.parcel_tx_id || parcel.tracking_number,
+        new_parcel_id:
+          returnParcel?.parcel_tx_id || returnParcel?.tracking_number || null,
         return_parcel: returnParcel
           ? {
               id: returnParcel.id,
@@ -7060,11 +7283,132 @@ export class ParcelsService {
   /**
    * Helper: Transform parcel to delivery outcome item format
    */
-  private toDeliveryOutcomeItem(parcel: Parcel) {
-    // Build zone string from coverage area
-    const zoneInfo = parcel.delivery_coverage_area
-      ? `${parcel.delivery_coverage_area.area}, ${parcel.delivery_coverage_area.zone}`
+  private async getMerchantStoresMap(
+    parcels: Parcel[],
+  ): Promise<Map<string, MerchantStoreWithCoverage[]>> {
+    const merchantIds = Array.from(
+      new Set(
+        parcels
+          .map(
+            (parcel) =>
+              parcel.merchant?.id ||
+              parcel.store?.merchant_id ||
+              parcel.merchant_id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (merchantIds.length === 0) {
+      return new Map();
+    }
+
+    const stores: MerchantStoreWithCoverage[] = await this.storeRepository.find(
+      {
+        where: { merchant_id: In(merchantIds) },
+        order: { is_default: 'DESC', created_at: 'ASC' },
+      },
+    );
+    const coverageWhere = stores
+      .filter(
+        (store) =>
+          store.carrybee_city_id !== null &&
+          store.carrybee_zone_id !== null &&
+          store.carrybee_area_id !== null,
+      )
+      .map((store) => ({
+        city_id: store.carrybee_city_id as number,
+        zone_id: store.carrybee_zone_id as number,
+        area_id: store.carrybee_area_id as number,
+      }));
+    const coverageAreas =
+      coverageWhere.length > 0
+        ? await this.coverageAreaRepository.find({ where: coverageWhere })
+        : [];
+    const coverageByLocation = new Map(
+      coverageAreas.map((coverage) => [
+        `${coverage.city_id}:${coverage.zone_id}:${coverage.area_id}`,
+        coverage,
+      ]),
+    );
+    const storesByMerchant = new Map<string, MerchantStoreWithCoverage[]>();
+
+    for (const store of stores) {
+      store.merchant_coverage_area = coverageByLocation.get(
+        `${store.carrybee_city_id}:${store.carrybee_zone_id}:${store.carrybee_area_id}`,
+      );
+      const merchantStores = storesByMerchant.get(store.merchant_id) || [];
+      merchantStores.push(store);
+      storesByMerchant.set(store.merchant_id, merchantStores);
+    }
+
+    return storesByMerchant;
+  }
+
+  private toDeliveryOutcomeItem(
+    parcel: Parcel,
+    merchantStoresMap: Map<string, MerchantStoreWithCoverage[]> = new Map(),
+    destinationType: 'CUSTOMER' | 'MERCHANT' = 'CUSTOMER',
+  ) {
+    const merchant = parcel.merchant || parcel.store?.merchant;
+    const merchantId =
+      merchant?.id || parcel.store?.merchant_id || parcel.merchant_id;
+    const merchantStores: MerchantStoreWithCoverage[] =
+      merchantStoresMap.get(merchantId) ||
+      (parcel.store ? [parcel.store as MerchantStoreWithCoverage] : []);
+    const defaultStore =
+      merchantStores.find((store) => store.is_default) ||
+      (parcel.store as MerchantStoreWithCoverage | null) ||
+      merchantStores[0] ||
+      null;
+    const merchantCoverageArea = defaultStore?.merchant_coverage_area;
+    const coverageArea = parcel.delivery_coverage_area;
+    const customerZone = coverageArea
+      ? {
+          id: coverageArea.zone_id,
+          name: coverageArea.zone,
+          area_id: coverageArea.area_id,
+          area_name: coverageArea.area,
+          city_id: coverageArea.city_id,
+          city_name: coverageArea.city,
+          pricing_zone: this.determinePricingZone(coverageArea),
+        }
       : null;
+    const merchantZone = defaultStore
+      ? {
+          id: defaultStore.carrybee_zone_id,
+          name:
+            merchantCoverageArea?.zone ||
+            defaultStore.area ||
+            defaultStore.thana ||
+            null,
+          area_id: defaultStore.carrybee_area_id,
+          area_name: merchantCoverageArea?.area || defaultStore.area,
+          city_id: defaultStore.carrybee_city_id,
+          city_name: merchantCoverageArea?.city || defaultStore.district,
+          pricing_zone: null,
+        }
+      : null;
+    const zone = destinationType === 'MERCHANT' ? merchantZone : customerZone;
+    const destination =
+      destinationType === 'MERCHANT'
+        ? defaultStore?.business_address || merchant?.full_address || null
+        : parcel.customer_address;
+    const merchantName =
+      defaultStore?.business_name || merchant?.user?.full_name || 'N/A';
+    const merchantPhone =
+      defaultStore?.phone_number || merchant?.user?.phone || 'N/A';
+    const merchantImage = merchant?.merchant_profile?.profile_img_url || null;
+    const deliveryCharge = Number(parcel.delivery_charge) || 0;
+    const codCharge = Number(parcel.cod_charge) || 0;
+    const weightCharge = Number(parcel.weight_charge) || 0;
+    const totalCharge = Number(parcel.total_charge) || 0;
+    const discount = Math.max(
+      0,
+      Math.round(
+        (deliveryCharge + codCharge + weightCharge - totalCharge) * 100,
+      ) / 100,
+    );
 
     const successfulActions = [
       ParcelStatus.DELIVERED,
@@ -7102,33 +7446,75 @@ export class ParcelsService {
             : 'NOT_APPLICABLE',
       reason: parcel.return_reason || null,
 
-      destination: parcel.customer_address,
-      zone: zoneInfo,
-
-      store: {
-        name:
-          parcel.store?.business_name ||
-          parcel.merchant?.user?.full_name ||
-          'N/A',
-        phone:
-          parcel.store?.phone_number || parcel.merchant?.user?.phone || 'N/A',
+      destination,
+      zone,
+      zone_display: zone
+        ? [zone.area_name, zone.name].filter(Boolean).join(', ')
+        : null,
+      merchant_name: merchantName,
+      merchant_phone: merchantPhone,
+      merchant_image: merchantImage,
+      merchant: {
+        id: merchantId,
+        name: merchantName,
+        phone: merchantPhone,
+        image: merchantImage,
+        stores: merchantStores.map((store) => ({
+          id: store.id,
+          name: store.business_name,
+          phone: store.phone_number,
+          address: store.business_address,
+          is_default: store.is_default,
+          zone: {
+            id: store.carrybee_zone_id,
+            name:
+              store.merchant_coverage_area?.zone ||
+              store.area ||
+              store.thana ||
+              null,
+            area_id: store.carrybee_area_id,
+            area_name: store.merchant_coverage_area?.area || store.area,
+            city_id: store.carrybee_city_id,
+            city_name: store.merchant_coverage_area?.city || store.district,
+          },
+        })),
       },
 
+      store: {
+        id: defaultStore?.id || null,
+        name: merchantName,
+        phone: merchantPhone,
+        address: defaultStore?.business_address || null,
+        is_default: defaultStore?.is_default || false,
+      },
+
+      charges: {
+        cod_amount: Number(parcel.cod_amount) || 0,
+        delivery_charge: deliveryCharge,
+        cod_charge: codCharge,
+        weight_charge: weightCharge,
+        discount,
+        return_charge: Number(parcel.return_charge) || 0,
+        total_charge: totalCharge,
+      },
       cod_breakdown: {
         cod_amount: Number(parcel.cod_amount) || 0,
         cod_collected_amount: Number(parcel.cod_collected_amount) || 0,
-        delivery_charge: Number(parcel.delivery_charge) || 0,
-        cod_charge: Number(parcel.cod_charge) || 0,
-        weight_charge: Number(parcel.weight_charge) || 0,
+        delivery_charge: deliveryCharge,
+        cod_charge: codCharge,
+        weight_charge: weightCharge,
+        discount,
         return_charge: Number(parcel.return_charge) || 0,
-        total_charge: Number(parcel.total_charge) || 0,
+        total_charge: totalCharge,
       },
 
       age: {
+        display: this.calculateAge(parcel.created_at),
         total_age: this.calculateAge(parcel.created_at),
         created_at: parcel.created_at,
         updated_at: parcel.updated_at,
       },
+      last_updated: parcel.updated_at,
     };
   }
 

@@ -5,6 +5,7 @@ import {
   IsString,
   IsNumber,
   IsInt,
+  IsIn,
   Min,
   Max,
 } from 'class-validator';
@@ -45,7 +46,7 @@ export class DeliveryOutcomeQueryDto extends PaginationDto {
   sortBy?: string = 'updated_at';
 
   @IsOptional()
-  @IsEnum(ParcelStatus, {
+  @IsIn(DELIVERY_OUTCOME_STATUSES, {
     message:
       'Invalid status. Must be one of: PARTIAL_DELIVERY, EXCHANGE, PAID_RETURN, RETURNED',
   })

@@ -10,6 +10,8 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  ParseEnumPipe,
+  DefaultValuePipe,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
@@ -47,6 +49,17 @@ import { RiderApprovalStatus } from '../common/enums/rider-approval-status.enum'
 import { EmergencyStatus } from 'src/common/enums/emergency-type.enum';
 import { CreateEmergencyDto } from './dto/create-emergency.dto';
 import { RiderParcelSummaryQueryDto } from './dto/rider-parcel-summary-query.dto';
+
+enum RiderReturnTaskTab {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+}
+
+enum RiderReturnTaskDetailTab {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  ALL = 'all',
+}
 
 @Controller('riders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -671,6 +684,83 @@ export class RidersController {
       success: true,
       data: parcels.map(toParcelListItem),
       count: parcels.length,
+    };
+  }
+
+  /**
+   * Merchant-grouped return task cards for the rider app.
+   */
+  @Get('return-tasks')
+  @Roles(UserRole.RIDER)
+  async getReturnTasks(
+    @CurrentUser() user: any,
+    @Query(
+      'tab',
+      new DefaultValuePipe(RiderReturnTaskTab.PENDING),
+      new ParseEnumPipe(RiderReturnTaskTab),
+    )
+    tab: RiderReturnTaskTab,
+  ) {
+    const tasks = await this.parcelsService.getRiderReturnTasks(
+      user.riderId,
+      tab,
+    );
+
+    return {
+      success: true,
+      data: tasks,
+      count: tasks.length,
+      tab,
+      message: 'Return tasks retrieved successfully',
+    };
+  }
+
+  /**
+   * Merchant details and original customer parcels for one return task.
+   */
+  @Get('return-tasks/:merchantId')
+  @Roles(UserRole.RIDER)
+  async getReturnTaskDetail(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @CurrentUser() user: any,
+    @Query(
+      'tab',
+      new DefaultValuePipe(RiderReturnTaskDetailTab.PENDING),
+      new ParseEnumPipe(RiderReturnTaskDetailTab),
+    )
+    tab: RiderReturnTaskDetailTab,
+  ) {
+    const task = await this.parcelsService.getRiderReturnTaskDetail(
+      merchantId,
+      user.riderId,
+      tab,
+    );
+
+    return {
+      success: true,
+      data: task,
+      message: 'Return task details retrieved successfully',
+    };
+  }
+
+  /**
+   * Complete every pending return parcel for one merchant.
+   */
+  @Patch('return-tasks/:merchantId/complete')
+  @Roles(UserRole.RIDER)
+  async completeReturnTask(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.parcelsService.completeRiderReturnTask(
+      merchantId,
+      user.riderId,
+    );
+
+    return {
+      success: true,
+      data: result,
+      message: 'Parcels returned to merchant successfully',
     };
   }
 
