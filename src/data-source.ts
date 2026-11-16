@@ -44,8 +44,10 @@ const isProductionEnv = !!(
   databaseUrl
 );
 
-// Synchronize: hardcoded ON for now so schema stays aligned with entities
-const shouldSynchronize = true;
+// Schema changes are migration-only by default. Local developers may opt in to
+// synchronization explicitly, but it is never allowed against Railway/production.
+const shouldSynchronize =
+  !isProductionEnv && process.env.DB_SYNCHRONIZE === 'true';
 
 // Base configuration shared across environments
 const baseConfig = {
@@ -131,14 +133,10 @@ console.log('='.repeat(60));
 console.log(`Environment: ${isProductionEnv ? 'PRODUCTION' : 'DEVELOPMENT'}`);
 console.log(`Mode: ${isTs ? 'TypeScript' : 'JavaScript (compiled)'}`);
 console.log(`DATABASE_URL: ${databaseUrl ? '✅ SET' : '❌ NOT SET'}`);
-console.log(`Synchronize: ✅ ALWAYS ENABLED (auto-sync schema)`);
-console.log('');
 console.log(
-  '🔄 SYNCHRONIZE is ENABLED - TypeORM will auto-create/update ALL tables!',
+  `Synchronize: ${shouldSynchronize ? 'ENABLED (local opt-in)' : 'DISABLED'}`,
 );
-console.log(
-  '   ℹ️  No manual migrations needed. Schema syncs automatically on startup.',
-);
+console.log('Migrations: enabled during application deployment/startup');
 console.log('');
 
 // Show paths being used

@@ -19,6 +19,9 @@ import { CreateReturnChargeConfigDto } from './dto/create-return-charge-config.d
 import { UpdateReturnChargeConfigDto } from './dto/update-return-charge-config.dto';
 import { BulkCreateReturnChargesDto } from './dto/bulk-create-return-charges.dto';
 import { WeightChargeCalculationResult } from './dto/calculate-weight-charge.dto';
+import { PricingDefaultConfiguration } from './entities/pricing-default-configuration.entity';
+import { ReturnChargeDefaultConfiguration } from './entities/return-charge-default-configuration.entity';
+import { UpsertPricingDefaultsDto } from './dto/upsert-pricing-defaults.dto';
 
 /**
  * FIXED weight charge values per zone
@@ -66,6 +69,9 @@ const DEFAULT_PRICING_CONFIGS: Record<
   },
 };
 
+const DEFAULT_START_DATE = new Date('2026-01-01T00:00:00.000Z');
+const DEFAULT_END_DATE = new Date('2099-12-31T23:59:59.999Z');
+
 @Injectable()
 export class PricingService {
   private readonly logger = new Logger(PricingService.name);
@@ -75,7 +81,206 @@ export class PricingService {
     private pricingRepository: Repository<PricingConfiguration>,
     @InjectRepository(ReturnChargeConfiguration)
     private returnChargeRepository: Repository<ReturnChargeConfiguration>,
+    @InjectRepository(PricingDefaultConfiguration)
+    private pricingDefaultRepository: Repository<PricingDefaultConfiguration>,
+    @InjectRepository(ReturnChargeDefaultConfiguration)
+    private returnChargeDefaultRepository: Repository<ReturnChargeDefaultConfiguration>,
   ) {}
+
+  /**
+   * Return the complete default matrix. Database values override the safe
+   * bootstrap values so the API remains usable before the first admin update.
+   */
+  async getPricingDefaults(
+    requestedZone?: PricingZone,
+  ): Promise<Record<string, any>> {
+    if (requestedZone && !Object.values(PricingZone).includes(requestedZone)) {
+      throw new BadRequestException(`Invalid pricing zone: ${requestedZone}`);
+    }
+
+    const zones = requestedZone ? [requestedZone] : Object.values(PricingZone);
+    const [deliveryRows, returnRows] = await Promise.all([
+      this.pricingDefaultRepository.find(),
+      this.returnChargeDefaultRepository.find(),
+    ]);
+
+    const deliveryMap = new Map(deliveryRows.map((row) => [row.zone, row]));
+    const returnMap = new Map(
+      returnRows.map((row) => [`${row.zone}:${row.return_status}`, row]),
+    );
+
+    const deliveryCharges: Record<string, any> = {};
+    const returnCharges: Record<string, any> = {};
+
+    for (const zone of zones) {
+      const delivery = deliveryMap.get(zone);
+      const bootstrap = DEFAULT_PRICING_CONFIGS[zone];
+      deliveryCharges[zone] = delivery
+        ? {
+            id: delivery.id,
+            zone,
+            delivery_charge: Number(delivery.delivery_charge),
+            weight_step_kg: Number(delivery.weight_step_kg),
+            cod_percentage: Number(delivery.cod_percentage),
+            discount_percentage: Number(delivery.discount_percentage),
+            start_date: delivery.start_date,
+            end_date: delivery.end_date,
+            created_at: delivery.created_at,
+            updated_at: delivery.updated_at,
+          }
+        : {
+            id: null,
+            zone,
+            ...bootstrap,
+            start_date: DEFAULT_START_DATE,
+            end_date: DEFAULT_END_DATE,
+            created_at: null,
+            updated_at: null,
+          };
+
+      const statuses: Record<string, any> = {};
+      for (const status of Object.values(ReturnStatus)) {
+        const returnConfig = returnMap.get(`${zone}:${status}`);
+        statuses[status] = returnConfig
+          ? {
+              id: returnConfig.id,
+              zone,
+              return_status: status,
+              return_delivery_charge: Number(
+                returnConfig.return_delivery_charge,
+              ),
+              return_weight_charge_per_kg: Number(
+                returnConfig.return_weight_charge_per_kg,
+              ),
+              return_cod_percentage: Number(returnConfig.return_cod_percentage),
+              discount_percentage: Number(returnConfig.discount_percentage),
+              start_date: returnConfig.start_date,
+              end_date: returnConfig.end_date,
+              created_at: returnConfig.created_at,
+              updated_at: returnConfig.updated_at,
+            }
+          : {
+              id: null,
+              zone,
+              return_status: status,
+              return_delivery_charge: 0,
+              return_weight_charge_per_kg: 0,
+              return_cod_percentage: 0,
+              discount_percentage: 0,
+              start_date: DEFAULT_START_DATE,
+              end_date: DEFAULT_END_DATE,
+              created_at: null,
+              updated_at: null,
+            };
+      }
+      returnCharges[zone] = statuses;
+    }
+
+    return {
+      delivery_charges: deliveryCharges,
+      return_charges: returnCharges,
+    };
+  }
+
+  /** Atomically replace all 3 delivery and all 12 return defaults. */
+  async upsertPricingDefaults(
+    dto: UpsertPricingDefaultsDto,
+  ): Promise<Record<string, any>> {
+    this.validateCompleteDefaults(dto);
+
+    await this.pricingDefaultRepository.manager.transaction(async (manager) => {
+      const deliveryRepository = manager.getRepository(
+        PricingDefaultConfiguration,
+      );
+      const returnRepository = manager.getRepository(
+        ReturnChargeDefaultConfiguration,
+      );
+
+      for (const input of dto.delivery_charges) {
+        const existing = await deliveryRepository.findOne({
+          where: { zone: input.zone },
+        });
+        const entity =
+          existing ?? deliveryRepository.create({ zone: input.zone });
+        Object.assign(entity, {
+          delivery_charge: input.delivery_charge,
+          weight_step_kg: input.weight_step_kg,
+          cod_percentage: input.cod_percentage,
+          discount_percentage: input.discount_percentage,
+          start_date: input.start_date ? new Date(input.start_date) : null,
+          end_date: input.end_date ? new Date(input.end_date) : null,
+        });
+        await deliveryRepository.save(entity);
+      }
+
+      for (const input of dto.return_charges) {
+        const existing = await returnRepository.findOne({
+          where: { zone: input.zone, return_status: input.return_status },
+        });
+        const entity =
+          existing ??
+          returnRepository.create({
+            zone: input.zone,
+            return_status: input.return_status,
+          });
+        Object.assign(entity, {
+          return_delivery_charge: input.return_delivery_charge,
+          return_weight_charge_per_kg: input.return_weight_charge_per_kg,
+          return_cod_percentage: input.return_cod_percentage,
+          discount_percentage: input.discount_percentage,
+          start_date: input.start_date ? new Date(input.start_date) : null,
+          end_date: input.end_date ? new Date(input.end_date) : null,
+        });
+        await returnRepository.save(entity);
+      }
+    });
+
+    return this.getPricingDefaults();
+  }
+
+  private validateCompleteDefaults(dto: UpsertPricingDefaultsDto): void {
+    const zones = Object.values(PricingZone);
+    const statuses = Object.values(ReturnStatus);
+    const deliveryKeys = dto.delivery_charges.map((item) => item.zone);
+    const returnKeys = dto.return_charges.map(
+      (item) => `${item.zone}:${item.return_status}`,
+    );
+
+    if (
+      deliveryKeys.length !== zones.length ||
+      new Set(deliveryKeys).size !== zones.length ||
+      !zones.every((zone) => deliveryKeys.includes(zone))
+    ) {
+      throw new BadRequestException(
+        'delivery_charges must contain each pricing zone exactly once',
+      );
+    }
+
+    const expectedReturnKeys = zones.flatMap((zone) =>
+      statuses.map((status) => `${zone}:${status}`),
+    );
+    if (
+      returnKeys.length !== expectedReturnKeys.length ||
+      new Set(returnKeys).size !== expectedReturnKeys.length ||
+      !expectedReturnKeys.every((key) => returnKeys.includes(key))
+    ) {
+      throw new BadRequestException(
+        'return_charges must contain every zone and return status exactly once',
+      );
+    }
+
+    for (const item of [...dto.delivery_charges, ...dto.return_charges]) {
+      if (
+        item.start_date &&
+        item.end_date &&
+        new Date(item.start_date) > new Date(item.end_date)
+      ) {
+        throw new BadRequestException(
+          `start_date must not be after end_date for zone ${item.zone}`,
+        );
+      }
+    }
+  }
 
   /**
    * Get active pricing configuration for a store and zone
@@ -189,9 +394,7 @@ export class PricingService {
     return saved;
   }
 
-  /**
-   * Get all pricing configurations for a store, grouped by zone with 0-fill
-   */
+  /** Get store pricing, falling back to the global defaults per field group. */
   async findAllForStore(storeId: string): Promise<Record<string, any>> {
     const configs = await this.pricingRepository.find({
       where: { store_id: storeId },
@@ -206,8 +409,11 @@ export class PricingService {
       }
     }
 
-    // Fetch all return charges for this store
-    const returnCharges = await this.getReturnChargesForStore(storeId);
+    const defaults = await this.getPricingDefaults();
+    const returnCharges = await this.getReturnChargesForStore(
+      storeId,
+      defaults.return_charges,
+    );
 
     const deliveryCharges: Record<string, any> = {};
     for (const zone of Object.values(PricingZone)) {
@@ -227,20 +433,23 @@ export class PricingService {
           end_date: config.end_date,
           created_at: config.created_at,
           updated_at: config.updated_at,
+          is_default: false,
         };
       } else {
+        const defaultConfig = defaults.delivery_charges[zone];
         deliveryCharges[zone] = {
           id: null,
           store_id: storeId,
           zone,
-          delivery_charge: 0,
-          weight_step_kg: 0,
-          cod_percentage: 0,
-          discount_percentage: 0,
-          start_date: null,
-          end_date: null,
+          delivery_charge: defaultConfig.delivery_charge,
+          weight_step_kg: defaultConfig.weight_step_kg,
+          cod_percentage: defaultConfig.cod_percentage,
+          discount_percentage: defaultConfig.discount_percentage,
+          start_date: defaultConfig.start_date,
+          end_date: defaultConfig.end_date,
           created_at: null,
           updated_at: null,
+          is_default: true,
         };
       }
     }
@@ -558,6 +767,7 @@ export class PricingService {
    */
   async getReturnChargesForStore(
     storeId: string,
+    defaultReturnCharges?: Record<string, any>,
   ): Promise<Record<string, any>> {
     const configs = await this.returnChargeRepository.find({
       where: { store_id: storeId },
@@ -576,6 +786,8 @@ export class PricingService {
       configMap[config.zone][config.return_status] = config;
     }
 
+    const defaults =
+      defaultReturnCharges ?? (await this.getPricingDefaults()).return_charges;
     const result: Record<string, any> = {};
     for (const zone of Object.values(PricingZone)) {
       const statuses: Record<string, any> = {};
@@ -596,18 +808,22 @@ export class PricingService {
             end_date: config.end_date,
             created_at: config.created_at,
             updated_at: config.updated_at,
+            is_default: false,
           };
         } else {
+          const defaultConfig = defaults[zone][status];
           statuses[status] = {
             id: null,
-            return_delivery_charge: 0,
-            return_weight_charge_per_kg: 0,
-            return_cod_percentage: 0,
-            discount_percentage: 0,
-            start_date: null,
-            end_date: null,
+            return_delivery_charge: defaultConfig.return_delivery_charge,
+            return_weight_charge_per_kg:
+              defaultConfig.return_weight_charge_per_kg,
+            return_cod_percentage: defaultConfig.return_cod_percentage,
+            discount_percentage: defaultConfig.discount_percentage,
+            start_date: defaultConfig.start_date,
+            end_date: defaultConfig.end_date,
             created_at: null,
             updated_at: null,
+            is_default: true,
           };
         }
       }
@@ -780,15 +996,16 @@ export class PricingService {
     const freeWeightKg = FIXED_FREE_WEIGHT_KG; // Always 0.5 kg
     const chargePerStep = FIXED_CHARGE_PER_STEP[zone]; // 10 or 20 based on zone
 
-    // Get configurable weight step from store config or use default
-    const defaults = DEFAULT_PRICING_CONFIGS[zone];
-    let weightStepKg = defaults.weight_step_kg;
+    // Get configurable weight step from store config or global default.
+    const globalDefaults = await this.getPricingDefaults(zone);
+    const defaults = globalDefaults.delivery_charges[zone];
+    let weightStepKg = Number(defaults.weight_step_kg);
 
     // Try to get store-specific weight_step_kg
     if (storeId) {
       const config = await this.getActivePricing(storeId, zone);
       if (config) {
-        weightStepKg = Number(config.weight_step_kg) || defaults.weight_step_kg;
+        weightStepKg = Number(config.weight_step_kg) || weightStepKg;
       }
     }
 

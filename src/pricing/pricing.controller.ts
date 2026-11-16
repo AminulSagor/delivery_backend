@@ -22,6 +22,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PricingZone } from '../common/enums/pricing-zone.enum';
+import { UpsertPricingDefaultsDto } from './dto/upsert-pricing-defaults.dto';
 
 @Controller('pricing')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -56,30 +57,18 @@ export class PricingController {
     return this.pricingService.findAll();
   }
 
-  /**
-   * Get default pricing values for all zones (no database lookup)
-   */
+  /** Get the complete global default pricing configuration. */
   @Get('defaults')
   @Roles(UserRole.ADMIN, UserRole.MERCHANT)
   getDefaultPricingValues(@Query('zone') zone?: PricingZone) {
-    if (zone) {
-      return {
-        zone,
-        config: this.pricingService.getDefaultPricingValues(zone),
-      };
-    }
+    return this.pricingService.getPricingDefaults(zone);
+  }
 
-    return {
-      [PricingZone.INSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(
-        PricingZone.INSIDE_DHAKA,
-      ),
-      [PricingZone.SUB_DHAKA]: this.pricingService.getDefaultPricingValues(
-        PricingZone.SUB_DHAKA,
-      ),
-      [PricingZone.OUTSIDE_DHAKA]: this.pricingService.getDefaultPricingValues(
-        PricingZone.OUTSIDE_DHAKA,
-      ),
-    };
+  /** Replace the complete global default pricing configuration. */
+  @Post('defaults')
+  @Roles(UserRole.ADMIN)
+  updateDefaultPricingValues(@Body() dto: UpsertPricingDefaultsDto) {
+    return this.pricingService.upsertPricingDefaults(dto);
   }
 
   /**

@@ -1,9 +1,9 @@
 /**
  * Railway startup script with CSV import
  * 1. Validates DATABASE_URL
- * 2. Checks FORCE_SYNC mode
+ * 2. Runs all pending TypeORM migrations
  * 3. Imports coverage areas from CSV
- * 4. Starts the NestJS application (migrations or sync run automatically)
+ * 4. Starts the NestJS application
  */
 
 const { spawn } = require('child_process');
@@ -17,8 +17,6 @@ async function startDeployment() {
   console.log('');
   
   const databaseUrl = process.env.DATABASE_URL;
-  const forceSync = process.env.FORCE_SYNC === 'true';
-  
   // Check for unresolved template syntax
   if (databaseUrl && databaseUrl.includes('${{')) {
     console.error('❌ CRITICAL ERROR: DATABASE_URL contains unresolved Railway template syntax!');
@@ -38,7 +36,6 @@ async function startDeployment() {
   console.log('DATABASE_URL:', databaseUrl ? 'SET ✅' : 'NOT SET ❌');
   console.log('PORT:', process.env.PORT || '3000');
   console.log('NODE_ENV:', process.env.NODE_ENV || 'production');
-  console.log('FORCE_SYNC:', forceSync ? '⚠️  ENABLED' : 'disabled');
   
   // Show connection target
   if (databaseUrl) {
@@ -54,22 +51,34 @@ async function startDeployment() {
   
   console.log('');
   
-  if (forceSync) {
-    console.log('🔄 FORCE_SYNC MODE ACTIVE');
-    console.log('   TypeORM will AUTO-CREATE all missing tables from entities');
-    console.log('   Migrations are SKIPPED in this mode');
-    console.log('');
-    console.log('⚠️  IMPORTANT: Remove FORCE_SYNC env var after deployment!');
-    console.log('');
-  } else {
-    console.log('TypeORM will handle DB connections automatically');
-    console.log('Migrations will run on first successful connection');
-  }
+  console.log('Database schema mode: migrations only');
   console.log('');
+
+  console.log('========================================');
+  console.log('Step 1: Run Database Migrations');
+  console.log('========================================');
+
+  const dataSourceModule = require('../dist/src/data-source');
+  const dataSource = dataSourceModule.default;
+
+  try {
+    await dataSource.initialize();
+    const appliedMigrations = await dataSource.runMigrations({
+      transaction: 'all',
+    });
+    console.log(`Applied migrations: ${appliedMigrations.length}`);
+  } catch (error) {
+    console.error('Database migration failed:', error);
+    process.exit(1);
+  } finally {
+    if (dataSource.isInitialized) {
+      await dataSource.destroy();
+    }
+  }
 
   // Import coverage areas from CSV before starting the app
   console.log('========================================');
-  console.log('Step 1: Import Coverage Areas');
+  console.log('Step 2: Import Coverage Areas');
   console.log('========================================');
   
   try {
@@ -82,7 +91,7 @@ async function startDeployment() {
 
   // Start the application
   console.log('========================================');
-  console.log('Step 2: Starting NestJS Application');
+  console.log('Step 3: Starting NestJS Application');
   console.log('========================================');
   console.log('');
   

@@ -29,9 +29,6 @@ import { SalaryModule } from './salary/salary.module';
 import { CarrybeeAssignmentWorker } from './workers/carrybee-assignment.worker';
 import { NotificationsModule } from './notifications/notifications.module';
 
-// Synchronize is ALWAYS enabled - no manual migrations needed
-// TypeORM will auto-create/update all tables based on entities
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -41,8 +38,8 @@ import { NotificationsModule } from './notifications/notifications.module';
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
-      // Migrations disabled - synchronize handles everything automatically
-      migrationsRun: false,
+      // Every deployment applies pending migrations before serving requests.
+      migrationsRun: true,
       retryAttempts: 5, // Reduced for Railway (faster fail if misconfigured)
       retryDelay: 2000, // 2s between retries
     }),
