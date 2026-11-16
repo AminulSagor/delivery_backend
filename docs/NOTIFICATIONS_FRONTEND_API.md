@@ -80,7 +80,7 @@ GET /notifications?page=1&limit=20&type=RIDER_ASSIGNED
         "type": "HUB_RECEIVED",
         "category": "PARCEL",
         "title": "Received at hub",
-        "message": "Parcel TRK-20260905-0012: The parcel was received and is being processed at Mirpur Hub.",
+        "message": "Parcel tx id #139679: The parcel was received and is being processed at Mirpur Hub.",
         "entity_type": "PARCEL",
         "entity_id": "9709e313-9cf0-4d02-a217-c040283e86bf",
         "action_url": "/parcels/9709e313-9cf0-4d02-a217-c040283e86bf",

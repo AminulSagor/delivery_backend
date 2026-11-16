@@ -875,9 +875,9 @@ export class ParcelTrackingSubscriber
       }
 
       if (recipients.size === 0) return;
-      const tracking =
-        parcel.tracking_number || parcel.parcel_tx_id || parcel.id;
-      const message = `Parcel ${tracking}: ${event.description || event.title}`;
+      const parcelTxId =
+        parcel.parcel_tx_id || parcel.tracking_number || parcel.id;
+      const message = `Parcel tx id ${parcelTxId}: ${event.description || event.title}`;
       const values = [...recipients.values()].map((recipient) => ({
         recipient_user_id: recipient.userId,
         recipient_role: recipient.role,

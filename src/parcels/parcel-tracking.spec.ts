@@ -122,6 +122,13 @@ describe('parcel lifecycle tracking', () => {
         UserRole.RIDER,
       ]),
     );
+    expect(inserted.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: 'Parcel tx id #1: Ready for delivery',
+        }),
+      ]),
+    );
   });
 
   it('has a public lifecycle event mapping for every parcel status', () => {
