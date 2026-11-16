@@ -3608,6 +3608,7 @@ export class ParcelsService {
           // Save the entity so the immutable tracking subscriber can preserve
           // both the previous and target rider in the parcel lifecycle.
           parcel.assigned_rider_id = targetRider.id;
+          parcel.assignedRider = targetRider;
           parcel.assigned_at = new Date();
           await queryRunner.manager.save(Parcel, parcel);
 
@@ -3631,6 +3632,12 @@ export class ParcelsService {
               'thirdPartyProvider',
             ],
           });
+
+          if (updatedParcel?.assigned_rider_id !== targetRider.id) {
+            throw new InternalServerErrorException(
+              'Parcel rider assignment was not persisted',
+            );
+          }
 
           results.push({
             parcel_id: parcel.id,
@@ -8733,6 +8740,7 @@ export class ParcelsService {
           // Save the loaded entity so the rider-to-rider handoff is retained
           // as a distinct lifecycle event.
           parcel.assigned_rider_id = targetRider.id;
+          parcel.assignedRider = targetRider;
           parcel.assigned_at = new Date();
           await queryRunner.manager.save(Parcel, parcel);
 
@@ -8757,6 +8765,12 @@ export class ParcelsService {
               'thirdPartyProvider',
             ],
           });
+
+          if (updatedParcel?.assigned_rider_id !== targetRider.id) {
+            throw new InternalServerErrorException(
+              'Parcel rider assignment was not persisted',
+            );
+          }
 
           results.push({
             parcel_id: parcel.id,
