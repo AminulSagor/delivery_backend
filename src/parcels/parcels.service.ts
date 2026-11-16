@@ -1243,32 +1243,8 @@ export class ParcelsService {
 
     const pricingZone = this.determinePricingZone(deliveryArea);
 
-    // Get base pricing configuration
-    const pricingConfig = storeId
-      ? await this.pricingService.getActivePricing(storeId, pricingZone)
-      : null;
-
-    // Base delivery charge and percentages
-    let baseDeliveryCharge = 60;
-    let codPercentage = 1.0;
-    let discountPercentage = 0;
-
-    if (pricingConfig) {
-      baseDeliveryCharge = Number(pricingConfig.delivery_charge);
-      codPercentage = Number(pricingConfig.cod_percentage);
-      discountPercentage = pricingConfig.discount_percentage
-        ? Number(pricingConfig.discount_percentage)
-        : 0;
-    } else {
-      // Zone-specific fallback base charges
-      if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
-        baseDeliveryCharge = 120;
-        codPercentage = 2.5;
-      } else if (pricingZone === PricingZone.SUB_DHAKA) {
-        baseDeliveryCharge = 80;
-        codPercentage = 2.0;
-      }
-    }
+    const { baseDeliveryCharge, codPercentage, discountPercentage } =
+      await this.getEffectiveDeliveryPricing(storeId, pricingZone);
 
     // Calculate weight charge using the new zone-based algorithm
     const weightChargeResult = await this.pricingService.calculateWeightCharge(
@@ -1310,6 +1286,41 @@ export class ParcelsService {
       discount: discount,
       total_charge: totalCharge,
       receivable_amount: receivableAmount,
+    };
+  }
+
+  /**
+   * Resolve delivery pricing in priority order:
+   * 1. Active store-specific configuration
+   * 2. Admin-managed global defaults for the parcel's zone
+   */
+  private async getEffectiveDeliveryPricing(
+    storeId: string | null,
+    pricingZone: PricingZone,
+  ): Promise<{
+    baseDeliveryCharge: number;
+    codPercentage: number;
+    discountPercentage: number;
+  }> {
+    const storePricing = storeId
+      ? await this.pricingService.getActivePricing(storeId, pricingZone)
+      : null;
+
+    if (storePricing) {
+      return {
+        baseDeliveryCharge: Number(storePricing.delivery_charge),
+        codPercentage: Number(storePricing.cod_percentage),
+        discountPercentage: Number(storePricing.discount_percentage || 0),
+      };
+    }
+
+    const defaults = await this.pricingService.getPricingDefaults(pricingZone);
+    const defaultPricing = defaults.delivery_charges[pricingZone];
+
+    return {
+      baseDeliveryCharge: Number(defaultPricing.delivery_charge),
+      codPercentage: Number(defaultPricing.cod_percentage),
+      discountPercentage: Number(defaultPricing.discount_percentage || 0),
     };
   }
 
@@ -2535,32 +2546,11 @@ export class ParcelsService {
         );
 
       const pricingZone = this.determinePricingZone(deliveryArea);
-      const pricingConfig = await this.pricingService.getActivePricing(
-        calculateDto.store_id,
-        pricingZone,
-      );
-
-      // Default pricing values
-      let baseDeliveryCharge = 60;
-      let codPercentage = 1.0;
-      let discountPercentage: number | null = null;
-
-      if (pricingConfig) {
-        baseDeliveryCharge = Number(pricingConfig.delivery_charge);
-        codPercentage = Number(pricingConfig.cod_percentage);
-        discountPercentage = pricingConfig.discount_percentage
-          ? Number(pricingConfig.discount_percentage)
-          : null;
-      } else {
-        // Fallback pricing based on zone
-        if (pricingZone === PricingZone.OUTSIDE_DHAKA) {
-          baseDeliveryCharge = 120;
-          codPercentage = 2.5;
-        } else if (pricingZone === PricingZone.SUB_DHAKA) {
-          baseDeliveryCharge = 80;
-          codPercentage = 2.0;
-        }
-      }
+      const { baseDeliveryCharge, codPercentage, discountPercentage } =
+        await this.getEffectiveDeliveryPricing(
+          calculateDto.store_id,
+          pricingZone,
+        );
 
       // Calculate fees
       const deliveryFee = baseDeliveryCharge;
