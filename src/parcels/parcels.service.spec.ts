@@ -4,6 +4,49 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { StoreStatus } from '../stores/entities/store.entity';
 import { ForbiddenException } from '@nestjs/common';
 
+describe('ParcelsService store-specific charge lookup', () => {
+  it('uses the store ID for delivery and weight pricing', async () => {
+    const service = Object.create(ParcelsService.prototype) as ParcelsService;
+    (service as any).coverageAreaRepository = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'area-1',
+        division: 'Dhaka',
+        inside_dhaka_flag: true,
+      }),
+    };
+    (service as any).pricingService = {
+      getActivePricing: jest.fn().mockResolvedValue({
+        delivery_charge: 75,
+        cod_percentage: 1,
+        discount_percentage: 0,
+      }),
+      calculateWeightCharge: jest.fn().mockResolvedValue({ weight_charge: 10 }),
+    };
+    (service as any).logger = { log: jest.fn() };
+
+    const result = await (service as any).calculateCharges(
+      'store-1',
+      'area-1',
+      1,
+      true,
+      1000,
+    );
+
+    expect(
+      (service as any).pricingService.getActivePricing,
+    ).toHaveBeenCalledWith('store-1', 'INSIDE_DHAKA');
+    expect(
+      (service as any).pricingService.calculateWeightCharge,
+    ).toHaveBeenCalledWith('store-1', 'INSIDE_DHAKA', 1);
+    expect(result).toMatchObject({
+      delivery_charge: 75,
+      weight_charge: 10,
+      cod_charge: 10,
+      total_charge: 95,
+    });
+  });
+});
+
 describe('ParcelsService.bulkImportRows', () => {
   it('creates valid rows and preserves failures with spreadsheet row numbers', async () => {
     const service = Object.create(ParcelsService.prototype) as ParcelsService;
@@ -194,7 +237,7 @@ describe('ParcelsService.getBulkSuggestions', () => {
       }),
     );
     expect((service as any).calculateCharges).toHaveBeenCalledWith(
-      'merchant-1',
+      '9709e313-9cf0-4d02-a217-c040283e86bf',
       '91b49d21-5fa2-4140-9d9f-4efefdef3ba1',
       1,
       true,
@@ -380,6 +423,7 @@ describe('ParcelsService hub receipt timestamp', () => {
     const parcel = {
       ...receivableParcel(),
       merchant_id: 'merchant-1',
+      store_id: 'store-1',
       delivery_coverage_area_id: 'area-1',
       cod_amount: 1000,
       product_weight: 0.5,
@@ -399,7 +443,7 @@ describe('ParcelsService hub receipt timestamp', () => {
     ]);
 
     expect((service as any).calculateCharges).toHaveBeenCalledWith(
-      'merchant-1',
+      'store-1',
       'area-1',
       1.5,
       true,
@@ -425,6 +469,7 @@ describe('ParcelsService charge consistency', () => {
     ({
       id: '9709e313-9cf0-4d02-a217-c040283e86bf',
       merchant_id: 'merchant-1',
+      store_id: 'store-1',
       delivery_coverage_area_id: 'area-1',
       store: { hub_id: 'hub-1' },
       current_hub_id: 'hub-1',

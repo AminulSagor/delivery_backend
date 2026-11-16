@@ -1210,14 +1210,14 @@ export class ParcelsService {
    *    - OUTSIDE_DHAKA: 1.0 kg steps, 20 BDT/step
    * 3. Steps are rounded UP (any fraction = 1 step)
    *
-   * @param merchantId - Merchant/Store ID for store-specific pricing
+   * @param storeId - Store ID for store-specific pricing
    * @param deliveryCoverageAreaId - Delivery area to determine zone
    * @param weight - Parcel weight in kg
    * @param isCod - Whether this is a Cash on Delivery order
    * @param codAmount - COD amount to collect
    */
   private async calculateCharges(
-    merchantId: string,
+    storeId: string | null,
     deliveryCoverageAreaId: string | null,
     weight: number = 0,
     isCod: boolean,
@@ -1244,10 +1244,9 @@ export class ParcelsService {
     const pricingZone = this.determinePricingZone(deliveryArea);
 
     // Get base pricing configuration
-    const pricingConfig = await this.pricingService.getActivePricing(
-      merchantId,
-      pricingZone,
-    );
+    const pricingConfig = storeId
+      ? await this.pricingService.getActivePricing(storeId, pricingZone)
+      : null;
 
     // Base delivery charge and percentages
     let baseDeliveryCharge = 60;
@@ -1273,7 +1272,7 @@ export class ParcelsService {
 
     // Calculate weight charge using the new zone-based algorithm
     const weightChargeResult = await this.pricingService.calculateWeightCharge(
-      merchantId, // Use merchantId as storeId for lookup
+      storeId,
       pricingZone,
       weight,
     );
@@ -1468,7 +1467,7 @@ export class ParcelsService {
       let charges;
       try {
         charges = await this.calculateCharges(
-          merchantId,
+          createParcelDto.store_id || null,
           createParcelDto.delivery_coverage_area_id || null,
           createParcelDto.product_weight || 0,
           isCod,
@@ -1732,7 +1731,7 @@ export class ParcelsService {
       const isCod = codAmount > 0;
 
       const charges = await this.calculateCharges(
-        merchantId,
+        createParcelDto.store_id || null,
         createParcelDto.delivery_coverage_area_id || null,
         createParcelDto.product_weight || 0,
         isCod,
@@ -1922,7 +1921,7 @@ export class ParcelsService {
       const isCod = codAmount > 0;
 
       const charges = await this.calculateCharges(
-        merchant_id,
+        dto.store_id,
         dto.delivery_coverage_area_id || null,
         dto.product_weight || 0,
         isCod,
@@ -3352,7 +3351,7 @@ export class ParcelsService {
 
         if (weightChanged) {
           const recalculatedCharges = await this.calculateCharges(
-            parcel.merchant_id,
+            parcel.store_id || null,
             parcel.delivery_coverage_area_id || null,
             confirmedWeight,
             Number(parcel.cod_amount || 0) > 0,
@@ -3912,7 +3911,7 @@ export class ParcelsService {
             ) / 100;
         } else {
           const recalculatedCharges = await this.calculateCharges(
-            parcel.merchant_id,
+            parcel.store_id || null,
             parcel.delivery_coverage_area_id || null,
             Number(parcel.product_weight) || 0,
             parcel.is_cod,
@@ -3927,7 +3926,7 @@ export class ParcelsService {
 
       if (updateParcelDto.delivery_coverage_area_id !== undefined) {
         const recalculatedCharges = await this.calculateCharges(
-          parcel.merchant_id,
+          parcel.store_id || null,
           parcel.delivery_coverage_area_id || null,
           Number(parcel.product_weight) || 0,
           Number(parcel.cod_amount) > 0,
@@ -3940,7 +3939,7 @@ export class ParcelsService {
         parcel.receivable_amount = recalculatedCharges.receivable_amount;
       } else if (updateParcelDto.product_weight !== undefined) {
         const recalculatedCharges = await this.calculateCharges(
-          parcel.merchant_id,
+          parcel.store_id || null,
           parcel.delivery_coverage_area_id || null,
           Number(parcel.product_weight) || 0,
           Number(parcel.cod_amount) > 0,
@@ -7678,7 +7677,7 @@ export class ParcelsService {
             const isCod = price > 0;
             const codAmount = isCod ? price : 0;
             const charges = await this.calculateCharges(
-              merchantId,
+              item.store_id || null,
               prediction.coverage_area_uuid,
               weight,
               isCod,
@@ -8300,7 +8299,7 @@ export class ParcelsService {
       Math.abs(dto.product_weight - Number(parcel.product_weight || 0)) > 0.009;
     if (hasWeightChanged) {
       const recalculatedCharges = await this.calculateCharges(
-        parcel.merchant_id,
+        parcel.store_id || null,
         parcel.delivery_coverage_area_id || null,
         dto.product_weight,
         Number(parcel.cod_amount || 0) > 0,
