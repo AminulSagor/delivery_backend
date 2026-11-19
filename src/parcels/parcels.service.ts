@@ -6070,8 +6070,8 @@ export class ParcelsService {
       queryBuilder.andWhere(
         `CASE
           WHEN parcel.hub_confirmation_status = :pendingStatusFilter
-            THEN COALESCE(parcel.rider_action_status, parcel.status)
-          ELSE parcel.status
+            THEN COALESCE(parcel.rider_action_status, parcel.status::text)
+          ELSE parcel.status::text
         END IN (:...statuses)`,
         {
           statuses: statuses,
@@ -6126,7 +6126,7 @@ export class ParcelsService {
       .andWhere('parcel.assigned_rider_id = :riderId', { riderId })
       .andWhere('parcel.cod_cleared_at IS NULL')
       .andWhere(
-        'COALESCE(parcel.rider_action_status, parcel.status) IN (:...statuses)',
+        'COALESCE(parcel.rider_action_status, parcel.status::text) IN (:...statuses)',
         {
           statuses: statusesForCollect,
         },
