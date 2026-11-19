@@ -275,12 +275,13 @@ Business behavior:
   - IN_HUB
   - ASSIGNED_TO_RIDER
   - ASSIGNED_TO_THIRD_PARTY
-- `product_weight` is the source of truth. The backend calculates the weight charge; the UI must not calculate charges.
+- `product_weight` is the source of truth. The backend calculates all charges; the UI must not calculate them.
 - If the weight is unchanged, all charges remain unchanged.
-- If the weight changes, only `weight_charge` is replaced. The entry-time `delivery_charge`, `cod_charge`, and discount remain fixed.
+- If the weight changes, the backend reapplies the active store-specific pricing, or the admin-managed defaults when no store pricing exists.
+- `delivery_charge`, `weight_charge`, `cod_charge`, discount, `total_charge`, and `receivable_amount` are recalculated together.
 - For compatibility, older clients may still send `delivery_charge` and `weight_charge`, but those values are ignored.
 - Backend recalculates:
-  - total_charge = delivery_charge + weight_charge + cod_charge - entry-time discount
+  - total_charge = delivery_charge + weight_charge + cod_charge - current effective discount
   - receivable_amount = cod_amount - total_charge
 - Returns full updated parcel in response.
 

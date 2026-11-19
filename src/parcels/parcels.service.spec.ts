@@ -544,11 +544,16 @@ describe('ParcelsService charge consistency', () => {
     expect(parcel.total_charge).toBe(95);
   });
 
-  it('derives weight charge from actual weight and preserves other charges', async () => {
+  it('recalculates all charges from actual weight and effective pricing', async () => {
     const parcel = baseParcel();
     const service = serviceWithParcel(parcel);
     (service as any).calculateCharges = jest.fn().mockResolvedValue({
+      delivery_charge: 80,
       weight_charge: 30,
+      cod_charge: 20,
+      discount: 10,
+      total_charge: 120,
+      receivable_amount: 880,
     });
 
     await service.updateHubCharges(
@@ -563,11 +568,11 @@ describe('ParcelsService charge consistency', () => {
     );
 
     expect(parcel.product_weight).toBe(2.5);
-    expect(parcel.delivery_charge).toBe(60);
+    expect(parcel.delivery_charge).toBe(80);
     expect(parcel.weight_charge).toBe(30);
-    expect(parcel.cod_charge).toBe(10);
-    expect(parcel.total_charge).toBe(95);
-    expect(parcel.receivable_amount).toBe(905);
+    expect(parcel.cod_charge).toBe(20);
+    expect(parcel.total_charge).toBe(120);
+    expect(parcel.receivable_amount).toBe(880);
   });
 
   it('keeps every charge unchanged when received weight is unchanged', async () => {

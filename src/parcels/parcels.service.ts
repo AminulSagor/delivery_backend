@@ -8215,11 +8215,10 @@ export class ParcelsService {
   }
 
   /**
-   * Recalculate the weight charge from the actual received weight.
+   * Recalculate parcel charges from the actual received weight.
    * Hub managers use this while the parcel is in their receipt queue.
-   * Delivery and COD charges remain fixed. Recalculates aggregate amounts using:
-   *   total_charge = delivery_charge + weight_charge + cod_charge - discount
-   *   receivable_amount = cod_amount - total_charge
+   * The current store-specific pricing (or admin defaults) is reapplied to the
+   * delivery, weight, COD, discount, total, and receivable amounts.
    */
   async updateHubCharges(
     parcelId: string,
@@ -8304,9 +8303,11 @@ export class ParcelsService {
       );
 
       parcel.product_weight = dto.product_weight;
-      this.applyChargeComponentUpdate(parcel, {
-        weightCharge: recalculatedCharges.weight_charge,
-      });
+      parcel.delivery_charge = recalculatedCharges.delivery_charge;
+      parcel.weight_charge = recalculatedCharges.weight_charge;
+      parcel.cod_charge = recalculatedCharges.cod_charge;
+      parcel.total_charge = recalculatedCharges.total_charge;
+      parcel.receivable_amount = recalculatedCharges.receivable_amount;
     }
     parcel.tracking_context = {
       actor_type:

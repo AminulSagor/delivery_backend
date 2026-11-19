@@ -115,6 +115,10 @@ Do not send `{ "weight_charge": 60 }` or `{ "delivery_charge": 60 }`. Those
 are calculated results, not editable weight input. Sending only `weight_charge`
 causes the validation error shown by the current Receive UI.
 
+When `product_weight` changes, the backend reapplies the active store-specific
+pricing, falling back to the admin-managed defaults. It recalculates delivery,
+weight, COD, discount, total, and receivable amounts together.
+
 ## 3. Pickup request APIs
 
 ### Merchant creates a pickup request
