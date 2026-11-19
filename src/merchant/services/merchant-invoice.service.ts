@@ -1046,6 +1046,7 @@ export class MerchantInvoiceService {
       to_date?: string;
       sort_by?: 'order_date' | 'receivable_amount';
       sort_order?: 'ASC' | 'DESC';
+      paginate?: boolean;
     },
   ): Promise<any> {
     const {
@@ -1057,6 +1058,7 @@ export class MerchantInvoiceService {
       to_date,
       sort_by = 'order_date',
       sort_order = 'DESC',
+      paginate = true,
     } = query || {};
 
     // Get invoice with relations
@@ -1122,7 +1124,9 @@ export class MerchantInvoiceService {
     const totalParcels = await parcelQueryBuilder.getCount();
 
     // Apply pagination
-    parcelQueryBuilder.skip((page - 1) * limit).take(limit);
+    if (paginate) {
+      parcelQueryBuilder.skip((page - 1) * limit).take(limit);
+    }
 
     const parcels = await parcelQueryBuilder.getMany();
 

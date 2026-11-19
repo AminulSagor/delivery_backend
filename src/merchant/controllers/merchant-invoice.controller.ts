@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { MerchantInvoiceService } from '../services/merchant-invoice.service';
@@ -29,6 +30,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { InvoicePdfService } from '../services/invoice-pdf.service';
 
 @Controller('merchant-invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,6 +38,7 @@ export class MerchantInvoiceController {
   constructor(
     private readonly merchantInvoiceService: MerchantInvoiceService,
     private readonly invoiceCalculationService: InvoiceCalculationService,
+    private readonly invoicePdfService: InvoicePdfService,
   ) {}
 
   // ===== ADMIN ENDPOINTS =====
@@ -769,11 +772,8 @@ export class MerchantInvoiceController {
 
     // If merchant, verify they own this invoice
     if (req.user.role === UserRole.MERCHANT) {
-      if (details.invoice.merchant_id !== req.user.userId) {
-        return {
-          success: false,
-          message: 'Unauthorized access to this invoice',
-        };
+      if (details.merchant.id !== req.user.userId) {
+        throw new ForbiddenException('Unauthorized access to this invoice');
       }
     }
 
@@ -782,6 +782,47 @@ export class MerchantInvoiceController {
       data: details,
       message: 'Invoice details retrieved successfully',
     };
+  }
+
+  /**
+   * Download a printable merchant invoice PDF
+   * GET /merchant-invoices/:id/print
+   */
+  @Get(':id/print')
+  @Roles(UserRole.MERCHANT, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async printInvoice(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const details = await this.merchantInvoiceService.getInvoiceDetails(id, {
+      paginate: false,
+      sort_by: 'order_date',
+      sort_order: 'ASC',
+    });
+
+    if (
+      req.user.role === UserRole.MERCHANT &&
+      details.merchant.id !== req.user.userId
+    ) {
+      throw new ForbiddenException('Unauthorized access to this invoice');
+    }
+
+    const pdf = await this.invoicePdfService.generate(details);
+    const safeInvoiceNo = details.invoice.invoice_no.replace(
+      /[^a-zA-Z0-9_-]/g,
+      '-',
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="meghswar-invoice-${safeInvoiceNo}.pdf"`,
+    );
+    res.setHeader('Content-Length', pdf.length);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
   }
 
   /**

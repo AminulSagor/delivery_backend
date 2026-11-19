@@ -18,6 +18,7 @@ import { MerchantProfile } from './entities/merchant-profile.entity';
 import { Store } from 'src/stores/entities/store.entity';
 import { S3Service } from 'src/upload/s3-upload.service';
 import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.module';
+import { InvoicePdfService } from './services/invoice-pdf.service';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { MerchantFinanceModule } from '../merchant-finance/merchant-finance.modu
     MerchantService,
     MerchantInvoiceService,
     InvoiceCalculationService,
+    InvoicePdfService,
     EmailService,
     SmsService,
     S3Service,
